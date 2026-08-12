@@ -31,13 +31,16 @@ yarn-error.*
 *.pem
 
 # local env files
-.env
-.env*.local
+#
+# Ignore every .env variant and allow back only the committed template.
+# The previous `.env` + `.env*.local` pair missed .env.development,
+# .env.production and .env.staging, all of which Expo loads.
+.env*
+!.env.example
 
 # supabase local state and function secrets
 supabase/.branches/
 supabase/.temp/
-supabase/functions/**/.env
 
 # typescript
 *.tsbuildinfo
