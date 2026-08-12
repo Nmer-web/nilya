@@ -379,7 +379,10 @@ function DoneSheet() {
     if (sheet.doneKind === 'published') {
       router.dismissTo('/profile');
     } else {
-      router.dismissTo('/');
+      // '/index' rather than '/': now that the home screen sits in the (app)
+      // group, expo-router's generated Href union offers `/index` and
+      // `/(app)/index` but not `/`. Both resolve to the same screen.
+      router.dismissTo('/index');
       router.push({ pathname: '/order/[id]', params: { id: 'SS28491' } });
     }
   };

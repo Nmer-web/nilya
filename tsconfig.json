@@ -16,5 +16,11 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    // Deno, not React Native: npm:/jsr: specifiers and the Deno global are
+    // resolved by the Supabase Edge runtime and its own toolchain.
+    "supabase"
   ]
 }

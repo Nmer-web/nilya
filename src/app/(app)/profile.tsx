@@ -10,6 +10,7 @@ import { ReviewList } from '@/components/reviews';
 import { Badge, Button, Card, EmptyState, Row, T, Tap, UnderlineTabs } from '@/components/ui';
 import { myListings } from '@/data/catalog';
 import { useApp, useFavourites } from '@/store/app-store';
+import { useAuth } from '@/store/auth-store';
 import { avatarColor, color as C } from '@/theme/tokens';
 
 type Tab = 'Listings' | 'Sold' | 'Reviews';
@@ -19,8 +20,10 @@ export default function Profile() {
   const navClearance = useNavClearance();
   const router = useRouter();
   const { flash } = useApp();
+  const { user, signOut } = useAuth();
   const favourites = useFavourites();
   const [tab, setTab] = useState<Tab>('Listings');
+  const [signingOut, setSigningOut] = useState(false);
   const listings = myListings();
 
   return (
@@ -126,6 +129,33 @@ export default function Profile() {
         />
         <Row icon="card" label="Payouts & verification" last onPress={() => router.push('/verify')} />
       </Card>
+
+      <Card style={{ marginHorizontal: 16, marginTop: 12, overflow: 'hidden' }}>
+        <Row
+          icon="person"
+          label="Signed in as"
+          value={user?.email ?? '—'}
+          last
+          onPress={() => flash('Account settings are not built yet')}
+        />
+      </Card>
+
+      {/* No confirmation step: signing out is instantly reversible and the
+          session is the only thing discarded. */}
+      <Button
+        label={signingOut ? 'Signing out…' : 'Sign out'}
+        variant="outline"
+        height={46}
+        size={14}
+        disabled={signingOut}
+        onPress={async () => {
+          setSigningOut(true);
+          await signOut();
+          // No navigation here — clearing the session flips the root guard and
+          // the router swaps to the auth group on its own.
+        }}
+        style={{ marginHorizontal: 16, marginTop: 12, borderRadius: 11 }}
+      />
 
       <UnderlineTabs<Tab>
         value={tab}
