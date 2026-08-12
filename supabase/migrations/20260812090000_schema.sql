@@ -9,8 +9,10 @@
 --   * RLS is enabled on every table here. Policies live in the next migration,
 --     so between the two the tables are readable by no one but service_role.
 
-create extension if not exists pgcrypto;   -- gen_random_uuid()
-create extension if not exists pg_trgm;    -- fuzzy title/brand search
+-- Supabase keeps extensions in the `extensions` schema, which is on the default
+-- search_path. Installing into public trips the extension_in_public advisor.
+create extension if not exists pgcrypto with schema extensions;  -- gen_random_uuid()
+create extension if not exists pg_trgm  with schema extensions;  -- fuzzy title/brand search
 
 -- ─────────────────────────────── enums ───────────────────────────────
 
@@ -58,7 +60,10 @@ create table profiles (
   constraint verified_has_timestamp check (is_verified = false or verified_at is not null)
 );
 
-create index profiles_display_name_trgm on profiles using gin (display_name gin_trgm_ops);
+-- Operator class qualified: it lives in `extensions`, and migrations should not
+-- depend on search_path happening to include it.
+create index profiles_display_name_trgm
+  on profiles using gin (display_name extensions.gin_trgm_ops);
 create trigger profiles_touch before update on profiles
   for each row execute function public.touch_updated_at();
 
