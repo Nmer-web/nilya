@@ -16,7 +16,7 @@ import { Icon } from '@/components/icon';
 import { ImageSlot } from '@/components/image-slot';
 import { Avatar, Chip, T, Tap } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
-import { useAnimatedValue } from '@/hooks/use-animated-value';
+import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { euro, useApp } from '@/store/app-store';
 import { avatarColor, color as C, font, radius } from '@/theme/tokens';
 
@@ -281,8 +281,8 @@ function TypingDot({ delay }: { delay: number }) {
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
-        Animated.timing(v, { toValue: 1, duration: 450, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(v, { toValue: 0, duration: 450, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(v, { toValue: 1, duration: 450, easing: Easing.inOut(Easing.ease), useNativeDriver: NATIVE_DRIVER }),
+        Animated.timing(v, { toValue: 0, duration: 450, easing: Easing.inOut(Easing.ease), useNativeDriver: NATIVE_DRIVER }),
       ])
     );
     loop.start();

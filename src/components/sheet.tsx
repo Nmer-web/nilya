@@ -14,14 +14,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavHeight } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
 import { T, Tap } from '@/components/ui';
-import { useAnimatedValue } from '@/hooks/use-animated-value';
+import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { color as C, radius } from '@/theme/tokens';
 
 /** Dimmed backdrop; tapping it dismisses, matching the design's scrim. */
 export function Scrim({ onPress }: { onPress: () => void }) {
   const o = useAnimatedValue(0);
   useEffect(() => {
-    Animated.timing(o, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    Animated.timing(o, { toValue: 1, duration: 200, useNativeDriver: NATIVE_DRIVER }).start();
   }, [o]);
 
   return (
@@ -60,7 +60,7 @@ export function Sheet({
       toValue: 0,
       duration: 330,
       easing: Easing.bezier(0.32, 0.72, 0, 1),
-      useNativeDriver: true,
+      useNativeDriver: NATIVE_DRIVER,
     }).start();
   }, [p]);
 
@@ -150,7 +150,7 @@ export function Toast({ message }: { message: string }) {
       toValue: 1,
       duration: 260,
       easing: Easing.bezier(0.2, 0.8, 0.2, 1),
-      useNativeDriver: true,
+      useNativeDriver: NATIVE_DRIVER,
     }).start();
   }, [p, message]);
 

@@ -8,7 +8,7 @@ import { Scrim, Sheet, SheetClose, SheetGrabber, Toast } from '@/components/shee
 import { Slider } from '@/components/slider';
 import { Button, Card, Chip, SectionLabel, T, Tap, Toggle } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
-import { useAnimatedValue } from '@/hooks/use-animated-value';
+import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { euro, useApp, useSearchResults } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
 
@@ -362,7 +362,7 @@ function DoneSheet() {
       toValue: 1,
       duration: 420,
       easing: Easing.bezier(0.3, 1.4, 0.4, 1),
-      useNativeDriver: true,
+      useNativeDriver: NATIVE_DRIVER,
     }).start();
   }, [pop]);
 
@@ -379,10 +379,7 @@ function DoneSheet() {
     if (sheet.doneKind === 'published') {
       router.dismissTo('/profile');
     } else {
-      // '/index' rather than '/': now that the home screen sits in the (app)
-      // group, expo-router's generated Href union offers `/index` and
-      // `/(app)/index` but not `/`. Both resolve to the same screen.
-      router.dismissTo('/index');
+      router.dismissTo('/');
       router.push({ pathname: '/order/[id]', params: { id: 'SS28491' } });
     }
   };

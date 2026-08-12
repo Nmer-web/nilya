@@ -8,7 +8,7 @@ import { Icon } from '@/components/icon';
 import { ImageSlot } from '@/components/image-slot';
 import { TabTitle } from '@/components/screen-header';
 import { Button, Card, Note, T, Tap, Toggle } from '@/components/ui';
-import { useAnimatedValue } from '@/hooks/use-animated-value';
+import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { useApp } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
 
@@ -256,7 +256,7 @@ function Spinner({ size = 19, color = C.accent }: { size?: number; color?: strin
 
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 800, easing: Easing.linear, useNativeDriver: true })
+      Animated.timing(spin, { toValue: 1, duration: 800, easing: Easing.linear, useNativeDriver: NATIVE_DRIVER })
     );
     loop.start();
     return () => loop.stop();

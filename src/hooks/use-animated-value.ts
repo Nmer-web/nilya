@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Animated } from 'react-native';
+import { Animated, Platform } from 'react-native';
 
 /**
  * A stable `Animated.Value` that survives re-renders.
@@ -18,3 +18,15 @@ export function useAnimatedValue(initial: number): Animated.Value {
   const [value] = useState(() => new Animated.Value(initial));
   return value;
 }
+
+/**
+ * Whether an animation may be handed to the native driver.
+ *
+ * react-native-web has no native animated module, so asking for one there logs
+ * a warning per animation and falls back to the JS driver anyway. Native must
+ * keep the real thing: the native driver is what lets a transform keep running
+ * while the JS thread is busy, so this is a platform check and never a blanket
+ * `false`. Only ever used for `transform` and `opacity`, the two properties the
+ * native driver supports.
+ */
+export const NATIVE_DRIVER = Platform.OS !== 'web';

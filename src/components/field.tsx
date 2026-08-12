@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Animated, Easing, TextInput, View, type TextInputProps } from 'react-native';
 
 import { T, Tap } from '@/components/ui';
-import { useAnimatedValue } from '@/hooks/use-animated-value';
+import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { color as C, font, radius } from '@/theme/tokens';
 
 /**
@@ -143,7 +143,7 @@ export function ButtonSpinner() {
 
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.linear, useNativeDriver: true })
+      Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.linear, useNativeDriver: NATIVE_DRIVER })
     );
     loop.start();
     return () => loop.stop();

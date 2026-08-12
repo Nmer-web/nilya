@@ -6,7 +6,7 @@ import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, T } from '@/components/ui';
-import { useAnimatedValue } from '@/hooks/use-animated-value';
+import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { useApp } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
 
@@ -119,7 +119,7 @@ function ButtonSpinner() {
 
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.linear, useNativeDriver: true })
+      Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.linear, useNativeDriver: NATIVE_DRIVER })
     );
     loop.start();
     return () => loop.stop();
