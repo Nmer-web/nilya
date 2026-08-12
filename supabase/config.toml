@@ -12,3 +12,61 @@ project_id = "sawa"
 # this true makes the platform reject every delivery with 401 before the
 # function ever runs.
 verify_jwt = false
+
+# ─────────────────────────────── auth ───────────────────────────────
+# This block governs `supabase start` locally. It does NOT reach the hosted
+# project: the Supabase MCP connection exposes no auth configuration tool, so
+# the hosted settings must be applied in the dashboard or via the Management
+# API (PATCH /v1/projects/{ref}/config/auth). Keep the two in step by hand.
+
+[auth]
+enabled = true
+# Deep link back into the Expo app. `scheme` in app.json is "sawa".
+site_url = "sawa://"
+additional_redirect_urls = [
+  "sawa://auth-callback",
+  "http://127.0.0.1:8081",
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+minimum_password_length = 8
+
+[auth.email]
+enable_signup = true
+# Email verification. With this on, signUp returns a user with NO session until
+# the link is clicked — src/app/verify.tsx has to handle that pending state
+# rather than assuming a session exists straight after sign-up.
+enable_confirmations = true
+# Changing an email address confirms on both the old and the new address.
+double_confirm_changes = true
+# Password change requires a fresh login.
+secure_password_change = true
+max_frequency = "60s"
+otp_length = 6
+otp_expiry = 3600
+
+# Password reset needs no flag of its own: the recover flow is part of the email
+# provider. It sends to `site_url` / additional_redirect_urls above, so those
+# have to include the app's deep link or the reset link dead-ends in a browser.
+
+[auth.sms]
+# Phone auth deliberately off for the MVP.
+enable_signup = false
+enable_confirmations = false
+
+[auth.external.google]
+# Disabled: no OAuth credentials exist for SAWA yet, and none were invented.
+# To enable, create an OAuth client in Google Cloud Console with redirect URI
+#   https://tggnhpvrvnmrvmsdyxyu.supabase.co/auth/v1/callback
+# then set enabled = true and supply the client id below. If there are separate
+# Web / iOS / Android client ids, concatenate them comma-separated with the WEB
+# id first — order matters.
+enabled = false
+client_id = ""
+# Never a literal. env() reads from the shell / .env at CLI start-up.
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET)"
+skip_nonce_check = false
