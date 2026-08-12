@@ -5,12 +5,11 @@ import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'reac
 import { color as C } from '@/theme/tokens';
 
 /**
- * Translucent bar with a hairline edge — the design's
- * `rgba(240,238,230,.96) + backdrop-filter: blur()` treatment.
+ * Translucent bar with a hairline edge.
  *
  * Android's BlurView is expensive and lands inconsistently, so it falls back to
- * a near-opaque tint there; the design's alpha is high enough that the
- * difference is not visible in practice.
+ * a near-opaque tint there; the alpha is high enough that the difference is not
+ * visible in practice.
  */
 export function FrostedBar({
   children,
@@ -34,11 +33,11 @@ export function FrostedBar({
   if (Platform.OS === 'ios') {
     return (
       <BlurView intensity={intensity} tint="light" style={[border, style]}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(240,238,230,0.72)' }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,255,255,0.72)' }]} />
         {children}
       </BlurView>
     );
   }
 
-  return <View style={[{ backgroundColor: 'rgba(240,238,230,0.97)' }, border, style]}>{children}</View>;
+  return <View style={[{ backgroundColor: 'rgba(255,255,255,0.97)' }, border, style]}>{children}</View>;
 }

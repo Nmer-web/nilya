@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  Animated,
+  Easing,
   Pressable,
   Text as RNText,
   View,
@@ -11,42 +13,55 @@ import {
 } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icon';
-import { color as C, font, radius } from '@/theme/tokens';
+import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
+import { tapLight, tapSelect } from '@/lib/haptics';
+import { color as C, font, motion, radius, shadow, type as type_ } from '@/theme/tokens';
 
 /* ─────────────────────────── type ─────────────────────────── */
 
-const FAMILY = {
-  400: font.sans,
-  500: font.medium,
-  600: font.semibold,
-  700: font.bold,
+const WEIGHT = {
+  400: '400',
+  500: '500',
+  600: '600',
+  700: '700',
 } as const;
 
-type Weight = keyof typeof FAMILY;
+type Weight = keyof typeof WEIGHT;
 
 export type TProps = TextProps & {
-  /** Maps to the matching Instrument Sans static — RN can't synthesise weights. */
+  /**
+   * A real `fontWeight`. The sans stack is the platform's own — SF Pro on iOS,
+   * Roboto on Android — which synthesises weights properly, so unlike a
+   * multi-file webfont this needs no per-weight family.
+   */
   w?: Weight;
-  /** Instrument Serif, used only for the SudanSouq wordmark. */
+  /** Instrument Serif, used only for the SAWA wordmark. */
   serif?: boolean;
   size?: number;
   color?: string;
   /** Shorthand for `letterSpacing`, which the design uses heavily. */
   tracking?: number;
   lh?: number;
+  /** Pulls size/weight/tracking from the ramp in one prop. */
+  variant?: keyof typeof type_;
 };
 
 /** The app's only text component — every string goes through it. */
-export function T({ w = 400, serif, size, color, tracking, lh, style, ...rest }: TProps) {
+export function T({ w, serif, size, color, tracking, lh, variant, style, ...rest }: TProps) {
+  const ramp = variant ? type_[variant] : undefined;
+  const weight = w ?? (ramp?.weight as Weight | undefined) ?? 400;
+  const fontSize = size ?? ramp?.size;
+  const letter = tracking ?? ramp?.tracking;
+
   return (
     <RNText
       {...rest}
       style={[
         {
-          fontFamily: serif ? font.serif : FAMILY[w],
+          ...(serif ? { fontFamily: font.serif } : { fontWeight: WEIGHT[weight] }),
           color: color ?? C.text,
-          ...(size !== undefined && { fontSize: size }),
-          ...(tracking !== undefined && { letterSpacing: tracking }),
+          ...(fontSize !== undefined && { fontSize }),
+          ...(letter !== undefined && { letterSpacing: letter }),
           ...(lh !== undefined && { lineHeight: lh }),
         },
         style,
@@ -75,17 +90,112 @@ export function Tap({ style, children, ...rest }: PressableProps) {
   );
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+export type PressableScaleProps = Omit<PressableProps, 'style'> & {
+  /** How far to compress. 0.97 for buttons, 0.98 for the larger card targets. */
+  scale?: number;
+  /** Fires a light tick on press-in, before the action resolves. */
+  haptic?: boolean;
+  style?: StyleProp<ViewStyle>;
+};
+
+/**
+ * Press target that dips in scale and springs back.
+ *
+ * Scale rather than opacity: a product image fading under the thumb looks like
+ * a loading state, whereas a slight compression reads as the surface being
+ * pushed. The spring is shared from the motion tokens so every pressable in
+ * the app returns at the same rate.
+ */
+export function PressableScale({
+  scale = 0.97,
+  haptic,
+  style,
+  children,
+  onPressIn,
+  onPressOut,
+  ...rest
+}: PressableScaleProps) {
+  const v = useAnimatedValue(1);
+
+  const spring = (toValue: number) =>
+    Animated.spring(v, { toValue, useNativeDriver: NATIVE_DRIVER, ...motion.spring }).start();
+
+  return (
+    <AnimatedPressable
+      {...rest}
+      onPressIn={(e) => {
+        if (!rest.disabled) {
+          spring(scale);
+          if (haptic) tapLight();
+        }
+        onPressIn?.(e);
+      }}
+      onPressOut={(e) => {
+        spring(1);
+        onPressOut?.(e);
+      }}
+      style={[style, { transform: [{ scale: v }] }, rest.disabled === true && { opacity: 0.45 }]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
+
 /* ─────────────────────────── buttons ─────────────────────────── */
+
+/**
+ * Indeterminate ring. Lives here rather than alongside the form fields so that
+ * `Button` can own its own loading state without importing from a module that
+ * already imports this one.
+ */
+export function Spinner({ size = 16, color = C.onDark }: { size?: number; color?: string }) {
+  const spin = useAnimatedValue(0);
+
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 700,
+        easing: Easing.linear,
+        useNativeDriver: NATIVE_DRIVER,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spin]);
+
+  return (
+    <Animated.View
+      accessibilityRole="progressbar"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.3)',
+        borderTopColor: color,
+        transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
+      }}
+    />
+  );
+}
 
 type ButtonProps = {
   label: string;
   onPress?: () => void;
-  /** solid: near-black fill · outline: hairline border · strong: 1.5px black border */
+  /** solid: black fill · outline: hairline border · strong: 1.5px black border */
   variant?: 'solid' | 'outline' | 'strong';
   height?: number;
   size?: number;
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
+  /** Swaps the label for a spinner and blocks presses. */
+  loading?: boolean;
+  loadingLabel?: string;
+  /** Light tick on press-in. Off by default — only committing actions buzz. */
+  haptic?: boolean;
   children?: React.ReactNode;
 };
 
@@ -97,14 +207,21 @@ export function Button({
   size = 15,
   style,
   disabled,
+  loading,
+  loadingLabel,
+  haptic,
   children,
 }: ButtonProps) {
   const solid = variant === 'solid';
+  const ink = solid ? C.onDark : C.text;
   return (
-    <Tap
+    <PressableScale
       onPress={onPress}
-      disabled={disabled}
+      disabled={disabled || loading}
+      haptic={haptic}
       accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
+      accessibilityLabel={loading ? (loadingLabel ?? 'Working') : label}
       style={[
         {
           height,
@@ -113,24 +230,35 @@ export function Button({
           justifyContent: 'center',
           flexDirection: 'row',
           gap: 9,
-          backgroundColor: solid ? C.text : 'transparent',
+          backgroundColor: solid ? C.text : C.bg,
           borderWidth: variant === 'strong' ? 1.5 : variant === 'outline' ? 1 : 0,
-          borderColor: variant === 'strong' ? C.text : C.border,
+          borderColor: variant === 'strong' ? C.text : C.borderStrong,
         },
         style,
       ]}
     >
-      {children}
-      <T w={600} size={size} color={solid ? C.onDark : C.text}>
-        {label}
-      </T>
-    </Tap>
+      {loading ? (
+        <>
+          <Spinner color={ink} />
+          <T w={600} size={size} color={ink}>
+            {loadingLabel ?? 'Processing…'}
+          </T>
+        </>
+      ) : (
+        <>
+          {children}
+          <T w={600} size={size} color={ink}>
+            {label}
+          </T>
+        </>
+      )}
+    </PressableScale>
   );
 }
 
 /* ─────────────────────────── surfaces ─────────────────────────── */
 
-/** The cream card used for every grouped block in the design. */
+/** The neutral card used for every grouped block in the design. */
 export function Card({
   style,
   children,
@@ -205,28 +333,32 @@ export function Chip({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <Tap
-      onPress={onPress}
+    <PressableScale
+      scale={0.96}
+      onPress={() => {
+        tapSelect();
+        onPress?.();
+      }}
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
       style={[
         {
           height,
-          paddingHorizontal: 14,
+          paddingHorizontal: 15,
           borderRadius: round,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: active ? C.text : C.surface,
+          backgroundColor: active ? C.text : C.bg,
           borderWidth: 1,
           borderColor: active ? C.text : C.border,
         },
         style,
       ]}
     >
-      <T w={500} size={13.5} color={active ? C.onDark : C.text}>
+      <T w={active ? 600 : 500} size={13.5} color={active ? C.onDark : C.text}>
         {label}
       </T>
-    </Tap>
+    </PressableScale>
   );
 }
 
@@ -267,14 +399,8 @@ export function Segmented<K extends string>({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              backgroundColor: on ? C.surface : 'transparent',
-              ...(on && {
-                shadowColor: '#000',
-                shadowOpacity: 0.08,
-                shadowRadius: 2,
-                shadowOffset: { width: 0, height: 1 },
-                elevation: 1,
-              }),
+              backgroundColor: on ? C.bg : 'transparent',
+              ...(on && shadow.raised),
             }}
           >
             <T w={600} size={13.5} color={on ? C.text : C.textSecondary}>
@@ -359,7 +485,12 @@ export function Avatar({
 
 /* ─────────────────────────── badge ─────────────────────────── */
 
-/** Terracotta count pill — unread offers, order counts, tab badges. */
+/**
+ * Accent count pill — unread offers, order counts, tab badges.
+ *
+ * One of the few places the accent is spent. White on `C.accent` clears 4.5:1,
+ * which matters at 11px.
+ */
 export function Badge({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   return (
     <View
@@ -406,12 +537,8 @@ export function Toggle({ on, onPress }: { on: boolean; onPress?: () => void }) {
           width: 22,
           height: 22,
           borderRadius: 11,
-          backgroundColor: C.surface,
-          shadowColor: '#000',
-          shadowOpacity: 0.2,
-          shadowRadius: 3,
-          shadowOffset: { width: 0, height: 1 },
-          elevation: 2,
+          backgroundColor: C.bg,
+          ...shadow.raised,
         }}
       />
     </Tap>
@@ -499,27 +626,28 @@ export function EmptyState({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <View style={[{ paddingVertical: 64, paddingHorizontal: 44, alignItems: 'center' }, style]}>
+    <View style={[{ paddingVertical: 72, paddingHorizontal: 48, alignItems: 'center' }, style]}>
       <View
         style={{
-          width: 58,
-          height: 58,
-          borderRadius: 29,
-          backgroundColor: C.track,
+          width: 64,
+          height: 64,
+          borderRadius: 32,
+          backgroundColor: C.well,
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 16,
+          marginBottom: 18,
         }}
       >
-        <Icon name={icon} size={24} color={C.textTertiary} strokeWidth={1.7} />
+        <Icon name={icon} size={26} color={C.textTertiary} strokeWidth={1.6} />
       </View>
-      <T w={600} size={15.5} style={{ textAlign: 'center' }}>
+      <T w={700} size={17} tracking={-0.3} style={{ textAlign: 'center' }}>
         {title}
       </T>
-      <T size={13} color={C.textSecondary} lh={19.5} style={{ textAlign: 'center', marginTop: 6 }}>
+      <T size={14} color={C.textSecondary} lh={21} style={{ textAlign: 'center', marginTop: 7 }}>
         {body}
       </T>
-      {action}
+      {/* Call sites set their own top margin, so this only provides the width. */}
+      {!!action && <View style={{ alignSelf: 'stretch' }}>{action}</View>}
     </View>
   );
 }

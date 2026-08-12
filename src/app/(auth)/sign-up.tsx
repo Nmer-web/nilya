@@ -146,7 +146,7 @@ export default function SignUp() {
             Already have an account?
           </T>
           <Tap onPress={() => router.replace('/sign-in')} accessibilityRole="button" hitSlop={6}>
-            <T w={600} size={14} color={C.accent}>
+            <T w={600} size={14} color={C.text}>
               Sign in
             </T>
           </Tap>

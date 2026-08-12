@@ -14,11 +14,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
 import { ImageSlot } from '@/components/image-slot';
+import { FadeIn } from '@/components/skeleton';
 import { Avatar, Chip, T, Tap } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { euro, useApp } from '@/store/app-store';
-import { avatarColor, color as C, font, radius } from '@/theme/tokens';
+import { avatarColor, color as C, radius } from '@/theme/tokens';
 
 /** The chat is always about the Nike listing, as in the design. */
 const LISTING = 1;
@@ -131,27 +132,32 @@ export default function Chat() {
           Today
         </T>
 
+        {/*
+          Bubbles carry no border: fill alone separates them from the canvas,
+          and §14 asks not to overuse borders. Each arrives with a short rise —
+          keyed by index, so only the newly appended one animates.
+        */}
         {msgs.map((m, i) => (
-          <View key={i} style={{ flexDirection: 'row', justifyContent: m.me ? 'flex-end' : 'flex-start' }}>
-            <View
-              style={{
-                maxWidth: '76%',
-                paddingVertical: 9,
-                paddingHorizontal: 13,
-                backgroundColor: m.me ? C.text : C.surface,
-                borderWidth: 1,
-                borderColor: m.me ? C.text : C.border,
-                borderTopLeftRadius: 16,
-                borderTopRightRadius: 16,
-                borderBottomLeftRadius: m.me ? 16 : 5,
-                borderBottomRightRadius: m.me ? 5 : 16,
-              }}
-            >
-              <T size={14.5} lh={20.3} color={m.me ? C.onDark : C.text}>
-                {m.t}
-              </T>
+          <FadeIn key={i} y={6} duration={200}>
+            <View style={{ flexDirection: 'row', justifyContent: m.me ? 'flex-end' : 'flex-start' }}>
+              <View
+                style={{
+                  maxWidth: '76%',
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  backgroundColor: m.me ? C.bubbleOut : C.bubbleIn,
+                  borderTopLeftRadius: 18,
+                  borderTopRightRadius: 18,
+                  borderBottomLeftRadius: m.me ? 18 : 5,
+                  borderBottomRightRadius: m.me ? 5 : 18,
+                }}
+              >
+                <T size={14.5} lh={20.3} color={m.me ? C.onDark : C.text}>
+                  {m.t}
+                </T>
+              </View>
             </View>
-          </View>
+          </FadeIn>
         ))}
 
         {typing && <TypingBubble />}
@@ -220,7 +226,6 @@ export default function Chat() {
             borderColor: C.border,
             backgroundColor: C.surface,
             paddingHorizontal: 15,
-            fontFamily: font.sans,
             fontSize: 14.5,
             color: C.text,
           }}
@@ -255,14 +260,12 @@ function TypingBubble() {
         style={{
           flexDirection: 'row',
           gap: 4,
-          paddingVertical: 11,
+          paddingVertical: 12,
           paddingHorizontal: 15,
-          backgroundColor: C.surface,
-          borderWidth: 1,
-          borderColor: C.border,
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          borderBottomRightRadius: 16,
+          backgroundColor: C.bubbleIn,
+          borderTopLeftRadius: 18,
+          borderTopRightRadius: 18,
+          borderBottomRightRadius: 18,
           borderBottomLeftRadius: 5,
         }}
       >

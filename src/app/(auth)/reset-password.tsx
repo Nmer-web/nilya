@@ -137,7 +137,7 @@ export default function ResetPassword() {
           hitSlop={6}
           style={{ alignSelf: 'center', paddingVertical: 8, marginTop: 32 }}
         >
-          <T w={600} size={14} color={C.accent}>
+          <T w={600} size={14} color={C.text}>
             Cancel and sign out
           </T>
         </Tap>

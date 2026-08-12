@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, T } from '@/components/ui';
-import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { useApp } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
 
@@ -89,7 +88,7 @@ export default function Verify() {
         </View>
 
         <T size={12.5} color={C.textSecondary} lh={18.75} style={{ marginTop: 22 }}>
-          Verification is handled securely by Stripe. SudanSouq never sees or stores your documents.
+          Verification is handled securely by Stripe. SAWA never sees or stores your documents.
         </T>
       </ScrollView>
 
@@ -105,37 +104,9 @@ export default function Verify() {
           paddingBottom: Math.max(insets.bottom, 14),
         }}
       >
-        <Button label={verifying ? 'Opening Stripe…' : 'Continue'} onPress={start}>
-          {verifying && <ButtonSpinner />}
-        </Button>
+        <Button label="Continue" loading={verifying} loadingLabel="Opening Stripe…" haptic onPress={start} />
       </FrostedBar>
     </View>
   );
 }
 
-/** Small ring inside the CTA while Stripe onboarding is being reached. */
-function ButtonSpinner() {
-  const spin = useAnimatedValue(0);
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.linear, useNativeDriver: NATIVE_DRIVER })
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [spin]);
-
-  return (
-    <Animated.View
-      style={{
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        borderWidth: 2,
-        borderColor: 'rgba(250,249,245,0.3)',
-        borderTopColor: C.onDark,
-        transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
-      }}
-    />
-  );
-}

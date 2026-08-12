@@ -15,7 +15,7 @@ import { useNavHeight } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
 import { T, Tap } from '@/components/ui';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { color as C, radius } from '@/theme/tokens';
+import { color as C, radius, shadow } from '@/theme/tokens';
 
 /** Dimmed backdrop; tapping it dismisses, matching the design's scrim. */
 export function Scrim({ onPress }: { onPress: () => void }) {
@@ -30,15 +30,19 @@ export function Scrim({ onPress }: { onPress: () => void }) {
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
         onPress={onPress}
-        style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(23,23,23,0.4)' }]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: C.scrim }]}
       />
     </Animated.View>
   );
 }
 
 /**
- * Bottom sheet that rises on mount with the design's
- * `cubic-bezier(.32,.72,0,1)` curve.
+ * Bottom sheet that springs up on mount.
+ *
+ * The spring is critically damped — `friction` high enough that it settles
+ * without a visible bounce. A sheet carrying a form should arrive and stop; the
+ * overshoot that suits a heart tap reads as instability under a column of
+ * inputs.
  */
 export function Sheet({
   children,
@@ -56,10 +60,10 @@ export function Sheet({
   const p = useAnimatedValue(1);
 
   useEffect(() => {
-    Animated.timing(p, {
+    Animated.spring(p, {
       toValue: 0,
-      duration: 330,
-      easing: Easing.bezier(0.32, 0.72, 0, 1),
+      tension: 90,
+      friction: 18,
       useNativeDriver: NATIVE_DRIVER,
     }).start();
   }, [p]);
@@ -68,6 +72,8 @@ export function Sheet({
     inputRange: [0, 1],
     outputRange: [0, height || screen],
   });
+
+  const opacity = p.interpolate({ inputRange: [0, 0.6, 1], outputRange: [1, 1, 0] });
 
   return (
     <Animated.View
@@ -82,13 +88,8 @@ export function Sheet({
           backgroundColor: C.bg,
           borderTopLeftRadius: radius.sheet,
           borderTopRightRadius: radius.sheet,
-          borderTopWidth: 1,
-          borderTopColor: C.border,
-          shadowColor: '#000',
-          shadowOpacity: 0.14,
-          shadowRadius: 40,
-          shadowOffset: { width: 0, height: -12 },
-          elevation: 24,
+          ...shadow.sheet,
+          opacity,
           transform: [{ translateY }],
         },
         style,
@@ -105,10 +106,10 @@ export function SheetGrabber({ style }: { style?: StyleProp<ViewStyle> }) {
     <View
       style={[
         {
-          width: 38,
+          width: 40,
           height: 4,
           borderRadius: 2,
-          backgroundColor: C.border,
+          backgroundColor: C.borderStrong,
           alignSelf: 'center',
         },
         style,
@@ -134,12 +135,18 @@ export function SheetClose({ onPress }: { onPress: () => void }) {
         justifyContent: 'center',
       }}
     >
-      <Icon name="close" size={13} color={C.textSecondary} strokeWidth={2.6} />
+      <Icon name="close" size={13} color={C.text} strokeWidth={2.6} />
     </Tap>
   );
 }
 
-/** Toast pill that lifts into place just above the nav. */
+/**
+ * Toast pill that lifts into place just above the nav.
+ *
+ * White on white, so it earns its edge from a hairline border plus a soft
+ * shadow rather than from a dark fill — a black slab sliding in reads as an
+ * error even when the message is a success.
+ */
 export function Toast({ message }: { message: string }) {
   const navHeight = useNavHeight();
   const p = useAnimatedValue(0);
@@ -163,20 +170,22 @@ export function Toast({ message }: { message: string }) {
         left: 16,
         right: 16,
         bottom: navHeight + 16,
-        backgroundColor: C.text,
-        borderRadius: 13,
+        backgroundColor: C.bg,
+        borderRadius: radius['2xl'],
+        borderWidth: 1,
+        borderColor: C.border,
         paddingVertical: 13,
-        paddingHorizontal: 16,
+        paddingHorizontal: 15,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 9,
         opacity: p,
-        transform: [{ translateY: p.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-        shadowColor: '#000',
-        shadowOpacity: 0.22,
-        shadowRadius: 24,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 12,
+        transform: [{ translateY: p.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+        ...shadow.floating,
       }}
     >
-      <T w={500} size={13.5} color={C.onDark}>
+      <Icon name="check" size={15} color={C.green} strokeWidth={2.6} />
+      <T w={500} size={13.5} style={{ flex: 1 }}>
         {message}
       </T>
     </Animated.View>

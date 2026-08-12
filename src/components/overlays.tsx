@@ -224,9 +224,9 @@ function FiltersSheet() {
 
         <SectionLabel style={{ paddingTop: 22, paddingBottom: 10 }}>Price range</SectionLabel>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <PriceField value="€0" />
+          <PriceField label="Min" value="€0" />
           <View style={{ width: 12, height: 1, backgroundColor: C.borderStrong }} />
-          <PriceField value={maxPrice >= 300 ? '€300+' : `€${maxPrice}`} />
+          <PriceField label="Max" value={maxPrice >= 300 ? '€300+' : `€${maxPrice}`} />
         </View>
         <Slider
           value={maxPrice}
@@ -301,18 +301,18 @@ function FiltersSheet() {
           backgroundColor: C.bg,
         }}
       >
-        <Button label={`Show ${results.length} items`} onPress={closeSheet} />
+        <Button label={`Show ${results.length} results`} onPress={closeSheet} haptic />
       </View>
     </Sheet>
   );
 }
 
-function PriceField({ value }: { value: string }) {
+function PriceField({ label, value }: { label: string; value: string }) {
   return (
     <View
       style={{
         flex: 1,
-        height: 46,
+        height: 52,
         borderRadius: radius.xl,
         backgroundColor: C.surface,
         borderWidth: 1,
@@ -321,7 +321,10 @@ function PriceField({ value }: { value: string }) {
         paddingHorizontal: 14,
       }}
     >
-      <T w={500} size={14.5}>
+      <T size={11} color={C.textTertiary}>
+        {label}
+      </T>
+      <T w={600} size={14.5} style={{ marginTop: 1 }}>
         {value}
       </T>
     </View>

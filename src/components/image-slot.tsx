@@ -6,11 +6,15 @@ import { T } from '@/components/ui';
 import { color as C } from '@/theme/tokens';
 
 /**
- * Stand-in for the design's `<image-slot>` web component.
+ * Stand-in for a listing photo.
  *
- * The prototype ships every listing as an unfilled slot, so this renders that
- * same empty state: a muted well, the photo glyph and the item's name. `tiny`
- * mirrors `data-tiny`, which suppresses the caption on thumbnail-sized slots.
+ * Every listing currently ships unfilled, so this is the empty state: a muted
+ * well, the photo glyph and the item's name. Deliberately static rather than
+ * shimmering — a shimmer promises an image that is about to arrive, and a grid
+ * of placeholders that pulse forever reads as a stuck loading screen. The
+ * shimmering counterpart lives in `skeleton.tsx` for genuinely pending data.
+ *
+ * `tiny` suppresses the caption on thumbnail-sized slots.
  */
 export function ImageSlot({
   label,
@@ -38,8 +42,8 @@ export function ImageSlot({
         style,
       ]}
     >
-      <View style={{ opacity: tiny ? 0.28 : 0.42 }}>
-        <Icon name="image" size={glyph ?? (tiny ? 16 : 26)} color={C.textTertiary} />
+      <View style={{ opacity: tiny ? 0.25 : 0.34 }}>
+        <Icon name="image" size={glyph ?? (tiny ? 16 : 26)} color={C.textTertiary} strokeWidth={1.5} />
       </View>
       {!tiny && !!label && (
         <T
@@ -48,7 +52,7 @@ export function ImageSlot({
           color={C.textTertiary}
           tracking={0.11}
           numberOfLines={2}
-          style={{ textAlign: 'center', opacity: 0.75 }}
+          style={{ textAlign: 'center', opacity: 0.6 }}
         >
           {label}
         </T>

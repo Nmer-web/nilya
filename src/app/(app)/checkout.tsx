@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,6 +9,7 @@ import { ImageSlot } from '@/components/image-slot';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, Card, SectionLabel, T, Tap } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
+import { tapSuccess } from '@/lib/haptics';
 import { deliveryFor, euro, PROTECTION_FEE, sdg, useApp } from '@/store/app-store';
 import { color as C } from '@/theme/tokens';
 
@@ -16,6 +17,7 @@ export default function Checkout() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { delKey, openSheet, flash } = useApp();
+  const [paying, setPaying] = useState(false);
 
   const p = getProduct(Number(id));
   const ladder = deliveryFor(p);
@@ -137,7 +139,7 @@ export default function Checkout() {
                 {sdg(p.pr)}
               </T>
               <T size={12.5} color={C.textSecondary} lh={18} style={{ marginTop: 4 }}>
-                Held by SudanSouq until you confirm the item. Rate locked for 48 h.
+                Held by SAWA until you confirm the item. Rate locked for 48 h.
               </T>
             </Card>
           </>
@@ -210,9 +212,26 @@ export default function Checkout() {
           paddingBottom: Math.max(insets.bottom, 14),
         }}
       >
+        {/*
+          The CTA becomes its own progress indicator rather than throwing up a
+          spinner overlay — §16 asks for a trustworthy checkout, and a button
+          that visibly holds the transaction is more legible than a modal that
+          hides it. The delay stands in for the Stripe round trip; the success
+          sheet it opens is unchanged.
+        */}
         <Button
           label={isLocal ? 'Place order' : `Pay ${euro(total)}`}
-          onPress={() => openSheet({ kind: 'done', doneKind: isLocal ? 'placed' : 'paid' })}
+          loading={paying}
+          loadingLabel="Processing…"
+          haptic
+          onPress={() => {
+            setPaying(true);
+            setTimeout(() => {
+              setPaying(false);
+              tapSuccess();
+              openSheet({ kind: 'done', doneKind: isLocal ? 'placed' : 'paid' });
+            }, 1100);
+          }}
         />
       </FrostedBar>
     </View>

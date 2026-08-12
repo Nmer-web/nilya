@@ -110,7 +110,7 @@ export default function SignIn() {
           hitSlop={6}
           style={{ alignSelf: 'flex-start', paddingVertical: 4 }}
         >
-          <T w={600} size={13.5} color={C.accent}>
+          <T w={600} size={13.5} color={C.text}>
             Forgot your password?
           </T>
         </Tap>
@@ -131,7 +131,7 @@ export default function SignIn() {
             New to SAWA?
           </T>
           <Tap onPress={() => router.push('/sign-up')} accessibilityRole="button" hitSlop={6}>
-            <T w={600} size={14} color={C.accent}>
+            <T w={600} size={14} color={C.text}>
               Create an account
             </T>
           </Tap>

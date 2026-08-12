@@ -5,9 +5,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon, type IconName } from '@/components/icon';
-import { T, Tap } from '@/components/ui';
+import { PressableScale, T } from '@/components/ui';
+import { tapSelect } from '@/lib/haptics';
 import { useApp } from '@/store/app-store';
-import { color as C } from '@/theme/tokens';
+import { color as C, radius, shadow } from '@/theme/tokens';
 
 /** Routes that keep the nav visible, mirroring the design's `showNav`. */
 export const NAV_ROUTES = [
@@ -76,16 +77,20 @@ export function BottomNav({ pathname }: { pathname: string }) {
     const active = activeHref === href;
     const tint = active ? C.text : C.textTertiary;
     return (
-      <Tap
+      <PressableScale
         key={href}
-        onPress={() => go(href)}
+        scale={0.92}
+        onPress={() => {
+          if (href !== pathname) tapSelect();
+          go(href);
+        }}
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
         accessibilityLabel={label}
         style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 2 }}
       >
         <View>
-          <Icon name={icon} size={22} color={tint} strokeWidth={1.75} />
+          <Icon name={icon} size={22} color={tint} strokeWidth={active ? 2.1 : 1.7} />
           {href === '/inbox' && (
             <View
               style={{
@@ -109,10 +114,11 @@ export function BottomNav({ pathname }: { pathname: string }) {
             </View>
           )}
         </View>
-        <T w={500} size={10.5} color={tint}>
+        {/* Weight, not just colour, carries the selected state — see §23. */}
+        <T w={active ? 600 : 500} size={10.5} color={tint}>
           {label}
         </T>
-      </Tap>
+      </PressableScale>
     );
   };
 
@@ -135,8 +141,15 @@ export function BottomNav({ pathname }: { pathname: string }) {
       {item(TABS[0])}
       {item(TABS[1])}
 
-      {/* Sell is the primary action, so it reads as a filled pill rather than a tab. */}
-      <Tap
+      {/*
+        Sell is the primary action, so it reads as a filled pill rather than a
+        tab. Black rather than accent: the accent budget is spent on the unread
+        badge sitting two tabs along, and two competing highlights in one bar
+        would leave neither reading as primary.
+      */}
+      <PressableScale
+        scale={0.96}
+        haptic
         onPress={() => go('/sell')}
         accessibilityRole="button"
         accessibilityLabel="Sell an item"
@@ -144,18 +157,14 @@ export function BottomNav({ pathname }: { pathname: string }) {
       >
         <View
           style={{
-            height: 32,
-            paddingHorizontal: 15,
-            borderRadius: 16,
-            backgroundColor: C.accent,
+            height: 34,
+            paddingHorizontal: 16,
+            borderRadius: radius.pill,
+            backgroundColor: C.text,
             flexDirection: 'row',
             alignItems: 'center',
             gap: 5,
-            shadowColor: C.accent,
-            shadowOpacity: 0.3,
-            shadowRadius: 10,
-            shadowOffset: { width: 0, height: 3 },
-            elevation: 4,
+            ...shadow.raised,
           }}
         >
           <Icon name="plus" size={15} color={C.onDark} strokeWidth={2.6} />
@@ -163,7 +172,7 @@ export function BottomNav({ pathname }: { pathname: string }) {
             Sell
           </T>
         </View>
-      </Tap>
+      </PressableScale>
 
       {item(TABS[2])}
       {item(TABS[3])}

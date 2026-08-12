@@ -17,7 +17,7 @@ export function ReviewList() {
             <T w={600} size={13.5} style={{ flex: 1 }}>
               {r.n}
             </T>
-            <T w={600} size={12} color={C.accent}>
+            <T w={600} size={12} color={C.text}>
               {r.stars}
             </T>
             <T size={11.5} color={C.textTertiary}>
@@ -38,7 +38,7 @@ export function StarRow({ size = 12 }: { size?: number }) {
   return (
     <View style={{ flexDirection: 'row', gap: 1.5 }}>
       {[0, 1, 2, 3, 4].map((i) => (
-        <Icon key={i} name="star" size={size} color={C.accent} />
+        <Icon key={i} name="star" size={size} color={C.text} />
       ))}
     </View>
   );

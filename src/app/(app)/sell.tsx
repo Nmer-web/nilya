@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Animated, Easing, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -7,8 +7,10 @@ import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
 import { ImageSlot } from '@/components/image-slot';
 import { TabTitle } from '@/components/screen-header';
+import { FadeIn } from '@/components/skeleton';
 import { Button, Card, Note, T, Tap, Toggle } from '@/components/ui';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
+import { tapSuccess, tapWarn } from '@/lib/haptics';
 import { useApp } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
 
@@ -17,6 +19,7 @@ export default function Sell() {
   const navHeight = useNavHeight();
   const { photos, scanning, suggested, filled, sudanPickup, addPhotos, applySuggestion, toggleSudanPickup, publish } =
     useApp();
+  const [publishing, setPublishing] = useState(false);
 
   const hasPhotos = photos > 0;
 
@@ -82,9 +85,13 @@ export default function Sell() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
             >
+              {/* Photos stagger in as they attach, rather than all appearing at once. */}
               {[1, 2, 3].map((n) => (
-                <View
+                <FadeIn
                   key={n}
+                  y={8}
+                  delay={(n - 1) * 70}
+                  duration={240}
                   style={{
                     width: 94,
                     height: 118,
@@ -113,7 +120,7 @@ export default function Sell() {
                       </T>
                     </View>
                   )}
-                </View>
+                </FadeIn>
               ))}
 
               <Tap
@@ -230,7 +237,31 @@ export default function Sell() {
             paddingVertical: 11,
           }}
         >
-          <Button label="Publish listing" onPress={publish} />
+          <Button
+            label="Publish listing"
+            loading={publishing}
+            loadingLabel="Publishing…"
+            haptic
+            onPress={() => {
+              /*
+               * `publish` refuses and flashes when the form is incomplete, so
+               * the loading state is only entered once it will actually
+               * succeed — otherwise the button would spin its way to a
+               * validation error.
+               */
+              if (!filled) {
+                tapWarn();
+                publish();
+                return;
+              }
+              setPublishing(true);
+              setTimeout(() => {
+                setPublishing(false);
+                tapSuccess();
+                publish();
+              }, 900);
+            }}
+          />
         </FrostedBar>
       )}
     </View>

@@ -6,10 +6,11 @@ import { useNavClearance } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
 import { ProductGrid } from '@/components/product-card';
 import { TabTitle } from '@/components/screen-header';
+import { FadeIn } from '@/components/skeleton';
 import { Button, Chip, EmptyState, T, Tap } from '@/components/ui';
 import { EXCATS } from '@/data/catalog';
 import { filtersActive, useApp, useSearchResults } from '@/store/app-store';
-import { color as C, font } from '@/theme/tokens';
+import { color as C, radius } from '@/theme/tokens';
 
 export default function Explore() {
   const insets = useSafeAreaInsets();
@@ -31,7 +32,7 @@ export default function Explore() {
             style={{
               flex: 1,
               height: 46,
-              borderRadius: 13,
+              borderRadius: radius['2xl'],
               backgroundColor: C.surface,
               borderWidth: 1,
               borderColor: C.border,
@@ -45,14 +46,13 @@ export default function Explore() {
             <TextInput
               value={q}
               onChangeText={setQuery}
-              placeholder="Search SudanSouq"
+              placeholder="Search items, brands, categories…"
               placeholderTextColor={C.textSecondary}
               returnKeyType="search"
               autoCorrect={false}
               style={{
                 flex: 1,
                 minWidth: 0,
-                fontFamily: font.sans,
                 fontSize: 14.5,
                 color: C.text,
                 padding: 0,
@@ -85,7 +85,7 @@ export default function Explore() {
             style={{
               width: 46,
               height: 46,
-              borderRadius: 13,
+              borderRadius: radius['2xl'],
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: active ? C.text : C.surface,
@@ -140,7 +140,10 @@ export default function Explore() {
         contentContainerStyle={{ paddingBottom: navClearance }}
       >
         {results.length > 0 ? (
-          <ProductGrid products={results} />
+          /* Same category transition as Home — keyed so a change replays it. */
+          <FadeIn key={cat} x={14} duration={260}>
+            <ProductGrid products={results} />
+          </FadeIn>
         ) : (
           <EmptyState
             icon="search"

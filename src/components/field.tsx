@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { Animated, Easing, TextInput, View, type TextInputProps } from 'react-native';
+import React, { useState } from 'react';
+import { TextInput, View, type TextInputProps } from 'react-native';
 
 import { T, Tap } from '@/components/ui';
-import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { color as C, font, radius } from '@/theme/tokens';
+import { color as C, radius } from '@/theme/tokens';
 
 /**
  * Form primitives for the auth screens. The rest of the app has no real forms
@@ -29,9 +28,10 @@ export function Field({ label, error, style, ...rest }: FieldProps) {
         style={{
           height: 50,
           borderRadius: radius.xl,
-          backgroundColor: C.surface,
-          borderWidth: 1,
-          borderColor: error ? C.accent : focused ? C.borderStrong : C.border,
+          backgroundColor: C.bg,
+          borderColor: error ? C.error : focused ? C.text : C.border,
+          /* Focus is carried by weight as well as colour, per §23. */
+          borderWidth: focused || error ? 1.5 : 1,
           paddingHorizontal: 14,
           justifyContent: 'center',
         }}
@@ -48,13 +48,13 @@ export function Field({ label, error, style, ...rest }: FieldProps) {
           }}
           placeholderTextColor={C.textTertiary}
           style={[
-            { fontFamily: font.sans, fontSize: 15, color: C.text, padding: 0 },
+            { fontSize: 15.5, color: C.text, padding: 0 },
             style,
           ]}
         />
       </View>
       {!!error && (
-        <T size={12.5} color={C.accent} lh={17} style={{ marginTop: 6 }}>
+        <T size={12.5} color={C.error} lh={17} style={{ marginTop: 6 }}>
           {error}
         </T>
       )}
@@ -83,9 +83,10 @@ export function PasswordField({ label, error, ...rest }: FieldProps) {
         style={{
           height: 50,
           borderRadius: radius.xl,
-          backgroundColor: C.surface,
-          borderWidth: 1,
-          borderColor: error ? C.accent : focused ? C.borderStrong : C.border,
+          backgroundColor: C.bg,
+          borderColor: error ? C.error : focused ? C.text : C.border,
+          /* Focus is carried by weight as well as colour, per §23. */
+          borderWidth: focused || error ? 1.5 : 1,
           paddingHorizontal: 14,
           justifyContent: 'center',
         }}
@@ -104,11 +105,11 @@ export function PasswordField({ label, error, ...rest }: FieldProps) {
             rest.onBlur?.(e);
           }}
           placeholderTextColor={C.textTertiary}
-          style={{ fontFamily: font.sans, fontSize: 15, color: C.text, padding: 0 }}
+          style={{ fontSize: 15.5, color: C.text, padding: 0 }}
         />
       </View>
       {!!error && (
-        <T size={12.5} color={C.accent} lh={17} style={{ marginTop: 6 }}>
+        <T size={12.5} color={C.error} lh={17} style={{ marginTop: 6 }}>
           {error}
         </T>
       )}
@@ -137,29 +138,11 @@ export function FormError({ message }: { message?: string | null }) {
   );
 }
 
-/** Ring shown inside a CTA while a request is in flight. */
-export function ButtonSpinner() {
-  const spin = useAnimatedValue(0);
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.linear, useNativeDriver: NATIVE_DRIVER })
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [spin]);
-
-  return (
-    <Animated.View
-      style={{
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        borderWidth: 2,
-        borderColor: 'rgba(250,249,245,0.3)',
-        borderTopColor: C.onDark,
-        transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
-      }}
-    />
-  );
-}
+/**
+ * Ring shown inside a CTA while a request is in flight.
+ *
+ * The implementation moved to `ui.tsx` so that `Button` could own its own
+ * loading state without importing from this module, which already imports it.
+ * Kept as a named re-export because the five auth screens reach for it here.
+ */
+export { Spinner as ButtonSpinner } from '@/components/ui';

@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ScrollView, useWindowDimensions, View } from 'react-native';
+import { Animated, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FrostedBar } from '@/components/frosted-bar';
@@ -8,10 +8,13 @@ import { Icon } from '@/components/icon';
 import { ImageSlot } from '@/components/image-slot';
 import { StarRow } from '@/components/reviews';
 import { FloatingIconButton } from '@/components/screen-header';
+import { FadeIn } from '@/components/skeleton';
 import { Avatar, Button, T, Tap } from '@/components/ui';
 import { getProduct, initialsOf, listingsBy } from '@/data/catalog';
+import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
+import { tapLight } from '@/lib/haptics';
 import { deliveryFor, euro, useApp } from '@/store/app-store';
-import { color as C, radius } from '@/theme/tokens';
+import { color as C, motion, radius } from '@/theme/tokens';
 
 /** Gallery height relative to width, taken from the design's 393×430 slot. */
 const GALLERY_RATIO = 430 / 393;
@@ -31,6 +34,16 @@ export default function ProductDetail() {
 
   const [page, setPage] = useState(0);
   const galleryHeight = width * GALLERY_RATIO;
+
+  const heart = useAnimatedValue(1);
+  const favourite = () => {
+    tapLight();
+    toggleFav(p.id);
+    Animated.sequence([
+      Animated.spring(heart, { toValue: 1.2, useNativeDriver: NATIVE_DRIVER, tension: 420, friction: 6 }),
+      Animated.spring(heart, { toValue: 1, useNativeDriver: NATIVE_DRIVER, ...motion.spring }),
+    ]).start();
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -63,13 +76,15 @@ export default function ProductDetail() {
             }}
           >
             <FloatingIconButton name="chevronLeft" label="Back" onPress={() => router.back()} />
-            <FloatingIconButton
-              name="heart"
-              label={faved ? 'Remove from favourites' : 'Save to favourites'}
-              color={faved ? C.accent : C.text}
-              fill={faved ? C.accent : 'none'}
-              onPress={() => toggleFav(p.id)}
-            />
+            <Animated.View style={{ transform: [{ scale: heart }] }}>
+              <FloatingIconButton
+                name="heart"
+                label={faved ? 'Remove from favourites' : 'Save to favourites'}
+                color={faved ? C.favOn : C.text}
+                fill={faved ? C.favOn : 'none'}
+                onPress={favourite}
+              />
+            </Animated.View>
           </View>
 
           <View
@@ -97,8 +112,14 @@ export default function ProductDetail() {
           </View>
         </View>
 
-        {/* ── headline ── */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 16 }}>
+        {/*
+          ── headline ──
+          Enters just behind the gallery. §10 wants the image to land first and
+          the information to follow it, so the delay here is what establishes
+          that order; the CTA bar below is deliberately left out of the
+          sequence and stays put.
+        */}
+        <FadeIn y={10} delay={90} duration={280} style={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 16 }}>
           <T w={600} size={21} tracking={-0.35} lh={26.25}>
             {p.t}
           </T>
@@ -147,7 +168,7 @@ export default function ProductDetail() {
           <T size={14.5} lh={22.5} style={{ marginTop: 16 }}>
             {p.desc}
           </T>
-        </View>
+        </FadeIn>
 
         {/* ── delivery ── */}
         <Section>
