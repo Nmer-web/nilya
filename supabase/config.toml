@@ -1,0 +1,14 @@
+# Minimal Supabase CLI config. Every key the CLI understands has a default, so
+# this file only states what SAWA actually needs to differ.
+#
+# `supabase init` generates a much longer annotated version of this file and
+# will offer to overwrite this one — if you run it, keep the [functions] block
+# below or the Stripe webhook will start rejecting Stripe.
+
+project_id = "sawa"
+
+[functions.stripe-webhook]
+# Stripe authenticates with a signature header, not a Supabase JWT. Leaving
+# this true makes the platform reject every delivery with 401 before the
+# function ever runs.
+verify_jwt = false
