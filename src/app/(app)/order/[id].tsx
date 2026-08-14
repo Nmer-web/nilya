@@ -4,7 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
-import { ImageSlot } from '@/components/image-slot';
+import { ListingThumb } from '@/components/product-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, Card, T, Tap } from '@/components/ui';
 import { useApp } from '@/store/app-store';
@@ -34,7 +34,7 @@ export default function OrderTracking() {
   const { flash } = useApp();
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader title={`Order #${id ?? 'SS28491'}`} />
 
       <ScrollView
@@ -43,9 +43,7 @@ export default function OrderTracking() {
       >
         <Tap onPress={() => router.push({ pathname: '/product/[id]', params: { id: 1 } })} accessibilityRole="button">
           <Card style={{ flexDirection: 'row', gap: 12, padding: 14 }}>
-            <View style={{ width: 56, height: 70, borderRadius: 9, overflow: 'hidden', backgroundColor: C.well }}>
-              <ImageSlot label="Nike Air Max 270" tiny />
-            </View>
+            <ListingThumb />
             <View style={{ flex: 1, minWidth: 0 }}>
               <T w={500} size={15}>
                 Nike Air Max 270
@@ -112,12 +110,12 @@ function TimelineRow({ step, last }: { step: Step; last: boolean }) {
               width: 18,
               height: 18,
               borderRadius: 9,
-              backgroundColor: C.green,
+              backgroundColor: C.success,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Icon name="check" size={10} color={C.onDark} strokeWidth={3.4} />
+            <Icon name="check" size={10} color={C.primaryText} strokeWidth={3.4} />
           </View>
         ) : current ? (
           <View
@@ -142,21 +140,21 @@ function TimelineRow({ step, last }: { step: Step; last: boolean }) {
               width: 2,
               flex: 1,
               minHeight: 38,
-              backgroundColor: done ? C.green : C.well,
+              backgroundColor: done ? C.success : C.surfaceSecondary,
             }}
           />
         )}
       </View>
 
       <View style={{ flex: 1, paddingBottom: last ? 0 : 22 }}>
-        <T w={600} size={14.5} color={current ? C.accent : step.state === 'pending' ? C.textTertiary : C.text}>
+        <T w={600} size={14.5} color={current ? C.accent : step.state === 'pending' ? C.textMuted : C.text}>
           {step.title}
         </T>
         {step.lines.map((line, i) => (
           <T
             key={line}
             size={12.5}
-            color={step.state === 'pending' ? C.textTertiary : C.textSecondary}
+            color={step.state === 'pending' ? C.textMuted : C.textSecondary}
             style={{ marginTop: i === 0 ? 2 : 0 }}
           >
             {line}

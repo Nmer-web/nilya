@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Animated, Easing, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,8 +9,21 @@ import { Slider } from '@/components/slider';
 import { Button, Card, Chip, SectionLabel, T, Tap, Toggle } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
+import { tapSuccess } from '@/lib/haptics';
 import { euro, useApp, useSearchResults } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
+
+/**
+ * Dismissal, separated from the store action.
+ *
+ * `closeSheet` clears the store immediately, which unmounts the overlay with
+ * no chance to animate. Everything inside a sheet therefore calls `useDismiss`
+ * instead: it starts the exit, and the store is only cleared once the sheet
+ * reports that it has finished travelling.
+ */
+const DismissContext = React.createContext<() => void>(() => {});
+
+export const useDismiss = () => React.useContext(DismissContext);
 
 /**
  * Every screen-level overlay lives here, above the nav — the design renders
@@ -19,21 +32,47 @@ import { color as C, radius } from '@/theme/tokens';
 export function Overlays() {
   const { sheet, toast, closeSheet } = useApp();
 
+  /**
+   * Which sheet is on its way out, rather than a bare boolean.
+   *
+   * Recording the identity means a sheet opened straight after a dismissal
+   * cannot inherit the flag and animate itself away on arrival: the store hands
+   * back a new object, so the comparison below is simply false for it. A
+   * boolean would need an effect to reset it, and resetting state from an
+   * effect is the cascading-render pattern the compiler rejects.
+   */
+  const [closingFor, setClosingFor] = useState<typeof sheet>(null);
+
+  const closing = sheet !== null && closingFor === sheet;
+
+  const dismiss = useCallback(() => setClosingFor(sheet), [sheet]);
+
+  const exited = useCallback(() => {
+    setClosingFor(null);
+    closeSheet();
+  }, [closeSheet]);
+
+  const phase = { closing, onExited: exited };
+
   return (
-    <>
-      {sheet && <Scrim onPress={closeSheet} />}
-      {sheet?.kind === 'offer' && <OfferSheet />}
-      {sheet?.kind === 'filters' && <FiltersSheet />}
-      {sheet?.kind === 'done' && <DoneSheet />}
+    <DismissContext.Provider value={dismiss}>
+      {sheet && <Scrim onPress={dismiss} closing={closing} />}
+      {sheet?.kind === 'offer' && <OfferSheet {...phase} />}
+      {sheet?.kind === 'filters' && <FiltersSheet {...phase} />}
+      {sheet?.kind === 'done' && <DoneSheet {...phase} />}
       {!!toast && <Toast message={toast} />}
-    </>
+    </DismissContext.Provider>
   );
 }
 
+/** Exit plumbing passed from `Overlays` down to each sheet's `<Sheet>`. */
+type Phase = { closing: boolean; onExited: () => void };
+
 /* ─────────────────────────── make / counter an offer ─────────────────────────── */
 
-function OfferSheet() {
-  const { sheet, closeSheet, setOfferAmount, setOfferState, flash } = useApp();
+function OfferSheet(phase: Phase) {
+  const { sheet, setOfferAmount, setOfferState, flash } = useApp();
+  const dismiss = useDismiss();
   const insets = useSafeAreaInsets();
   if (sheet?.kind !== 'offer') return null;
 
@@ -43,25 +82,26 @@ function OfferSheet() {
   const quick = counter ? [24, 27, 30] : [0.7, 0.8, 0.9].map((f) => Math.round(p.pr * f));
 
   const send = () => {
+    tapSuccess();
     if (counter) {
-      closeSheet();
+      dismiss();
       setOfferState('countered');
       flash(`Counter of ${euro(amount)} sent to Leila`);
       return;
     }
-    closeSheet();
+    dismiss();
     flash(`Offer of ${euro(amount)} sent — ${p.s.split(' ')[0]} has 24 h to reply`);
   };
 
   return (
-    <Sheet style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 18 }}>
+    <Sheet {...phase} style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 18 }}>
       <SheetGrabber style={{ marginBottom: 16 }} />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <T w={600} size={19} tracking={-0.3}>
           {counter ? 'Send a counter' : 'Make an offer'}
         </T>
-        <SheetClose onPress={closeSheet} />
+        <SheetClose onPress={dismiss} />
       </View>
 
       <View
@@ -175,9 +215,8 @@ const FILTER_ROWS = [
   { n: 'Seller rating', v: '4.0+' },
 ];
 
-function FiltersSheet() {
+function FiltersSheet(phase: Phase) {
   const {
-    closeSheet,
     cat,
     fCond,
     fDel,
@@ -190,12 +229,13 @@ function FiltersSheet() {
     resetFilters,
     flash,
   } = useApp();
+  const dismiss = useDismiss();
   const insets = useSafeAreaInsets();
   const results = useSearchResults();
   const rows = [{ n: 'Category', v: cat }, ...FILTER_ROWS];
 
   return (
-    <Sheet top={78} style={{ overflow: 'hidden' }}>
+    <Sheet {...phase} top={78} style={{ overflow: 'hidden' }}>
       <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border }}>
         <SheetGrabber style={{ marginBottom: 14 }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -207,7 +247,7 @@ function FiltersSheet() {
           <T w={600} size={16.5}>
             Filters
           </T>
-          <SheetClose onPress={closeSheet} />
+          <SheetClose onPress={dismiss} />
         </View>
       </View>
 
@@ -298,10 +338,10 @@ function FiltersSheet() {
           paddingBottom: insets.bottom + 16,
           borderTopWidth: 1,
           borderTopColor: C.border,
-          backgroundColor: C.bg,
+          backgroundColor: C.background,
         }}
       >
-        <Button label={`Show ${results.length} results`} onPress={closeSheet} haptic />
+        <Button label={`Show ${results.length} results`} onPress={dismiss} />
       </View>
     </Sheet>
   );
@@ -321,7 +361,7 @@ function PriceField({ label, value }: { label: string; value: string }) {
         paddingHorizontal: 14,
       }}
     >
-      <T size={11} color={C.textTertiary}>
+      <T size={11} color={C.textMuted}>
         {label}
       </T>
       <T w={600} size={14.5} style={{ marginTop: 1 }}>
@@ -354,8 +394,9 @@ const DONE_COPY = {
   },
 } as const;
 
-function DoneSheet() {
-  const { sheet, closeSheet } = useApp();
+function DoneSheet(phase: Phase) {
+  const { sheet } = useApp();
+  const dismiss = useDismiss();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const pop = useAnimatedValue(0);
@@ -378,7 +419,7 @@ function DoneSheet() {
    * bottom nav.
    */
   const primary = () => {
-    closeSheet();
+    dismiss();
     if (sheet.doneKind === 'published') {
       router.dismissTo('/profile');
     } else {
@@ -389,6 +430,7 @@ function DoneSheet() {
 
   return (
     <Sheet
+      {...phase}
       style={{
         paddingTop: 26,
         paddingHorizontal: 22,
@@ -401,13 +443,13 @@ function DoneSheet() {
           width: 56,
           height: 56,
           borderRadius: 28,
-          backgroundColor: C.green,
+          backgroundColor: C.success,
           alignItems: 'center',
           justifyContent: 'center',
           transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) }],
         }}
       >
-        <Icon name="check" size={27} color={C.onDark} strokeWidth={2.6} />
+        <Icon name="check" size={27} color={C.primaryText} strokeWidth={2.6} />
       </Animated.View>
 
       <T w={600} size={20} tracking={-0.3} style={{ marginTop: 18, textAlign: 'center' }}>
@@ -419,7 +461,7 @@ function DoneSheet() {
 
       <Button label={copy.cta} onPress={primary} style={{ marginTop: 22, alignSelf: 'stretch' }} />
       <Tap
-        onPress={closeSheet}
+        onPress={dismiss}
         accessibilityRole="button"
         style={{ height: 46, marginTop: 8, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}
       >

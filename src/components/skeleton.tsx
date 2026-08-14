@@ -47,7 +47,7 @@ export function Skeleton({
     <Animated.View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[{ width, height, borderRadius: round, backgroundColor: C.well, opacity }, style]}
+      style={[{ width, height, borderRadius: round, backgroundColor: C.surfaceSecondary, opacity }, style]}
     />
   );
 }

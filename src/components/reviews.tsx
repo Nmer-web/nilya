@@ -20,7 +20,7 @@ export function ReviewList() {
             <T w={600} size={12} color={C.text}>
               {r.stars}
             </T>
-            <T size={11.5} color={C.textTertiary}>
+            <T size={11.5} color={C.textMuted}>
               {r.when}
             </T>
           </View>

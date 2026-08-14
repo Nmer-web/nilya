@@ -33,7 +33,7 @@ export function ImageSlot({
       style={[
         {
           flex: 1,
-          backgroundColor: C.well,
+          backgroundColor: C.surfaceSecondary,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: 10,
@@ -43,13 +43,13 @@ export function ImageSlot({
       ]}
     >
       <View style={{ opacity: tiny ? 0.25 : 0.34 }}>
-        <Icon name="image" size={glyph ?? (tiny ? 16 : 26)} color={C.textTertiary} strokeWidth={1.5} />
+        <Icon name="image" size={glyph ?? (tiny ? 16 : 26)} color={C.textMuted} strokeWidth={1.5} />
       </View>
       {!tiny && !!label && (
         <T
           w={500}
           size={11}
-          color={C.textTertiary}
+          color={C.textMuted}
           tracking={0.11}
           numberOfLines={2}
           style={{ textAlign: 'center', opacity: 0.6 }}

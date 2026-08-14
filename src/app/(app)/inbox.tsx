@@ -4,7 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavClearance } from '@/components/bottom-nav';
-import { ImageSlot } from '@/components/image-slot';
+import { ListingThumb, THUMB } from '@/components/product-card';
 import { TabTitle } from '@/components/screen-header';
 import { Avatar, Button, Card, EmptyState, Segmented, T, Tap } from '@/components/ui';
 import { useApp } from '@/store/app-store';
@@ -61,7 +61,7 @@ export default function Inbox() {
   const offerOpen = offerState === 'open' || offerState === 'countered';
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <View style={{ paddingTop: insets.top, paddingHorizontal: 16 }}>
         <View style={{ paddingTop: 2, paddingBottom: 14 }}>
           <TabTitle>Inbox</TabTitle>
@@ -87,7 +87,7 @@ export default function Inbox() {
                       justifyContent: 'center',
                     }}
                   >
-                    <T w={700} size={11} color={C.onDark}>
+                    <T w={700} size={11} color={C.primaryText}>
                       1
                     </T>
                   </View>
@@ -125,7 +125,7 @@ export default function Inbox() {
                   <T w={600} size={14.5} numberOfLines={1} style={{ flex: 1 }}>
                     {t.name}
                   </T>
-                  <T size={11.5} color={C.textTertiary}>
+                  <T size={11.5} color={C.textMuted}>
                     {t.when}
                   </T>
                 </View>
@@ -138,13 +138,11 @@ export default function Inbox() {
                 >
                   {t.preview}
                 </T>
-                <T size={12} color={C.textTertiary} style={{ marginTop: 2 }}>
+                <T size={12} color={C.textMuted} style={{ marginTop: 2 }}>
                   {t.item}
                 </T>
               </View>
-              <View style={{ width: 36, height: 44, borderRadius: 7, overflow: 'hidden', backgroundColor: C.well }}>
-                <ImageSlot label={t.thumb} tiny />
-              </View>
+              <ListingThumb width={THUMB.sm} />
               {t.unread && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent }} />}
             </Tap>
           ))}
@@ -154,11 +152,7 @@ export default function Inbox() {
             <View style={{ paddingHorizontal: 16 }}>
               <Card padded>
                 <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <View
-                    style={{ width: 52, height: 64, borderRadius: 9, overflow: 'hidden', backgroundColor: C.well }}
-                  >
-                    <ImageSlot label="Levi's 501 Straight" tiny />
-                  </View>
+                  <ListingThumb />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <T w={600} size={14.5} lh={18.9}>
                       {offerState === 'countered' ? 'You countered at €27' : 'Leila M. offered €22'}
@@ -166,7 +160,7 @@ export default function Inbox() {
                     <T size={13} color={C.textSecondary} style={{ marginTop: 2 }}>
                       for Levi&apos;s 501 Straight · listed €32
                     </T>
-                    <T size={12} color={C.textTertiary} style={{ marginTop: 5 }}>
+                    <T size={12} color={C.textMuted} style={{ marginTop: 5 }}>
                       {offerState === 'countered' ? 'Waiting on Leila · 24 h left' : 'Expires in 22 h'}
                     </T>
                   </View>

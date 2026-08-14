@@ -26,7 +26,7 @@ export default function SellerProfile() {
   const sample = listings[0] ?? PRODUCTS[0];
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader title={seller} titleSize={15.5} />
 
       <ScrollView
@@ -67,11 +67,11 @@ export default function SellerProfile() {
         </View>
 
         <Note
-          tone="accent"
+          tone="green"
           style={{ marginHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 14 }}
         >
-          <Icon name="shieldSolid" size={17} color={C.green} />
-          <T size={12.5} color={C.accentDark} lh={17.5} style={{ flex: 1 }}>
+          <Icon name="shieldSolid" size={17} color={C.success} />
+          <T size={12.5} color={C.success} lh={17.5} style={{ flex: 1 }}>
             Verified seller · ID and payouts checked
           </T>
         </Note>

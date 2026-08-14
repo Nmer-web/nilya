@@ -28,7 +28,7 @@ export function Field({ label, error, style, ...rest }: FieldProps) {
         style={{
           height: 50,
           borderRadius: radius.lg,
-          backgroundColor: C.bg,
+          backgroundColor: C.background,
           borderColor: error ? C.error : focused ? C.text : C.border,
           /* Focus is carried by weight as well as colour, per §23. */
           borderWidth: focused || error ? 1.5 : 1,
@@ -46,7 +46,7 @@ export function Field({ label, error, style, ...rest }: FieldProps) {
             setFocused(false);
             rest.onBlur?.(e);
           }}
-          placeholderTextColor={C.textTertiary}
+          placeholderTextColor={C.textMuted}
           style={[
             { fontSize: 15.5, color: C.text, padding: 0 },
             style,
@@ -83,7 +83,7 @@ export function PasswordField({ label, error, ...rest }: FieldProps) {
         style={{
           height: 50,
           borderRadius: radius.lg,
-          backgroundColor: C.bg,
+          backgroundColor: C.background,
           borderColor: error ? C.error : focused ? C.text : C.border,
           /* Focus is carried by weight as well as colour, per §23. */
           borderWidth: focused || error ? 1.5 : 1,
@@ -104,7 +104,7 @@ export function PasswordField({ label, error, ...rest }: FieldProps) {
             setFocused(false);
             rest.onBlur?.(e);
           }}
-          placeholderTextColor={C.textTertiary}
+          placeholderTextColor={C.textMuted}
           style={{ fontSize: 15.5, color: C.text, padding: 0 }}
         />
       </View>
@@ -123,15 +123,15 @@ export function FormError({ message }: { message?: string | null }) {
   return (
     <View
       style={{
-        backgroundColor: C.accentBg,
+        backgroundColor: C.errorBg,
         borderWidth: 1,
-        borderColor: C.accentBorder,
+        borderColor: C.errorBorder,
         borderRadius: radius.lg,
         padding: 12,
         marginBottom: 16,
       }}
     >
-      <T size={13.5} color={C.accentDark} lh={19}>
+      <T size={13.5} color={C.error} lh={19}>
         {message}
       </T>
     </View>

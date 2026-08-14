@@ -28,7 +28,7 @@ const TODAY: Notification[] = [
     id: 'n1',
     icon: 'chat',
     iconColor: C.text,
-    discBg: C.track,
+    discBg: C.surfaceSecondary,
     title: 'Yousif sent you a message',
     body: '“Yes, no problem. I can post it tomorrow.”',
     when: '12 min',
@@ -49,8 +49,9 @@ const TODAY: Notification[] = [
   {
     id: 'n3',
     icon: 'heart',
-    iconColor: C.accent,
-    discBg: C.track,
+    // Black, to match the favourite heart everywhere else in the app.
+    iconColor: C.text,
+    discBg: C.surfaceSecondary,
     title: 'Price dropped on Nike Air Max 270',
     body: '€52 → €45 · in your favorites',
     when: '3 h',
@@ -64,7 +65,7 @@ const EARLIER: Notification[] = [
     id: 'n4',
     icon: 'truck',
     iconColor: C.text,
-    discBg: C.track,
+    discBg: C.surfaceSecondary,
     title: 'Order #SS28491 has shipped',
     body: 'Arriving Thu 14 — Fri 15 Aug',
     when: 'Yest.',
@@ -73,8 +74,8 @@ const EARLIER: Notification[] = [
   {
     id: 'n5',
     icon: 'check',
-    iconColor: C.green,
-    discBg: C.greenBg,
+    iconColor: C.success,
+    discBg: C.successBg,
     title: 'Leila left you a 5-star review',
     body: '“Fast shipping, item exactly as described.”',
     when: 'Mon',
@@ -132,7 +133,7 @@ export default function Notifications() {
         </T>
       </View>
 
-      <T size={11.5} color={C.textTertiary}>
+      <T size={11.5} color={C.textMuted}>
         {n.when}
       </T>
       {n.unread && !notifRead && (
@@ -142,12 +143,12 @@ export default function Notifications() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader
         title="Notifications"
         right={
           <Tap onPress={markNotifsRead} accessibilityRole="button" hitSlop={8} style={{ paddingRight: 8 }}>
-            <T w={600} size={12.5} color={C.accent}>
+            <T w={600} size={12.5} color={C.text}>
               Mark all read
             </T>
           </Tap>
@@ -173,7 +174,7 @@ function GroupLabel({ children, style }: { children: React.ReactNode; style?: St
     <T
       w={600}
       size={12}
-      color={C.textTertiary}
+      color={C.textMuted}
       tracking={0.48}
       style={[{ paddingHorizontal: 16, paddingBottom: 8, textTransform: 'uppercase' }, style]}
     >

@@ -28,7 +28,7 @@ export default function Profile() {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: C.bg }}
+      style={{ flex: 1, backgroundColor: C.background }}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{ paddingBottom: navClearance }}
     >
@@ -55,7 +55,7 @@ export default function Profile() {
             justifyContent: 'center',
           }}
         >
-          <T w={600} size={24} color={C.onDark}>
+          <T w={600} size={24} color={C.primaryText}>
             AI
           </T>
           <View
@@ -66,14 +66,14 @@ export default function Profile() {
               width: 22,
               height: 22,
               borderRadius: 11,
-              backgroundColor: C.green,
+              backgroundColor: C.success,
               borderWidth: 2.5,
-              borderColor: C.bg,
+              borderColor: C.background,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Icon name="check" size={11} color={C.onDark} strokeWidth={3.2} />
+            <Icon name="check" size={11} color={C.primaryText} strokeWidth={3.2} />
           </View>
         </View>
 
@@ -82,7 +82,7 @@ export default function Profile() {
             Ahmed Ibrahim
           </T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <T w={600} size={12.5} color={C.accent}>
+            <T w={600} size={12.5} color={C.text}>
               ★ 4.9
             </T>
             <T size={12.5} color={C.textSecondary}>

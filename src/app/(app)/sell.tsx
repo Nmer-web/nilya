@@ -10,7 +10,7 @@ import { TabTitle } from '@/components/screen-header';
 import { FadeIn } from '@/components/skeleton';
 import { Button, Card, Note, T, Tap, Toggle } from '@/components/ui';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { tapSuccess, tapWarn } from '@/lib/haptics';
+import { tapSuccess } from '@/lib/haptics';
 import { useApp } from '@/store/app-store';
 import { alpha, color as C, radius } from '@/theme/tokens';
 
@@ -24,7 +24,7 @@ export default function Sell() {
   const hasPhotos = photos > 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <View style={{ paddingTop: insets.top, paddingHorizontal: 16, paddingBottom: 12 }}>
         <TabTitle sub="Free to list. You keep 97% of the sale.">Sell an item</TabTitle>
       </View>
@@ -58,7 +58,7 @@ export default function Sell() {
                   width: 52,
                   height: 52,
                   borderRadius: 26,
-                  backgroundColor: C.bg,
+                  backgroundColor: C.background,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -97,7 +97,7 @@ export default function Sell() {
                     height: 118,
                     borderRadius: radius.lg,
                     overflow: 'hidden',
-                    backgroundColor: C.well,
+                    backgroundColor: C.surfaceSecondary,
                   }}
                 >
                   <ImageSlot label={`Photo ${n}`} glyph={20} />
@@ -115,7 +115,7 @@ export default function Sell() {
                         justifyContent: 'center',
                       }}
                     >
-                      <T w={600} size={10.5} color={C.onDark}>
+                      <T w={600} size={10.5} color={C.primaryText}>
                         Cover
                       </T>
                     </View>
@@ -164,8 +164,9 @@ export default function Sell() {
               </Card>
             )}
 
+            {/* Promotional: the suggested-price feature selling itself. */}
             {suggested && !filled && (
-              <Note style={{ marginTop: 14, padding: 15 }}>
+              <Note tone="accent" style={{ marginTop: 14, padding: 15 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                   <Icon name="sparkle" size={15} color={C.accent} />
                   <T w={600} size={13.5} color={C.accentDark}>
@@ -241,7 +242,6 @@ export default function Sell() {
             label="Publish listing"
             loading={publishing}
             loadingLabel="Publishing…"
-            haptic
             onPress={() => {
               /*
                * `publish` refuses and flashes when the form is incomplete, so
@@ -250,7 +250,6 @@ export default function Sell() {
                * validation error.
                */
               if (!filled) {
-                tapWarn();
                 publish();
                 return;
               }
@@ -282,7 +281,7 @@ function StatCard({ title, sub }: { title: string; sub: string }) {
 }
 
 /** Indeterminate ring shown while the listing is being read off the photos. */
-function Spinner({ size = 19, color = C.accent }: { size?: number; color?: string }) {
+function Spinner({ size = 19, color = C.text }: { size?: number; color?: string }) {
   const spin = useAnimatedValue(0);
 
   useEffect(() => {
@@ -300,7 +299,7 @@ function Spinner({ size = 19, color = C.accent }: { size?: number; color?: strin
         height: size,
         borderRadius: size / 2,
         borderWidth: 2,
-        borderColor: C.well,
+        borderColor: C.surfaceSecondary,
         borderTopColor: color,
         transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
       }}
@@ -349,7 +348,7 @@ function SellForm({ filled }: { filled: boolean }) {
           <T
             w={500}
             size={14.5}
-            color={r.resolved ? C.text : C.textTertiary}
+            color={r.resolved ? C.text : C.textMuted}
             numberOfLines={1}
             style={{ flex: 1 }}
           >

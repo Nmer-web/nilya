@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Animated,
   Easing,
   Pressable,
+  StyleSheet,
   Text as RNText,
   View,
   type PressableProps,
@@ -14,7 +15,7 @@ import {
 
 import { Icon, type IconName } from '@/components/icon';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { tapLight, tapSelect } from '@/lib/haptics';
+import { tapLight } from '@/lib/haptics';
 import { alpha, color as C, font, motion, radius, shadow, type as type_ } from '@/theme/tokens';
 
 /* ─────────────────────────── type ─────────────────────────── */
@@ -150,7 +151,7 @@ export function PressableScale({
  * `Button` can own its own loading state without importing from a module that
  * already imports this one.
  */
-export function Spinner({ size = 16, color = C.onDark }: { size?: number; color?: string }) {
+export function Spinner({ size = 16, color = C.primaryText }: { size?: number; color?: string }) {
   const spin = useAnimatedValue(0);
 
   React.useEffect(() => {
@@ -213,7 +214,7 @@ export function Button({
   children,
 }: ButtonProps) {
   const solid = variant === 'solid';
-  const ink = solid ? C.onDark : C.text;
+  const ink = solid ? C.primaryText : C.text;
   return (
     <PressableScale
       onPress={onPress}
@@ -230,7 +231,7 @@ export function Button({
           justifyContent: 'center',
           flexDirection: 'row',
           gap: 9,
-          backgroundColor: solid ? C.text : C.bg,
+          backgroundColor: solid ? C.text : C.background,
           borderWidth: variant === 'strong' ? 1.5 : variant === 'outline' ? 1 : 0,
           borderColor: variant === 'strong' ? C.text : C.borderStrong,
         },
@@ -286,24 +287,37 @@ export function Card({
   );
 }
 
-/** A tinted callout — terracotta for promos, green for trust. */
+/**
+ * A tinted callout.
+ *
+ * `neutral` is the default because most callouts are simply information, and
+ * information does not warrant colour. Reach for a tint only when it carries
+ * meaning: `accent` for genuinely promotional content, `green` for trust,
+ * `error` for failure.
+ */
 export function Note({
-  tone = 'accent',
+  tone = 'neutral',
   children,
   style,
 }: {
-  tone?: 'accent' | 'green';
+  tone?: 'neutral' | 'accent' | 'green' | 'error';
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
-  const accent = tone === 'accent';
+  const fill = {
+    neutral: { bg: C.surface, border: C.border },
+    accent: { bg: C.accentBg, border: C.accentBorder },
+    green: { bg: C.successBg, border: C.successBorder },
+    error: { bg: C.errorBg, border: C.errorBorder },
+  }[tone];
+
   return (
     <View
       style={[
         {
-          backgroundColor: accent ? C.accentBg : C.greenBg,
+          backgroundColor: fill.bg,
           borderWidth: 1,
-          borderColor: accent ? C.accentBorder : C.greenBorder,
+          borderColor: fill.border,
           borderRadius: radius.lg,
           padding: 13,
         },
@@ -332,13 +346,40 @@ export function Chip({
   round?: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const p = useAnimatedValue(active ? 1 : 0);
+
+  useEffect(() => {
+    Animated.timing(p, {
+      toValue: active ? 1 : 0,
+      duration: motion.fast,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: NATIVE_DRIVER,
+    }).start();
+  }, [active, p]);
+
+  /**
+   * Selection cross-fades rather than switching.
+   *
+   * The fill is a separate layer whose opacity animates, and the label is drawn
+   * twice — dark and light — with complementary opacities. That is more markup
+   * than animating `backgroundColor` and `color` directly, but colour
+   * interpolation cannot run on the native driver, so the direct version would
+   * put every chip in the rail on the JS thread during a horizontal scroll.
+   * Fading a single ink-coloured label over a darkening fill is not an option
+   * either: it spends the first frames as dark text on a dark ground.
+   */
+  const out = p.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+
+  const label_ = (color: string) => (
+    <T w={active ? 600 : 500} size={13.5} color={color} numberOfLines={1}>
+      {label}
+    </T>
+  );
+
   return (
     <PressableScale
       scale={0.96}
-      onPress={() => {
-        tapSelect();
-        onPress?.();
-      }}
+      onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
       style={[
@@ -348,16 +389,28 @@ export function Chip({
           borderRadius: round,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: active ? C.text : C.bg,
+          backgroundColor: C.background,
           borderWidth: 1,
           borderColor: active ? C.text : C.border,
+          overflow: 'hidden',
         },
         style,
       ]}
     >
-      <T w={active ? 600 : 500} size={13.5} color={active ? C.onDark : C.text}>
-        {label}
-      </T>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { backgroundColor: C.text, opacity: p }]}
+        pointerEvents="none"
+      />
+      <Animated.View style={{ opacity: out }}>{label_(C.text)}</Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          { alignItems: 'center', justifyContent: 'center', opacity: p },
+        ]}
+      >
+        {label_(C.primaryText)}
+      </Animated.View>
     </PressableScale>
   );
 }
@@ -379,7 +432,7 @@ export function Segmented<K extends string>({
   return (
     <View
       style={[
-        { flexDirection: 'row', gap: 6, backgroundColor: C.track, borderRadius: radius.md, padding: 3 },
+        { flexDirection: 'row', gap: 6, backgroundColor: C.surfaceSecondary, borderRadius: radius.md, padding: 3 },
         style,
       ]}
     >
@@ -399,7 +452,7 @@ export function Segmented<K extends string>({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              backgroundColor: on ? C.bg : 'transparent',
+              backgroundColor: on ? C.background : 'transparent',
               ...(on && shadow.raised),
             }}
           >
@@ -442,7 +495,7 @@ export function UnderlineTabs<K extends string>({
               borderBottomColor: on ? C.text : 'transparent',
             }}
           >
-            <T w={600} size={14.5} color={on ? C.text : C.textTertiary}>
+            <T w={600} size={14.5} color={on ? C.text : C.textMuted}>
               {o.label}
             </T>
           </Tap>
@@ -476,7 +529,7 @@ export function Avatar({
         justifyContent: 'center',
       }}
     >
-      <T w={600} size={fontSize ?? size * 0.34} color={C.onDark}>
+      <T w={600} size={fontSize ?? size * 0.34} color={C.primaryText}>
         {initials}
       </T>
     </View>
@@ -507,7 +560,7 @@ export function Badge({ children, style }: { children: React.ReactNode; style?: 
         style,
       ]}
     >
-      <T w={700} size={11} color={C.onDark}>
+      <T w={700} size={11} color={C.primaryText}>
         {children}
       </T>
     </View>
@@ -537,7 +590,7 @@ export function Toggle({ on, onPress }: { on: boolean; onPress?: () => void }) {
           width: 22,
           height: 22,
           borderRadius: 11,
-          backgroundColor: C.bg,
+          backgroundColor: C.background,
           ...shadow.raised,
         }}
       />
@@ -598,7 +651,7 @@ export function Row({
             {label}
           </T>
           {value !== undefined && (
-            <T size={13} color={valueColor ?? C.textTertiary}>
+            <T size={13} color={valueColor ?? C.textMuted}>
               {value}
             </T>
           )}
@@ -632,13 +685,13 @@ export function EmptyState({
           width: 64,
           height: 64,
           borderRadius: 32,
-          backgroundColor: C.well,
+          backgroundColor: C.surfaceSecondary,
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: 18,
         }}
       >
-        <Icon name={icon} size={26} color={C.textTertiary} strokeWidth={1.6} />
+        <Icon name={icon} size={26} color={C.textMuted} strokeWidth={1.6} />
       </View>
       <T w={700} size={17} tracking={-0.3} style={{ textAlign: 'center' }}>
         {title}

@@ -141,7 +141,7 @@ const DEFS = {
         />
         <Path
           d="m8.7 12.2 2 2 4.4-4.4"
-          stroke={C.onDark}
+          stroke={C.primaryText}
           strokeWidth={1.9}
           fill="none"
           strokeLinecap="round"
@@ -189,7 +189,7 @@ const DEFS = {
         <Path d="M12 2.9 5.4 5.7v5.8c0 4.2 2.8 7.7 6.6 9.3 3.8-1.6 6.6-5.1 6.6-9.3V5.7z" fill={c} />
         <Path
           d="m8.8 12.2 2.1 2.1 4.3-4.4"
-          stroke={C.onDark}
+          stroke={C.primaryText}
           strokeWidth={1.9}
           fill="none"
           strokeLinecap="round"

@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
-import { ImageSlot } from '@/components/image-slot';
+import { ListingThumb } from '@/components/product-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, Card, SectionLabel, T, Tap } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
@@ -29,11 +29,11 @@ export default function Checkout() {
   const total = p.pr + shipping + protection;
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader
         title="Checkout"
         right={
-          <T size={12} color={C.textTertiary} style={{ paddingRight: 10 }}>
+          <T size={12} color={C.textMuted} style={{ paddingRight: 10 }}>
             Step 2 of 2
           </T>
         }
@@ -45,9 +45,7 @@ export default function Checkout() {
       >
         {/* ── item ── */}
         <Card style={{ flexDirection: 'row', gap: 12, padding: 14 }}>
-          <View style={{ width: 52, height: 64, borderRadius: 9, overflow: 'hidden', backgroundColor: C.well }}>
-            <ImageSlot label={p.t} tiny />
-          </View>
+          <ListingThumb />
           <View style={{ flex: 1, minWidth: 0 }}>
             <T w={500} size={14.5} numberOfLines={1}>
               {p.t}
@@ -114,12 +112,12 @@ export default function Checkout() {
                   width: 40,
                   height: 40,
                   borderRadius: 10,
-                  backgroundColor: C.greenBg,
+                  backgroundColor: C.successBg,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Icon name="cash" size={19} color={C.green} />
+                <Icon name="cash" size={19} color={C.success} />
               </View>
               <View style={{ flex: 1 }}>
                 <T w={600} size={14.5}>
@@ -156,9 +154,14 @@ export default function Checkout() {
                 flexDirection: 'row',
               }}
             >
-              <View style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: C.accentBorder }} />
+              {/*
+                A generic two-disc mark on the card face. Previously drawn in
+                the accent, which both spent the colour budget on decoration
+                and read as one particular card network's logo.
+              */}
+              <View style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: C.borderStrong }} />
               <View
-                style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: C.accent, marginLeft: -5 }}
+                style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: C.primaryText, marginLeft: -5 }}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -223,7 +226,6 @@ export default function Checkout() {
           label={isLocal ? 'Place order' : `Pay ${euro(total)}`}
           loading={paying}
           loadingLabel="Processing…"
-          haptic
           onPress={() => {
             setPaying(true);
             setTimeout(() => {

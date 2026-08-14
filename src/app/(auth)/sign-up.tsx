@@ -56,7 +56,7 @@ export default function SignUp() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: C.bg }}
+      style={{ flex: 1, backgroundColor: C.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScreenHeader border={false} />
@@ -135,7 +135,7 @@ export default function SignUp() {
           {busy && <ButtonSpinner />}
         </Button>
 
-        <T size={12.5} color={C.textTertiary} lh={18.75} style={{ marginTop: 16, textAlign: 'center' }}>
+        <T size={12.5} color={C.textMuted} lh={18.75} style={{ marginTop: 16, textAlign: 'center' }}>
           We&apos;ll email you a link to confirm your address before you can sign in.
         </T>
 

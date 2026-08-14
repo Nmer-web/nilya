@@ -33,7 +33,7 @@ export default function Verify() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader dismiss border={false} />
 
       <ScrollView
@@ -50,7 +50,7 @@ export default function Verify() {
             justifyContent: 'center',
           }}
         >
-          <Icon name="shieldCheck" size={27} color={C.onDark} strokeWidth={1.7} />
+          <Icon name="shieldCheck" size={27} color={C.primaryText} strokeWidth={1.7} />
         </View>
 
         <T w={600} size={27} tracking={-0.6} lh={32.4} style={{ marginTop: 20 }}>
@@ -74,7 +74,7 @@ export default function Verify() {
                 borderBottomColor: C.border,
               }}
             >
-              <Icon name="check" size={19} color={C.green} strokeWidth={2.2} />
+              <Icon name="check" size={19} color={C.success} strokeWidth={2.2} />
               <View style={{ flex: 1 }}>
                 <T w={600} size={14.5}>
                   {r.title}
@@ -104,7 +104,7 @@ export default function Verify() {
           paddingBottom: Math.max(insets.bottom, 14),
         }}
       >
-        <Button label="Continue" loading={verifying} loadingLabel="Opening Stripe…" haptic onPress={start} />
+        <Button label="Continue" loading={verifying} loadingLabel="Opening Stripe…" onPress={start} />
       </FrostedBar>
     </View>
   );

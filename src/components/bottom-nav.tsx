@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon, type IconName } from '@/components/icon';
 import { PressableScale, T } from '@/components/ui';
-import { tapSelect } from '@/lib/haptics';
+
 import { useApp } from '@/store/app-store';
 import { color as C, radius, shadow } from '@/theme/tokens';
 
@@ -75,13 +75,13 @@ export function BottomNav({ pathname }: { pathname: string }) {
 
   const item = ({ href, icon, label }: (typeof TABS)[number]) => {
     const active = activeHref === href;
-    const tint = active ? C.text : C.textTertiary;
+    const tint = active ? C.text : C.textMuted;
     return (
       <PressableScale
         key={href}
         scale={0.92}
         onPress={() => {
-          if (href !== pathname) tapSelect();
+
           go(href);
         }}
         accessibilityRole="tab"
@@ -103,12 +103,12 @@ export function BottomNav({ pathname }: { pathname: string }) {
                 borderRadius: 8,
                 backgroundColor: C.accent,
                 borderWidth: 1.5,
-                borderColor: C.bg,
+                borderColor: C.background,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <T w={700} size={10} color={C.onDark}>
+              <T w={700} size={10} color={C.primaryText}>
                 {offerState === 'open' ? '3' : '2'}
               </T>
             </View>
@@ -167,8 +167,8 @@ export function BottomNav({ pathname }: { pathname: string }) {
             ...shadow.raised,
           }}
         >
-          <Icon name="plus" size={15} color={C.onDark} strokeWidth={2.6} />
-          <T w={600} size={12.5} color={C.onDark}>
+          <Icon name="plus" size={15} color={C.primaryText} strokeWidth={2.6} />
+          <T w={600} size={12.5} color={C.primaryText}>
             Sell
           </T>
         </View>

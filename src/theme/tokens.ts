@@ -40,6 +40,8 @@ export const color = {
   successBorder: '#CDE7DC',
   error: '#D64545',
   errorBg: '#FBECEC',
+  errorBorder: '#F0D2D2',
+  /** Declared by the system; nothing warrants it yet. */
   warning: '#C58A20',
 
   /**
@@ -66,30 +68,6 @@ export const color = {
   /** The face of the saved payment card on checkout. */
   cardFace: '#33414F',
 
-  /* ──────────────────────────────────────────────────────────────
-   * Back-compatible aliases.
-   *
-   * The app was built against these names before the system was named.
-   * They are the same values, kept so that renaming ~200 call sites is not a
-   * precondition for using the system. Prefer the canonical names above in
-   * new code.
-   * ────────────────────────────────────────────────────────────── */
-  /** @deprecated use `background` */
-  bg: '#FFFFFF',
-  /** @deprecated use `surfaceSecondary` */
-  well: '#F2F2EF',
-  /** @deprecated use `surfaceSecondary` */
-  track: '#F2F2EF',
-  /** @deprecated use `textMuted` */
-  textTertiary: '#8A8A8A',
-  /** @deprecated use `primaryText` */
-  onDark: '#FFFFFF',
-  /** @deprecated use `success` */
-  green: '#16835B',
-  /** @deprecated use `successBg` */
-  greenBg: '#E8F4EF',
-  /** @deprecated use `successBorder` */
-  greenBorder: '#CDE7DC',
 } as const;
 
 /**

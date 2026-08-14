@@ -56,7 +56,7 @@ export default function ResetPassword() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: C.bg }}
+      style={{ flex: 1, backgroundColor: C.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
@@ -79,7 +79,7 @@ export default function ResetPassword() {
             justifyContent: 'center',
           }}
         >
-          <Icon name="shieldCheck" size={27} color={C.onDark} strokeWidth={1.7} />
+          <Icon name="shieldCheck" size={27} color={C.primaryText} strokeWidth={1.7} />
         </View>
 
         <T w={600} size={27} tracking={-0.6} lh={32.4} style={{ marginTop: 20 }}>

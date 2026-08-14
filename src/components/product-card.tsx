@@ -47,7 +47,7 @@ export function FavouriteButton({ id, size = 32 }: { id: number; size?: number }
     // 1 → 1.2 → 1. The overshoot is what makes the state change feel earned.
     Animated.sequence([
       Animated.spring(s, {
-        toValue: 1.2,
+        toValue: 1.15,
         useNativeDriver: NATIVE_DRIVER,
         tension: 420,
         friction: 6,
@@ -111,6 +111,35 @@ function ListingImage({ width, label, glyph }: { width: number; label?: string; 
       }}
     >
       <ImageSlot label={label} glyph={glyph} />
+    </View>
+  );
+}
+
+/** Widths for the row thumbnail. Two sizes, so rows stop inventing their own. */
+export const THUMB = { sm: 40, md: 54 } as const;
+
+/**
+ * The small listing thumbnail that sits inside a row — inbox conversations,
+ * order lines, the chat header, the checkout summary.
+ *
+ * Not a card: it carries no price, no favourite and no tap target, because the
+ * row around it owns all three. It exists because those six rows each invented
+ * their own well — 36x44, 40x48, 52x64, 54x66 and 56x70, at radii of 7, 9 and
+ * 12 — so none shared the card's 3:4 crop and most sat off the radius ladder.
+ * Bare numbers are why the step that constrained the radii never caught them.
+ */
+export function ListingThumb({ width = THUMB.md }: { width?: number }) {
+  return (
+    <View
+      style={{
+        width,
+        aspectRatio: IMAGE_RATIO,
+        borderRadius: radius.sm,
+        overflow: 'hidden',
+        backgroundColor: C.surfaceSecondary,
+      }}
+    >
+      <ImageSlot tiny />
     </View>
   );
 }

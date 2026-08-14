@@ -20,7 +20,7 @@ export default function Favorites() {
   const showDrop = !!favs[1];
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader
         title="Favorites"
         right={
@@ -36,7 +36,9 @@ export default function Favorites() {
       >
         {showDrop && (
           <Tap onPress={() => router.push({ pathname: '/product/[id]', params: { id: 1 } })} accessibilityRole="button">
+            {/* Promotional: a price drop on something already saved. */}
             <Note
+              tone="accent"
               style={{
                 marginHorizontal: 16,
                 marginBottom: 16,
@@ -56,7 +58,7 @@ export default function Favorites() {
                   justifyContent: 'center',
                 }}
               >
-                <Icon name="arrowDown" size={17} color={C.onDark} strokeWidth={2.2} />
+                <Icon name="arrowDown" size={17} color={C.primaryText} strokeWidth={2.2} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <T w={600} size={13} color={C.accentDark}>
@@ -64,7 +66,7 @@ export default function Favorites() {
                 </T>
                 <T size={13.5} numberOfLines={1} style={{ marginTop: 2 }}>
                   Nike Air Max 270 ·{' '}
-                  <T size={13.5} color={C.textTertiary} style={{ textDecorationLine: 'line-through' }}>
+                  <T size={13.5} color={C.textMuted} style={{ textDecorationLine: 'line-through' }}>
                     €52
                   </T>{' '}
                   <T w={700} size={13.5}>

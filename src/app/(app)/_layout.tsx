@@ -16,7 +16,7 @@ export default function AppLayout() {
   const showNav = NAV_ROUTES.includes(pathname);
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       {/*
         Two transition families, and the distinction carries meaning: lateral
         moves between peers cross-fade, while going deeper slides in from the
@@ -28,7 +28,7 @@ export default function AppLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: C.bg },
+          contentStyle: { backgroundColor: C.background },
           animation: 'slide_from_right',
           animationDuration: 260,
         }}

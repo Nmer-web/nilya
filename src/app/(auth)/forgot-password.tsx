@@ -47,7 +47,7 @@ export default function ForgotPassword() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: C.bg }}
+      style={{ flex: 1, backgroundColor: C.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScreenHeader border={false} />
@@ -70,10 +70,10 @@ export default function ForgotPassword() {
 
         {sent ? (
           <Note tone="green">
-            <T w={600} size={14} color={C.green}>
+            <T w={600} size={14} color={C.success}>
               Check your inbox
             </T>
-            <T size={13.5} color={C.green} lh={19.5} style={{ marginTop: 4 }}>
+            <T size={13.5} color={C.success} lh={19.5} style={{ marginTop: 4 }}>
               If an account exists for {email.trim()}, a reset link is on its way. Open it on this device to set a
               new password.
             </T>

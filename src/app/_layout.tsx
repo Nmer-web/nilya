@@ -35,7 +35,7 @@ export default function RootLayout() {
         <AuthProvider>
           <AppProvider>
             <SplashGate fontsLoaded={fontsLoaded} />
-            <View style={{ flex: 1, backgroundColor: C.bg }}>
+            <View style={{ flex: 1, backgroundColor: C.background }}>
               <StatusBar style="dark" />
               {fontsLoaded && <RootNavigator />}
             </View>
@@ -83,7 +83,7 @@ function RootNavigator() {
    * group is always navigable.
    */
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.background } }}>
       <Stack.Protected guard={signedIn && !recovering}>
         <Stack.Screen name="(app)" />
       </Stack.Protected>

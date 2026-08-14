@@ -71,7 +71,7 @@ export default function CheckEmail() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -91,7 +91,7 @@ export default function CheckEmail() {
             justifyContent: 'center',
           }}
         >
-          <Icon name="send" size={25} color={C.onDark} strokeWidth={1.7} />
+          <Icon name="send" size={25} color={C.primaryText} strokeWidth={1.7} />
         </View>
 
         <T w={600} size={27} tracking={-0.6} lh={32.4} style={{ marginTop: 20 }}>
@@ -109,7 +109,7 @@ export default function CheckEmail() {
 
         {sentAgain && (
           <Note tone="green" style={{ marginTop: 20 }}>
-            <T size={13.5} color={C.green} lh={19}>
+            <T size={13.5} color={C.success} lh={19}>
               Sent again. If it still hasn&apos;t arrived, check your spam folder.
             </T>
           </Note>

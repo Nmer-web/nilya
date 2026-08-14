@@ -138,8 +138,17 @@ export default function Home() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView
+    <View style={{ flex: 1, backgroundColor: C.background }}>
+      {/*
+        Animated.ScrollView, not ScrollView. With `useNativeDriver: true`,
+        `Animated.event` returns an AnimatedEvent object rather than a
+        function — only an Animated component knows how to attach it to the
+        native scroll. A plain ScrollView calls the prop directly and throws
+        "Object is not a function" on the first scroll frame. Web never sees
+        it because NATIVE_DRIVER is false there and the call returns a real
+        function, so this only reproduces on device.
+      */}
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
@@ -151,7 +160,7 @@ export default function Home() {
             refreshing={refreshing}
             onRefresh={onRefresh}
             progressViewOffset={headerH}
-            tintColor={C.textTertiary}
+            tintColor={C.textMuted}
           />
         }
       >
@@ -179,7 +188,7 @@ export default function Home() {
         >
           Over 40,000 items from the diaspora
         </T>
-      </ScrollView>
+      </Animated.ScrollView>
 
       <Animated.View
         onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
@@ -189,7 +198,7 @@ export default function Home() {
           right: 0,
           top: 0,
           paddingTop: insets.top,
-          backgroundColor: C.bg,
+          backgroundColor: C.background,
           transform: [{ translateY: headerShift }],
         }}
       >
@@ -233,7 +242,7 @@ export default function Home() {
                 borderRadius: 4,
                 backgroundColor: C.accent,
                 borderWidth: 1.5,
-                borderColor: C.bg,
+                borderColor: C.background,
               }}
             />
           </Tap>

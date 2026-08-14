@@ -13,13 +13,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
-import { ImageSlot } from '@/components/image-slot';
+import { ListingThumb, THUMB } from '@/components/product-card';
 import { FadeIn } from '@/components/skeleton';
 import { Avatar, Chip, T, Tap } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { euro, useApp } from '@/store/app-store';
-import { avatarColor, color as C, radius } from '@/theme/tokens';
+import { avatarColor, color as C } from '@/theme/tokens';
 
 /** The chat is always about the Nike listing, as in the design. */
 const LISTING = 1;
@@ -47,7 +47,7 @@ export default function Chat() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: C.bg }}
+      style={{ flex: 1, backgroundColor: C.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* ── header ── */}
@@ -105,9 +105,7 @@ export default function Chat() {
           borderBottomColor: C.border,
         }}
       >
-        <View style={{ width: 40, height: 48, borderRadius: radius.md, overflow: 'hidden', backgroundColor: C.well }}>
-          <ImageSlot label={p.t} tiny />
-        </View>
+        <ListingThumb width={THUMB.sm} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <T w={500} size={13.5} numberOfLines={1}>
             {p.t}
@@ -116,7 +114,7 @@ export default function Chat() {
             {euro(p.pr)}
           </T>
         </View>
-        <T w={600} size={12.5} color={C.accent}>
+        <T w={600} size={12.5} color={C.text}>
           View listing
         </T>
       </Tap>
@@ -128,7 +126,7 @@ export default function Chat() {
         keyboardDismissMode="interactive"
         contentContainerStyle={{ padding: 16, paddingBottom: 8, gap: 8 }}
       >
-        <T size={11.5} color={C.textTertiary} style={{ textAlign: 'center', paddingBottom: 6 }}>
+        <T size={11.5} color={C.textMuted} style={{ textAlign: 'center', paddingBottom: 6 }}>
           Today
         </T>
 
@@ -152,7 +150,7 @@ export default function Chat() {
                   borderBottomRightRadius: m.me ? 5 : 18,
                 }}
               >
-                <T size={14.5} lh={20.3} color={m.me ? C.onDark : C.text}>
+                <T size={14.5} lh={20.3} color={m.me ? C.primaryText : C.text}>
                   {m.t}
                 </T>
               </View>
@@ -245,7 +243,7 @@ export default function Chat() {
             justifyContent: 'center',
           }}
         >
-          <Icon name="send" size={17} color={C.onDark} />
+          <Icon name="send" size={17} color={C.primaryText} />
         </Tap>
       </FrostedBar>
     </KeyboardAvoidingView>
@@ -298,7 +296,7 @@ function TypingDot({ delay }: { delay: number }) {
         width: 6,
         height: 6,
         borderRadius: 3,
-        backgroundColor: C.textTertiary,
+        backgroundColor: C.textMuted,
         transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1.14] }) }],
       }}
     />

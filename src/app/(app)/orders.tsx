@@ -4,7 +4,7 @@ import { ScrollView, View } from 'react-native';
 
 import { useNavClearance } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
-import { ImageSlot } from '@/components/image-slot';
+import { ListingThumb } from '@/components/product-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { Card, EmptyState, Segmented, T, Tap } from '@/components/ui';
 import { color as C } from '@/theme/tokens';
@@ -26,7 +26,7 @@ const ACTIVE = [
     title: 'Jebena Coffee Set',
     price: '35,000 SDG',
     meta: '#SS28502 · local pickup, Khartoum',
-    statusColor: C.green,
+    statusColor: C.success,
     status: 'Ready to collect',
     statusNote: '· Al Riyadh point',
   },
@@ -38,7 +38,7 @@ export default function Orders() {
   const [tab, setTab] = useState<Tab>('Active');
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader title="Orders" />
 
       <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
@@ -61,11 +61,7 @@ export default function Orders() {
             <Tap key={o.id} onPress={() => router.push({ pathname: '/order/[id]', params: { id: o.id } })} accessibilityRole="button">
               <Card style={{ padding: 14, marginBottom: i === ACTIVE.length - 1 ? 0 : 10 }}>
                 <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <View
-                    style={{ width: 54, height: 66, borderRadius: 9, overflow: 'hidden', backgroundColor: C.well }}
-                  >
-                    <ImageSlot label={o.title} tiny />
-                  </View>
+                  <ListingThumb />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <T w={500} size={14.5} numberOfLines={1}>
                       {o.title}
@@ -73,7 +69,7 @@ export default function Orders() {
                     <T w={700} size={16} style={{ marginTop: 2 }}>
                       {o.price}
                     </T>
-                    <T size={12} color={C.textTertiary} style={{ marginTop: 3 }}>
+                    <T size={12} color={C.textMuted} style={{ marginTop: 3 }}>
                       {o.meta}
                     </T>
                   </View>
@@ -90,7 +86,7 @@ export default function Orders() {
                     marginTop: 12,
                     paddingTop: 12,
                     borderTopWidth: 1,
-                    borderTopColor: C.track,
+                    borderTopColor: C.surfaceSecondary,
                   }}
                 >
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: o.statusColor }} />

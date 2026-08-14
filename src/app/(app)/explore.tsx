@@ -21,8 +21,8 @@ export default function Explore() {
   const active = filtersActive(app);
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <View style={{ paddingTop: insets.top, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
+      <View style={{ paddingTop: insets.top, backgroundColor: C.background }}>
         <View style={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12 }}>
           <TabTitle>Explore</TabTitle>
         </View>
@@ -68,7 +68,7 @@ export default function Explore() {
                   width: 20,
                   height: 20,
                   borderRadius: 10,
-                  backgroundColor: C.well,
+                  backgroundColor: C.surfaceSecondary,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -93,7 +93,7 @@ export default function Explore() {
               borderColor: active ? C.text : C.border,
             }}
           >
-            <Icon name="sliders" size={19} color={active ? C.onDark : C.text} />
+            <Icon name="sliders" size={19} color={active ? C.primaryText : C.text} />
           </Tap>
         </View>
 

@@ -23,11 +23,11 @@ export default function DeliveryMethod() {
   const chosen = ladder.opts.find((o) => o.k === delKey) ?? ladder.opts[0];
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader
         title="Delivery method"
         right={
-          <T size={12} color={C.textTertiary} style={{ paddingRight: 10 }}>
+          <T size={12} color={C.textMuted} style={{ paddingRight: 10 }}>
             Step 1 of 2
           </T>
         }
@@ -49,7 +49,7 @@ export default function DeliveryMethod() {
           }}
         >
           <CountryTag code={p.cc} />
-          <Icon name="arrowRight" size={15} color={C.textTertiary} />
+          <Icon name="arrowRight" size={15} color={C.textMuted} />
           <CountryTag code={isLocal ? 'SD' : 'FR'} />
           <T size={12.5} color={C.textSecondary} style={{ flex: 1, paddingLeft: 4 }}>
             {isLocal ? 'Inside Sudan' : ladder.kind === 'intl' ? 'Cross-border' : 'Domestic, France'}
@@ -58,10 +58,10 @@ export default function DeliveryMethod() {
 
         {ladder.kind === 'intl' && (
           <Note style={{ marginTop: 12, paddingHorizontal: 14 }}>
-            <T w={600} size={13.5} color={C.accentDark}>
+            <T w={600} size={13.5} color={C.text}>
               International delivery
             </T>
-            <T size={12.5} color={C.accentDark} lh={18.1} style={{ marginTop: 3 }}>
+            <T size={12.5} color={C.text} lh={18.1} style={{ marginTop: 3 }}>
               Estimated 7–14 days. Customs handled by the carrier — no extra paperwork for you.
             </T>
           </Note>
@@ -69,10 +69,10 @@ export default function DeliveryMethod() {
 
         {isLocal && (
           <Note tone="green" style={{ marginTop: 12, paddingHorizontal: 14 }}>
-            <T w={600} size={13.5} color={C.green}>
+            <T w={600} size={13.5} color={C.success}>
               Local pickup in Sudan
             </T>
-            <T size={12.5} color={C.green} lh={18.1} style={{ marginTop: 3 }}>
+            <T size={12.5} color={C.success} lh={18.1} style={{ marginTop: 3 }}>
               Collect from a trusted point and pay in cash on handover. No card needed.
             </T>
           </Note>
@@ -146,7 +146,7 @@ export default function DeliveryMethod() {
                   width: 38,
                   height: 38,
                   borderRadius: 10,
-                  backgroundColor: C.track,
+                  backgroundColor: C.surfaceSecondary,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -199,7 +199,7 @@ function CountryTag({ code }: { code: string }) {
         justifyContent: 'center',
       }}
     >
-      <T w={700} size={11} color={C.onDark} tracking={0.66}>
+      <T w={700} size={11} color={C.primaryText} tracking={0.66}>
         {code}
       </T>
     </View>
@@ -213,7 +213,7 @@ function MiniMap() {
       style={{
         height: 88,
         borderRadius: 10,
-        backgroundColor: C.track,
+        backgroundColor: C.surfaceSecondary,
         marginTop: 12,
         overflow: 'hidden',
         borderWidth: 1,
@@ -256,7 +256,7 @@ function MiniMap() {
           marginLeft: -13,
           marginTop: -13,
           borderRadius: 13,
-          backgroundColor: C.accent,
+          backgroundColor: C.text,
           borderWidth: 3,
           borderColor: C.surface,
           ...shadow.raised,

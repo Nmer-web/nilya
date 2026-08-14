@@ -41,16 +41,16 @@ export default function ProductDetail() {
     tapLight();
     toggleFav(p.id);
     Animated.sequence([
-      Animated.spring(heart, { toValue: 1.2, useNativeDriver: NATIVE_DRIVER, tension: 420, friction: 6 }),
+      Animated.spring(heart, { toValue: 1.15, useNativeDriver: NATIVE_DRIVER, tension: 420, friction: 6 }),
       Animated.spring(heart, { toValue: 1, useNativeDriver: NATIVE_DRIVER, ...motion.spring }),
     ]).start();
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 96 + insets.bottom }}>
         {/* ── gallery ── */}
-        <View style={{ backgroundColor: C.well }}>
+        <View style={{ backgroundColor: C.surfaceSecondary }}>
           <ScrollView
             horizontal
             pagingEnabled
@@ -129,7 +129,7 @@ export default function ProductDetail() {
               {euro(p.pr)}
             </T>
             {!!p.old && (
-              <T size={14} color={C.textTertiary} style={{ textDecorationLine: 'line-through' }}>
+              <T size={14} color={C.textMuted} style={{ textDecorationLine: 'line-through' }}>
                 {euro(p.old)}
               </T>
             )}
@@ -204,7 +204,7 @@ export default function ProductDetail() {
                 <T w={600} size={15}>
                   {p.s}
                 </T>
-                <Icon name="badgeCheck" size={14} color={C.green} />
+                <Icon name="badgeCheck" size={14} color={C.success} />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
                 <StarRow />
@@ -213,7 +213,7 @@ export default function ProductDetail() {
                 </T>
               </View>
             </View>
-            <Icon name="chevronRight" size={18} color={C.textTertiary} strokeWidth={1.9} />
+            <Icon name="chevronRight" size={18} color={C.textMuted} strokeWidth={1.9} />
           </Tap>
 
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
