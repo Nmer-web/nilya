@@ -1,4 +1,6 @@
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import React, { useEffect, useState } from 'react';
 import { Animated, Easing, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,100 +8,235 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavHeight } from '@/components/bottom-nav';
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
-import { ImageSlot } from '@/components/image-slot';
-import { Button, Card, Chip, Note, T, Tap, Toggle } from '@/components/ui';
-import { EXCATS } from '@/data/catalog';
+import { formatPrice } from '@/components/listing-card';
+import { Skeleton } from '@/components/skeleton';
+import { Button, Card, Chip, EmptyState, T, Tap } from '@/components/ui';
+import { useAsync } from '@/hooks/use-async';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
+import { CONDITION_LABEL, type ListingCondition } from '@/lib/database.types';
 import { tapSuccess } from '@/lib/haptics';
-import { draftComplete, useApp, type Draft } from '@/store/app-store';
+import { createListing, fetchDeliveryOptions, ListingError, type PickedImage } from '@/lib/mutations';
+import { fetchCategories } from '@/lib/queries';
+import { supabase } from '@/lib/supabase';
+import { useApp } from '@/store/app-store';
+import { useAuth } from '@/store/auth-store';
 import { alpha, color as C, radius, space } from '@/theme/tokens';
 
-const CONDITIONS = ['New with tags', 'Like new', 'Very good', 'Good', 'Satisfactory'];
+/** The three values `listing_condition` actually accepts. */
+const CONDITIONS: ListingCondition[] = ['new', 'very_good', 'good'];
 
-/**
- * The compose flow, one decision per screen.
- *
- * A single long form asks the seller to hold every remaining question in their
- * head at once; a step asks one thing and shows how much is left. `optional`
- * marks the steps a listing can publish without, so Continue is never blocked
- * on a fact the seller may not have.
- */
-const STEPS: { key: string; title: string; sub: string; optional?: boolean }[] = [
-  { key: 'photos', title: 'Add your photos', sub: 'Natural light and a plain background sell fastest.' },
-  { key: 'title', title: 'What are you selling?', sub: 'Buyers search this text, so name the item plainly.' },
+const STEPS = [
+  { key: 'photos', title: 'Add your photos', sub: 'The first photo becomes your cover.' },
+  { key: 'title', title: 'What are you selling?', sub: 'Buyers search this text, so name it plainly.' },
   { key: 'category', title: 'Pick a category', sub: 'This decides where your listing shows up.' },
-  { key: 'condition', title: 'What condition is it in?', sub: 'Be honest — it is the first thing buyers check.' },
-  { key: 'details', title: 'Brand and colour', sub: 'Optional, but listings with both sell faster.', optional: true },
+  { key: 'condition', title: 'What condition is it in?', sub: 'Be honest — buyers check this first.' },
+  { key: 'details', title: 'Describe it', sub: 'Brand and detail. Optional, but they sell faster.' },
   { key: 'price', title: 'Set your price', sub: 'You keep 97% of the sale.' },
-  { key: 'delivery', title: 'How will it reach them?', sub: 'Buyers pay shipping unless they collect.' },
-  { key: 'preview', title: 'Ready to publish', sub: 'Check it over — you can edit anything later.' },
-];
+  { key: 'location', title: 'Where is it?', sub: 'Buyers see this, and it sets your delivery options.' },
+  { key: 'preview', title: 'Ready to publish', sub: 'Check it over before it goes live.' },
+] as const;
+
+type Draft = {
+  title: string;
+  description: string;
+  brand: string;
+  categorySlug: string;
+  condition: ListingCondition | '';
+  price: string;
+  /** null until the seller edits it — the profile supplies the default. */
+  city: string | null;
+  countryCode: string | null;
+};
+
+const EMPTY: Draft = {
+  title: '',
+  description: '',
+  brand: '',
+  categorySlug: '',
+  condition: '',
+  price: '',
+  city: null,
+  countryCode: null,
+};
 
 export default function Sell() {
   const navHeight = useNavHeight();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
-  const app = useApp();
-  const {
-    photos,
-    scanning,
-    suggested,
-    sudanPickup,
-    step,
-    draft,
-    addPhotos,
-    removePhoto,
-    applySuggestion,
-    toggleSudanPickup,
-    setStep,
-    setDraftField,
-    publish,
-  } = app;
+  const { status } = useAuth();
+  const { flash } = useApp();
 
+  const [step, setStep] = useState(0);
+  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [images, setImages] = useState<PickedImage[]>([]);
   const [publishing, setPublishing] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const categories = useAsync(() => fetchCategories('explore'), 'categories:explore');
+
+  /**
+   * The seller's own city and country, used to prefill the location step.
+   * `profiles` is readable for the signed-in user, and this is the only place
+   * the listing's country can honestly come from.
+   */
+  const profile = useAsync(async () => {
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return null;
+    const { data } = await supabase
+      .from('profiles')
+      .select('city, country_code')
+      .eq('id', auth.user.id)
+      .maybeSingle();
+    return (data as { city: string | null; country_code: string | null } | null) ?? null;
+  }, `profile:${status}`);
+
+  /* ── auth gate ── */
+  if (status !== 'signedIn') {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background, paddingTop: insets.top }}>
+        <EmptyState
+          icon="person"
+          title="Sign in to sell"
+          body="You need an account before you can list an item on SAWA."
+          action={
+            <Button
+              label="Sign in"
+              height={48}
+              onPress={() => router.push('/sign-in')}
+              style={{ marginTop: 20 }}
+            />
+          }
+        />
+      </View>
+    );
+  }
+
+  /**
+   * Location is derived, not copied into state when the profile loads. The
+   * seller's own city and country are the default and the draft only holds a
+   * value once they type one — mirroring the profile into state would mean
+   * writing state from an effect, cascading a render for nothing.
+   */
+  const city = draft.city ?? profile.data?.city ?? '';
+  const countryCode = (draft.countryCode ?? profile.data?.country_code ?? '').toUpperCase();
 
   const current = STEPS[step];
   const last = step === STEPS.length - 1;
 
-  /**
-   * Whether this step has what it needs. Optional steps always pass, and the
-   * real gate is `draftComplete` on the final screen.
-   */
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
+
   const stepReady = (() => {
     switch (current.key) {
       case 'photos':
-        return photos.length > 0;
+        return images.length > 0;
       case 'title':
         return draft.title.trim() !== '';
       case 'category':
-        return draft.category !== '';
+        return draft.categorySlug !== '';
       case 'condition':
         return draft.condition !== '';
       case 'price':
         return draft.price.trim() !== '';
+      case 'location':
+        return countryCode.trim().length === 2;
       default:
         return true;
     }
   })();
 
-  const back = () => (step === 0 ? router.back() : setStep(step - 1));
-  const next = () => setStep(Math.min(step + 1, STEPS.length - 1));
+  const complete =
+    images.length > 0 &&
+    draft.title.trim() !== '' &&
+    draft.categorySlug !== '' &&
+    draft.condition !== '' &&
+    draft.price.trim() !== '' &&
+    countryCode.trim().length === 2;
+
+  const pick = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      setError('SAWA needs access to your photos to add them to a listing.');
+      return;
+    }
+
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: 10 - images.length,
+      quality: 0.85,
+    });
+
+    if (res.canceled) return;
+    setError(null);
+    setImages((prev) =>
+      [
+        ...prev,
+        ...res.assets.map((a) => ({ uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg' })),
+      ].slice(0, 10)
+    );
+  };
+
+  /**
+   * Publish.
+   *
+   * `createListing` creates the draft row, uploads each photograph under the
+   * listing's id, then flips it to active — rolling the whole thing back if any
+   * upload fails, so a half-uploaded listing never reaches the feed. Only after
+   * it resolves does this claim success.
+   */
+  const publish = async () => {
+    if (publishing || !complete) return;
+    setPublishing(true);
+    setError(null);
+    setProgress({ done: 0, total: images.length });
+
+    try {
+      const id = await createListing(
+        {
+          title: draft.title,
+          description: draft.description,
+          brand: draft.brand,
+          categorySlug: draft.categorySlug,
+          condition: draft.condition as ListingCondition,
+          price: draft.price,
+          city,
+          countryCode,
+        },
+        images,
+        (done, total) => setProgress({ done, total })
+      );
+
+      tapSuccess();
+      flash('Your item is live');
+
+      /* Reset before leaving, so returning to Sell starts a new listing. */
+      setDraft(EMPTY);
+      setImages([]);
+      setStep(0);
+
+      router.replace({ pathname: '/listing/[id]', params: { id } });
+    } catch (e) {
+      setError(e instanceof ListingError ? e.message : 'Could not publish. Please try again.');
+    } finally {
+      setPublishing(false);
+      setProgress(null);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <StepHeader step={step} total={STEPS.length} onBack={back} />
+      <StepHeader
+        step={step}
+        total={STEPS.length}
+        onBack={() => (step === 0 ? router.back() : setStep(step - 1))}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: navHeight + 110 }}
+        contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: navHeight + 120 }}
       >
-        {/*
-          Keyed on the step so each panel mounts fresh and replays its entrance.
-          Panels always enter from the right rather than tracking direction:
-          reading it as forward motion is the point, and a direction-aware
-          version would need the previous index threaded through state for a
-          difference almost nobody would notice.
-        */}
         <StepPanel key={current.key}>
           <T w={700} size={27} tracking={-0.6} lh={33} style={{ marginTop: space.sm }}>
             {current.title}
@@ -109,49 +246,32 @@ export default function Sell() {
           </T>
 
           {current.key === 'photos' && (
-            <PhotosStep
-              photos={photos}
-              scanning={scanning}
-              suggested={suggested}
-              onAdd={addPhotos}
-              onRemove={removePhoto}
-              onApply={applySuggestion}
-            />
+            <PhotosStep images={images} onPick={pick} onRemove={(i) => setImages((p) => p.filter((_, j) => j !== i))} />
           )}
 
           {current.key === 'title' && (
-            <FieldInput
-              value={draft.title}
-              onChange={(v) => setDraftField('title', v)}
-              placeholder="e.g. Nike Air Max 270"
-              autoFocus
-            />
+            <Field value={draft.title} onChange={(v) => set('title', v)} placeholder="e.g. Nike Air Max 270" autoFocus />
           )}
 
           {current.key === 'category' && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {EXCATS.filter((c) => c !== 'All').map((c) => (
-                <Chip
-                  key={c}
-                  label={c}
-                  height={40}
-                  round={radius.md}
-                  active={draft.category === c}
-                  onPress={() => setDraftField('category', c)}
-                />
-              ))}
-            </View>
+            <CategoryStep
+              loading={categories.loading}
+              error={categories.error}
+              rows={categories.data ?? []}
+              selected={draft.categorySlug}
+              onSelect={(slug) => set('categorySlug', slug)}
+            />
           )}
 
           {current.key === 'condition' && (
             <View>
               {CONDITIONS.map((c, i) => (
-                <ChoiceRow
+                <Choice
                   key={c}
-                  label={c}
+                  label={CONDITION_LABEL[c]}
                   selected={draft.condition === c}
                   last={i === CONDITIONS.length - 1}
-                  onPress={() => setDraftField('condition', c)}
+                  onPress={() => set('condition', c)}
                 />
               ))}
             </View>
@@ -159,51 +279,42 @@ export default function Sell() {
 
           {current.key === 'details' && (
             <View style={{ gap: space.lg }}>
-              <FieldInput
-                label="Brand"
-                value={draft.brand}
-                onChange={(v) => setDraftField('brand', v)}
-                placeholder="e.g. Nike"
-              />
-              <FieldInput
-                label="Colour"
-                value={draft.colour}
-                onChange={(v) => setDraftField('colour', v)}
-                placeholder="e.g. Black"
+              <Field label="Brand" value={draft.brand} onChange={(v) => set('brand', v)} placeholder="e.g. Nike" />
+              <Field
+                label="Description"
+                value={draft.description}
+                onChange={(v) => set('description', v)}
+                placeholder="Size, fit, any marks or wear…"
+                multiline
               />
             </View>
           )}
 
-          {current.key === 'price' && (
-            <PriceStep value={draft.price} onChange={(v) => setDraftField('price', v)} />
-          )}
+          {current.key === 'price' && <PriceStep value={draft.price} onChange={(v) => set('price', v)} />}
 
-          {current.key === 'delivery' && (
-            <Card style={{ overflow: 'hidden', padding: 0 }}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
-                  paddingVertical: 16,
-                  paddingHorizontal: 15,
-                }}
-              >
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <T w={600} size={15}>
-                    Offer Sudan pickup
-                  </T>
-                  <T size={13} color={C.textSecondary} lh={19} style={{ marginTop: 3 }}>
-                    Buyers in Khartoum can collect and pay cash at handover.
-                  </T>
-                </View>
-                <Toggle on={sudanPickup} onPress={toggleSudanPickup} />
-              </View>
-            </Card>
+          {current.key === 'location' && (
+            <View style={{ gap: space.lg }}>
+              <Field label="City" value={city} onChange={(v) => set('city', v)} placeholder="e.g. Lyon" />
+              <Field
+                label="Country code"
+                value={countryCode}
+                onChange={(v) => set('countryCode', v.toUpperCase().slice(0, 2))}
+                placeholder="FR"
+              />
+              {countryCode.length === 2 && <DeliveryPreview countryCode={countryCode} />}
+            </View>
           )}
 
           {current.key === 'preview' && (
-            <PreviewStep draft={draft} photoCount={photos.length} pickup={sudanPickup} />
+            <Preview draft={draft} city={city} countryCode={countryCode} images={images} categories={categories.data ?? []} />
+          )}
+
+          {!!error && (
+            <Card style={{ marginTop: space.xl, padding: 14, borderColor: C.errorBorder, backgroundColor: C.errorBg }}>
+              <T size={13.5} color={C.error} lh={19}>
+                {error}
+              </T>
+            </Card>
           )}
         </StepPanel>
       </ScrollView>
@@ -222,33 +333,32 @@ export default function Sell() {
           alignItems: 'center',
         }}
       >
-        {step > 0 && (
-          <Button label="Back" variant="outline" height={50} size={15} onPress={back} style={{ width: 104 }} />
+        {step > 0 && !publishing && (
+          <Button
+            label="Back"
+            variant="outline"
+            height={50}
+            size={15}
+            onPress={() => setStep(step - 1)}
+            style={{ width: 104 }}
+          />
         )}
 
         {last ? (
           <Button
             label="Publish listing"
             loading={publishing}
-            loadingLabel="Publishing…"
-            disabled={!draftComplete(app)}
+            loadingLabel={
+              progress && progress.total > 0
+                ? `Uploading ${progress.done}/${progress.total}…`
+                : 'Publishing…'
+            }
+            disabled={!complete}
             style={{ flex: 1 }}
-            onPress={() => {
-              setPublishing(true);
-              setTimeout(() => {
-                setPublishing(false);
-                tapSuccess();
-                publish();
-              }, 900);
-            }}
+            onPress={publish}
           />
         ) : (
-          <Button
-            label={current.optional && !stepReady ? 'Skip' : 'Continue'}
-            disabled={!stepReady && !current.optional}
-            style={{ flex: 1 }}
-            onPress={next}
-          />
+          <Button label="Next" disabled={!stepReady} style={{ flex: 1 }} onPress={() => setStep(step + 1)} />
         )}
       </FrostedBar>
     </View>
@@ -257,13 +367,6 @@ export default function Sell() {
 
 /* ─────────────────────────── chrome ─────────────────────────── */
 
-/**
- * Back control, "Step n of 8", and the progress bar.
- *
- * The bar animates `scaleX` on a full-width track rather than its own `width`.
- * Width is a layout property and cannot run on the native driver; a transform
- * can, so the progress glides without putting a layout pass on the JS thread.
- */
 function StepHeader({ step, total, onBack }: { step: number; total: number; onBack: () => void }) {
   const insets = useSafeAreaInsets();
   const p = useAnimatedValue((step + 1) / total);
@@ -298,7 +401,7 @@ function StepHeader({ step, total, onBack }: { step: number; total: number; onBa
           <Icon name="chevronLeft" size={22} color={C.text} strokeWidth={2} />
         </Tap>
         <T w={600} size={13.5} color={C.textSecondary} style={{ flex: 1 }}>
-          Step {step + 1} of {total}
+          {step + 1} of {total}
         </T>
       </View>
 
@@ -312,7 +415,6 @@ function StepHeader({ step, total, onBack }: { step: number; total: number; onBa
             height: 3,
             backgroundColor: C.text,
             width: '100%',
-            /* Grows from the start of the track, not from its centre. */
             transformOrigin: 'left',
             transform: [{ scaleX: p }],
           }}
@@ -322,10 +424,8 @@ function StepHeader({ step, total, onBack }: { step: number; total: number; onBa
   );
 }
 
-/** Each step slides in from the right and fades up. */
 function StepPanel({ children }: { children: React.ReactNode }) {
   const p = useAnimatedValue(0);
-
   useEffect(() => {
     Animated.timing(p, {
       toValue: 1,
@@ -350,24 +450,18 @@ function StepPanel({ children }: { children: React.ReactNode }) {
 /* ─────────────────────────── steps ─────────────────────────── */
 
 function PhotosStep({
-  photos,
-  scanning,
-  suggested,
-  onAdd,
+  images,
+  onPick,
   onRemove,
-  onApply,
 }: {
-  photos: number[];
-  scanning: boolean;
-  suggested: boolean;
-  onAdd: () => void;
-  onRemove: (id: number) => void;
-  onApply: () => void;
+  images: PickedImage[];
+  onPick: () => void;
+  onRemove: (index: number) => void;
 }) {
-  if (photos.length === 0) {
+  if (images.length === 0) {
     return (
       <Tap
-        onPress={onAdd}
+        onPress={onPick}
         accessibilityRole="button"
         style={{
           borderWidth: 1.5,
@@ -376,7 +470,6 @@ function PhotosStep({
           backgroundColor: C.surface,
           borderRadius: radius.xl,
           paddingVertical: 44,
-          paddingHorizontal: 20,
           alignItems: 'center',
           gap: 12,
         }}
@@ -394,30 +487,77 @@ function PhotosStep({
           <Icon name="camera" size={25} color={C.text} strokeWidth={1.7} />
         </View>
         <T w={600} size={16}>
-          Add photos
+          Choose photos
         </T>
-        <T size={13.5} color={C.textSecondary} lh={20} style={{ textAlign: 'center' }}>
-          Up to 10. The first one becomes your cover.
+        <T size={13.5} color={C.textSecondary}>
+          Up to 10 from your library.
         </T>
       </Tap>
     );
   }
 
   return (
-    <View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 2 }}>
-        {/* Keyed by id, never by index — see AppState.photos. */}
-        {photos.map((id, i) => (
-          <PhotoCard key={id} id={id} index={i} cover={i === 0} onRemove={onRemove} />
-        ))}
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+      {images.map((img, i) => (
+        <View
+          key={img.uri}
+          style={{
+            width: 94,
+            height: 118,
+            borderRadius: radius.lg,
+            overflow: 'hidden',
+            backgroundColor: C.surfaceSecondary,
+          }}
+        >
+          <Image source={{ uri: img.uri }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+          {i === 0 && (
+            <View
+              style={{
+                position: 'absolute',
+                bottom: 5,
+                left: 5,
+                height: 19,
+                paddingHorizontal: 7,
+                borderRadius: radius.sm,
+                backgroundColor: alpha.inkStrong,
+                justifyContent: 'center',
+              }}
+            >
+              <T w={600} size={10.5} color={C.primaryText}>
+                Cover
+              </T>
+            </View>
+          )}
+          <Tap
+            onPress={() => onRemove(i)}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove photo ${i + 1}`}
+            hitSlop={8}
+            style={{
+              position: 'absolute',
+              top: 5,
+              right: 5,
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              backgroundColor: alpha.inkStrong,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Icon name="close" size={11} color={C.primaryText} strokeWidth={2.8} />
+          </Tap>
+        </View>
+      ))}
 
+      {images.length < 10 && (
         <Tap
-          onPress={onAdd}
+          onPress={onPick}
           accessibilityRole="button"
           accessibilityLabel="Add more photos"
           style={{
-            width: PHOTO_W,
-            height: PHOTO_H,
+            width: 94,
+            height: 118,
             borderRadius: radius.lg,
             borderWidth: 1.5,
             borderStyle: 'dashed',
@@ -430,48 +570,63 @@ function PhotosStep({
         >
           <Icon name="plus" size={20} color={C.textSecondary} />
           <T size={11.5} color={C.textSecondary}>
-            {photos.length} / 10
+            {images.length} / 10
           </T>
         </Tap>
-      </ScrollView>
-
-      {scanning && (
-        <Card style={{ marginTop: 16, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 11 }}>
-          <Spinner />
-          <T size={13.5} color={C.textSecondary}>
-            Reading your photos…
-          </T>
-        </Card>
       )}
+    </ScrollView>
+  );
+}
 
-      {/* Promotional: the suggested-listing feature selling itself. */}
-      {suggested && (
-        <Note tone="accent" style={{ marginTop: 16, padding: 15 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-            <Icon name="sparkle" size={15} color={C.accent} />
-            <T w={600} size={13.5} color={C.accentDark}>
-              We recognised this item
-            </T>
-          </View>
-          <T size={13.5} color={C.textSecondary} lh={20} style={{ marginTop: 8 }}>
-            Nike Air Max 270 · Shoes · Very good · around €45
-          </T>
-          <Button
-            label="Fill in the details"
-            height={42}
-            size={14}
-            onPress={onApply}
-            style={{ marginTop: 13, borderRadius: radius.md }}
-          />
-        </Note>
-      )}
+function CategoryStep({
+  loading,
+  error,
+  rows,
+  selected,
+  onSelect,
+}: {
+  loading: boolean;
+  error: Error | null;
+  rows: { slug: string; label: string }[];
+  selected: string;
+  onSelect: (slug: string) => void;
+}) {
+  if (loading) {
+    return (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <Skeleton key={i} width={104} height={40} round={radius.md} />
+        ))}
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <T size={14} color={C.error}>
+        Could not load categories: {error.message}
+      </T>
+    );
+  }
+
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {rows.map((c) => (
+        <Chip
+          key={c.slug}
+          label={c.label}
+          height={40}
+          round={radius.md}
+          active={selected === c.slug}
+          onPress={() => onSelect(c.slug)}
+        />
+      ))}
     </View>
   );
 }
 
 function PriceStep({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const clean = value.replace(/[^0-9.]/g, '');
-  const n = Number(clean);
+  const n = Number(value.replace(',', '.'));
   const earn = Number.isFinite(n) && n > 0 ? n * 0.97 : 0;
 
   return (
@@ -492,38 +647,66 @@ function PriceStep({ value, onChange }: { value: string; onChange: (v: string) =
         <TextInput
           autoFocus
           value={value}
-          onChangeText={(v) => onChange(v.replace(/[^0-9.]/g, ''))}
+          onChangeText={(v) => onChange(v.replace(/[^0-9.,]/g, ''))}
           placeholder="0"
           placeholderTextColor={C.borderStrong}
           keyboardType="decimal-pad"
           style={{ flex: 1, minWidth: 0, fontSize: 34, fontWeight: '700', color: C.text, padding: 0 }}
         />
       </View>
-
-      <T size={13.5} color={C.textSecondary} lh={20} style={{ marginTop: 14 }}>
-        {earn > 0
-          ? `You receive €${earn.toFixed(2)} after the 3% selling fee.`
-          : 'Similar shoes in very good condition sell for €42–€48.'}
-      </T>
+      {earn > 0 && (
+        <T size={13.5} color={C.textSecondary} style={{ marginTop: 14 }}>
+          You receive €{earn.toFixed(2)} after the 3% selling fee.
+        </T>
+      )}
     </View>
   );
 }
 
-function PreviewStep({
+/** What the buyer will be offered, read from `delivery_options`. */
+function DeliveryPreview({ countryCode }: { countryCode: string }) {
+  const options = useAsync(() => fetchDeliveryOptions(countryCode), `delivery:${countryCode}`);
+  const rows = options.data ?? [];
+  if (options.loading || rows.length === 0) return null;
+
+  return (
+    <Card style={{ padding: 15 }}>
+      <T w={600} size={14} style={{ marginBottom: 8 }}>
+        Buyers here can choose
+      </T>
+      {rows.map((o) => (
+        <View key={o.id} style={{ flexDirection: 'row', gap: 10, paddingVertical: 5 }}>
+          <T size={13.5} style={{ flex: 1 }}>
+            {o.name}
+          </T>
+          <T w={600} size={13.5}>
+            {o.price_cents === 0 ? 'Free' : formatPrice(o.price_cents)}
+          </T>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+function Preview({
   draft,
-  photoCount,
-  pickup,
+  city,
+  countryCode,
+  images,
+  categories,
 }: {
   draft: Draft;
-  photoCount: number;
-  pickup: boolean;
+  city: string;
+  countryCode: string;
+  images: PickedImage[];
+  categories: { slug: string; label: string }[];
 }) {
+  const cat = categories.find((c) => c.slug === draft.categorySlug)?.label ?? '—';
   const rows: [string, string][] = [
-    ['Category', draft.category || '—'],
-    ['Condition', draft.condition || '—'],
+    ['Category', cat],
+    ['Condition', draft.condition ? CONDITION_LABEL[draft.condition] : '—'],
     ['Brand', draft.brand || 'Not given'],
-    ['Colour', draft.colour || 'Not given'],
-    ['Delivery', pickup ? 'Shipping + Sudan pickup' : 'Shipping only'],
+    ['Location', [city, countryCode].filter(Boolean).join(', ') || '—'],
   ];
 
   return (
@@ -538,7 +721,9 @@ function PreviewStep({
             backgroundColor: C.surfaceSecondary,
           }}
         >
-          <ImageSlot tiny />
+          {images[0] && (
+            <Image source={{ uri: images[0].uri }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+          )}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <T w={500} size={16} numberOfLines={2}>
@@ -548,7 +733,7 @@ function PreviewStep({
             {draft.price ? `€${draft.price}` : '—'}
           </T>
           <T size={12.5} color={C.textSecondary} style={{ marginTop: 6 }}>
-            {photoCount} photo{photoCount === 1 ? '' : 's'}
+            {images.length} photo{images.length === 1 ? '' : 's'}
           </T>
         </View>
       </View>
@@ -559,7 +744,6 @@ function PreviewStep({
             key={label}
             style={{
               flexDirection: 'row',
-              alignItems: 'center',
               gap: 12,
               paddingVertical: 14,
               paddingHorizontal: 15,
@@ -582,18 +766,20 @@ function PreviewStep({
 
 /* ─────────────────────────── inputs ─────────────────────────── */
 
-function FieldInput({
+function Field({
   label,
   value,
   onChange,
   placeholder,
   autoFocus,
+  multiline,
 }: {
   label?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
   autoFocus?: boolean;
+  multiline?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
 
@@ -612,23 +798,25 @@ function FieldInput({
         onBlur={() => setFocused(false)}
         placeholder={placeholder}
         placeholderTextColor={C.textMuted}
+        multiline={multiline}
         style={{
-          height: 56,
+          minHeight: multiline ? 110 : 56,
           borderRadius: radius.lg,
           backgroundColor: C.background,
           borderWidth: focused ? 1.5 : 1,
           borderColor: focused ? C.text : C.border,
           paddingHorizontal: 15,
+          paddingTop: multiline ? 14 : 0,
           fontSize: 16,
           color: C.text,
+          textAlignVertical: multiline ? 'top' : 'center',
         }}
       />
     </View>
   );
 }
 
-/** A single-choice row. Selection is a tick plus weight, never colour alone. */
-function ChoiceRow({
+function Choice({
   label,
   selected,
   last,
@@ -658,152 +846,5 @@ function ChoiceRow({
       </T>
       {selected && <Icon name="check" size={19} color={C.text} strokeWidth={2.6} />}
     </Tap>
-  );
-}
-
-/* ─────────────────────────── photo card ─────────────────────────── */
-
-const PHOTO_W = 94;
-const PHOTO_H = 118;
-
-/**
- * One attached photo.
- *
- * Arrival and removal are deliberately asymmetric: a photo fades up into place
- * over 240ms, but leaves in 160ms. Deletion is a decision already made, and
- * making the user watch it play out at the same pace as the arrival makes the
- * interface feel like it is arguing.
- *
- * The card animates itself out and only then tells the store, so the row never
- * reflows out from under the thing being dismissed.
- */
-function PhotoCard({
-  id,
-  index,
-  cover,
-  onRemove,
-}: {
-  id: number;
-  index: number;
-  cover: boolean;
-  onRemove: (id: number) => void;
-}) {
-  const p = useAnimatedValue(0);
-  const [leaving, setLeaving] = useState(false);
-
-  /**
-   * The stagger is fixed at mount. Deriving the delay from the live `index`
-   * would make every surviving card replay its entrance each time a deletion
-   * shifted it along the rail.
-   */
-  const [enterDelay] = useState(() => index * 70);
-
-  useEffect(() => {
-    Animated.timing(p, {
-      toValue: 1,
-      duration: 240,
-      delay: enterDelay,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: NATIVE_DRIVER,
-    }).start();
-  }, [p, enterDelay]);
-
-  const remove = () => {
-    if (leaving) return;
-    setLeaving(true);
-    Animated.timing(p, {
-      toValue: 0,
-      duration: 160,
-      easing: Easing.in(Easing.quad),
-      useNativeDriver: NATIVE_DRIVER,
-    }).start(({ finished }) => {
-      if (finished) onRemove(id);
-    });
-  };
-
-  return (
-    <Animated.View
-      style={{
-        width: PHOTO_W,
-        height: PHOTO_H,
-        borderRadius: radius.lg,
-        overflow: 'hidden',
-        backgroundColor: C.surfaceSecondary,
-        opacity: p,
-        transform: [
-          { scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
-          { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
-        ],
-      }}
-    >
-      <ImageSlot label={`Photo ${index + 1}`} glyph={20} />
-
-      {cover && (
-        <View
-          style={{
-            position: 'absolute',
-            bottom: 5,
-            left: 5,
-            height: 19,
-            paddingHorizontal: 7,
-            borderRadius: radius.sm,
-            backgroundColor: alpha.inkStrong,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <T w={600} size={10.5} color={C.primaryText}>
-            Cover
-          </T>
-        </View>
-      )}
-
-      <Tap
-        onPress={remove}
-        accessibilityRole="button"
-        accessibilityLabel={`Remove photo ${index + 1}`}
-        hitSlop={8}
-        style={{
-          position: 'absolute',
-          top: 5,
-          right: 5,
-          width: 22,
-          height: 22,
-          borderRadius: 11,
-          backgroundColor: alpha.inkStrong,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Icon name="close" size={11} color={C.primaryText} strokeWidth={2.8} />
-      </Tap>
-    </Animated.View>
-  );
-}
-
-/** Indeterminate ring shown while the listing is being read off the photos. */
-function Spinner({ size = 19, color = C.text }: { size?: number; color?: string }) {
-  const spin = useAnimatedValue(0);
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 800, easing: Easing.linear, useNativeDriver: NATIVE_DRIVER })
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [spin]);
-
-  return (
-    <Animated.View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        borderWidth: 2,
-        borderColor: C.border,
-        borderTopColor: color,
-        transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
-      }}
-    />
   );
 }

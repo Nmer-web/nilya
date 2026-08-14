@@ -8,7 +8,7 @@ import { Icon, type IconName } from '@/components/icon';
 import { PressableScale, T } from '@/components/ui';
 
 import { useApp } from '@/store/app-store';
-import { color as C, radius, shadow } from '@/theme/tokens';
+import { color as C, shadow } from '@/theme/tokens';
 
 /** Routes that keep the nav visible, mirroring the design's `showNav`. */
 export const NAV_ROUTES = [
@@ -142,13 +142,18 @@ export function BottomNav({ pathname }: { pathname: string }) {
       {item(TABS[1])}
 
       {/*
-        Sell is the primary action, so it reads as a filled pill rather than a
-        tab. Black rather than accent: the accent budget is spent on the unread
-        badge sitting two tabs along, and two competing highlights in one bar
-        would leave neither reading as primary.
+        Sell is the primary action, so it reads as a filled disc rather than a
+        tab. A circle rather than a labelled pill: the reference sets it as a
+        single black mark, and at 44pt it is both the largest target in the bar
+        and the only one that is not a word — which is what makes it read as
+        the action rather than a fifth destination.
+
+        Black rather than accent, because the accent budget is spent on the
+        unread badge two tabs along and two highlights in one bar would leave
+        neither reading as primary.
       */}
       <PressableScale
-        scale={0.96}
+        scale={0.94}
         haptic
         onPress={() => go('/sell')}
         accessibilityRole="button"
@@ -157,21 +162,22 @@ export function BottomNav({ pathname }: { pathname: string }) {
       >
         <View
           style={{
-            height: 34,
-            paddingHorizontal: 16,
-            borderRadius: radius.pill,
+            width: 44,
+            height: 44,
+            borderRadius: 22,
             backgroundColor: C.text,
-            flexDirection: 'row',
             alignItems: 'center',
-            gap: 5,
+            justifyContent: 'center',
+            marginTop: -6,
             ...shadow.raised,
           }}
         >
-          <Icon name="plus" size={15} color={C.primaryText} strokeWidth={2.6} />
-          <T w={600} size={12.5} color={C.primaryText}>
-            Sell
-          </T>
+          <Icon name="plus" size={22} color={C.primaryText} strokeWidth={2.4} />
         </View>
+        {/* Labelled like every other tab, so the bar reads as one row. */}
+        <T w={500} size={10.5} color={C.textMuted} style={{ marginTop: 2 }}>
+          Sell
+        </T>
       </PressableScale>
 
       {item(TABS[2])}
