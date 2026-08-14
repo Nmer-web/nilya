@@ -12,7 +12,7 @@ import { Button, Card, Note, T, Tap, Toggle } from '@/components/ui';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { tapSuccess, tapWarn } from '@/lib/haptics';
 import { useApp } from '@/store/app-store';
-import { color as C, radius } from '@/theme/tokens';
+import { alpha, color as C, radius } from '@/theme/tokens';
 
 export default function Sell() {
   const insets = useSafeAreaInsets();
@@ -46,7 +46,7 @@ export default function Sell() {
                 borderStyle: 'dashed',
                 borderColor: C.borderStrong,
                 backgroundColor: C.surface,
-                borderRadius: radius['3xl'],
+                borderRadius: radius.xl,
                 paddingVertical: 38,
                 paddingHorizontal: 20,
                 alignItems: 'center',
@@ -95,7 +95,7 @@ export default function Sell() {
                   style={{
                     width: 94,
                     height: 118,
-                    borderRadius: radius.xl,
+                    borderRadius: radius.lg,
                     overflow: 'hidden',
                     backgroundColor: C.well,
                   }}
@@ -110,7 +110,7 @@ export default function Sell() {
                         height: 19,
                         paddingHorizontal: 7,
                         borderRadius: radius.sm,
-                        backgroundColor: 'rgba(23,23,23,0.8)',
+                        backgroundColor: alpha.inkStrong,
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
@@ -130,7 +130,7 @@ export default function Sell() {
                 style={{
                   width: 94,
                   height: 118,
-                  borderRadius: radius.xl,
+                  borderRadius: radius.lg,
                   borderWidth: 1.5,
                   borderStyle: 'dashed',
                   borderColor: C.borderStrong,
@@ -270,7 +270,7 @@ export default function Sell() {
 
 function StatCard({ title, sub }: { title: string; sub: string }) {
   return (
-    <Card style={{ flex: 1, padding: 12, borderRadius: radius.xl }}>
+    <Card style={{ flex: 1, padding: 12, borderRadius: radius.lg }}>
       <T w={600} size={12.5}>
         {title}
       </T>

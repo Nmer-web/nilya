@@ -60,7 +60,7 @@ export function Skeleton({
 function CardSkeleton({ width }: { width: number }) {
   return (
     <View style={{ width }}>
-      <Skeleton width={width} height={width * (4 / 3)} round={radius.xl} />
+      <Skeleton width={width} height={width * (4 / 3)} round={radius.lg} />
       <Skeleton width="70%" height={12} style={{ marginTop: 10 }} />
       <Skeleton width="38%" height={15} style={{ marginTop: 7 }} />
       <Skeleton width="52%" height={10} style={{ marginTop: 8 }} />

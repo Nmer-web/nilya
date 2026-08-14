@@ -9,7 +9,7 @@ import { ScreenHeader } from '@/components/screen-header';
 import { Button, Card, Note, SectionLabel, T, Tap } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
 import { deliveryFor, euro, useApp } from '@/store/app-store';
-import { color as C, radius } from '@/theme/tokens';
+import { alpha, color as C, radius, shadow } from '@/theme/tokens';
 
 export default function DeliveryMethod() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,7 +45,7 @@ export default function DeliveryMethod() {
             gap: 10,
             paddingVertical: 12,
             paddingHorizontal: 14,
-            borderRadius: radius.xl,
+            borderRadius: radius.lg,
           }}
         >
           <CountryTag code={p.cc} />
@@ -94,7 +94,7 @@ export default function DeliveryMethod() {
                   backgroundColor: C.surface,
                   borderWidth: 1.5,
                   borderColor: selected ? C.text : C.border,
-                  borderRadius: radius['2xl'],
+                  borderRadius: radius.lg,
                   padding: 14,
                   flexDirection: 'row',
                   alignItems: 'flex-start',
@@ -229,7 +229,7 @@ function MiniMap() {
             top: 0,
             bottom: 0,
             width: 1,
-            backgroundColor: 'rgba(154,150,138,0.35)',
+            backgroundColor: alpha.hairline,
           }}
         />
       ))}
@@ -242,7 +242,7 @@ function MiniMap() {
             left: 0,
             right: 0,
             height: 1,
-            backgroundColor: 'rgba(154,150,138,0.35)',
+            backgroundColor: alpha.hairline,
           }}
         />
       ))}
@@ -259,11 +259,7 @@ function MiniMap() {
           backgroundColor: C.accent,
           borderWidth: 3,
           borderColor: C.surface,
-          shadowColor: '#000',
-          shadowOpacity: 0.2,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 3,
+          ...shadow.raised,
         }}
       />
     </View>

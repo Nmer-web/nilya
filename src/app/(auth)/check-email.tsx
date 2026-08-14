@@ -85,7 +85,7 @@ export default function CheckEmail() {
           style={{
             width: 56,
             height: 56,
-            borderRadius: radius['3xl'],
+            borderRadius: radius.xl,
             backgroundColor: C.text,
             alignItems: 'center',
             justifyContent: 'center',

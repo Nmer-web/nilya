@@ -32,7 +32,7 @@ export default function Explore() {
             style={{
               flex: 1,
               height: 46,
-              borderRadius: radius['2xl'],
+              borderRadius: radius.lg,
               backgroundColor: C.surface,
               borderWidth: 1,
               borderColor: C.border,
@@ -85,7 +85,7 @@ export default function Explore() {
             style={{
               width: 46,
               height: 46,
-              borderRadius: radius['2xl'],
+              borderRadius: radius.lg,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: active ? C.text : C.surface,

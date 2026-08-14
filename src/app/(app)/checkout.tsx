@@ -150,7 +150,7 @@ export default function Checkout() {
                 width: 44,
                 height: 30,
                 borderRadius: 6,
-                backgroundColor: '#2F3E4E',
+                backgroundColor: C.cardFace,
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexDirection: 'row',

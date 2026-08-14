@@ -8,13 +8,14 @@ import { Icon } from '@/components/icon';
 import { ImageSlot } from '@/components/image-slot';
 import { StarRow } from '@/components/reviews';
 import { FloatingIconButton } from '@/components/screen-header';
+import { PriceTile } from '@/components/product-card';
 import { FadeIn } from '@/components/skeleton';
 import { Avatar, Button, T, Tap } from '@/components/ui';
 import { getProduct, initialsOf, listingsBy } from '@/data/catalog';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { tapLight } from '@/lib/haptics';
 import { deliveryFor, euro, useApp } from '@/store/app-store';
-import { color as C, motion, radius } from '@/theme/tokens';
+import { alpha, color as C, motion, radius } from '@/theme/tokens';
 
 /** Gallery height relative to width, taken from the design's 393×430 slot. */
 const GALLERY_RATIO = 430 / 393;
@@ -80,8 +81,8 @@ export default function ProductDetail() {
               <FloatingIconButton
                 name="heart"
                 label={faved ? 'Remove from favourites' : 'Save to favourites'}
-                color={faved ? C.favOn : C.text}
-                fill={faved ? C.favOn : 'none'}
+                color={C.favourite}
+                fill={faved ? C.favourite : 'none'}
                 onPress={favourite}
               />
             </Animated.View>
@@ -105,7 +106,7 @@ export default function ProductDetail() {
                   width: i === page ? 18 : 5,
                   height: 5,
                   borderRadius: 3,
-                  backgroundColor: i === page ? 'rgba(23,23,23,0.75)' : 'rgba(23,23,23,0.28)',
+                  backgroundColor: i === page ? alpha.inkMedium : alpha.inkFaint,
                 }}
               />
             ))}
@@ -241,26 +242,15 @@ export default function ProductDetail() {
             <T w={600} size={16} style={{ marginBottom: 12 }}>
               More from {p.s}
             </T>
+            {/*
+              The shared tile rather than a bespoke card: this rail used to
+              hand-roll its own 104×130 well at an 11pt radius, which is off the
+              radius ladder and drifted from the grid every time the card
+              changed.
+            */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
               {related.map((r) => (
-                <Tap
-                  key={r.id}
-                  onPress={() => router.push({ pathname: '/product/[id]', params: { id: r.id } })}
-                  accessibilityRole="button"
-                  style={{ width: 104 }}
-                >
-                  <View
-                    style={{ width: 104, height: 130, borderRadius: 11, overflow: 'hidden', backgroundColor: C.well }}
-                  >
-                    <ImageSlot label={r.t} glyph={20} />
-                  </View>
-                  <T size={12.5} numberOfLines={1} style={{ marginTop: 6 }}>
-                    {r.t}
-                  </T>
-                  <T w={700} size={14}>
-                    {euro(r.pr)}
-                  </T>
-                </Tap>
+                <PriceTile key={r.id} product={r} width={104} title />
               ))}
             </ScrollView>
           </View>

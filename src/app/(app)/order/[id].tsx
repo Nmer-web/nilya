@@ -8,7 +8,7 @@ import { ImageSlot } from '@/components/image-slot';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, Card, T, Tap } from '@/components/ui';
 import { useApp } from '@/store/app-store';
-import { color as C } from '@/theme/tokens';
+import { alpha, color as C } from '@/theme/tokens';
 
 type Step = {
   title: string;
@@ -127,7 +127,7 @@ function TimelineRow({ step, last }: { step: Step; last: boolean }) {
               borderRadius: 9,
               backgroundColor: C.accent,
               borderWidth: 4,
-              borderColor: 'rgba(178,69,31,0.16)',
+              borderColor: alpha.accentRing,
             }}
           />
         ) : (

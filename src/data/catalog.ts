@@ -277,7 +277,14 @@ export const PRODUCTS: Product[] = [
   },
 ];
 
-export const CATS = ['All', 'Women', 'Men', 'Kids', 'Home', 'Electronics', 'Beauty', 'Shoes', 'Sports'];
+/**
+ * Home's category rail.
+ *
+ * `Sports` trails the recommended set because it is the only chip that reaches
+ * its listing — dropping it to match the shortlist exactly would strand that
+ * product behind `All`.
+ */
+export const CATS = ['All', 'Women', 'Men', 'Kids', 'Home', 'Electronics', 'Shoes', 'Beauty', 'Sports'];
 
 export const EXCATS = [
   'All',

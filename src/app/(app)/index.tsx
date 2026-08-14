@@ -30,6 +30,45 @@ const DISCOVERY: { label: string; product: Product }[] = [
 const BRAND_ROW = 44;
 
 /**
+ * Discovery card width.
+ *
+ * Sized so the fourth card is clipped rather than aligned to the gutter: a rail
+ * whose last visible card ends flush reads as a finished row, and nobody
+ * scrolls it.
+ */
+const DISCOVERY_CARD = 152;
+
+/** Search field and its filter button share a height so they read as one row. */
+const SEARCH_HEIGHT = 46;
+
+/**
+ * Shared heading for the two feed sections, so "Discover" and "Recommended for
+ * you" sit on the same baseline and the page reads as two parallel blocks
+ * rather than a rail that happens to precede a grid.
+ */
+function SectionHeading({ title, right }: { title: string; right?: string }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        gap: space.md,
+        paddingHorizontal: space.gutter,
+        paddingBottom: space.md,
+      }}
+    >
+      <T variant="sectionTitle">{title}</T>
+      {!!right && (
+        <T variant="meta" color={C.textSecondary}>
+          {right}
+        </T>
+      )}
+    </View>
+  );
+}
+
+/**
  * True only for the first Home mount of an app session.
  *
  * The catalog is a static import, so there is no fetch to wait on; this exists
@@ -106,7 +145,7 @@ export default function Home() {
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
           useNativeDriver: NATIVE_DRIVER,
         })}
-        contentContainerStyle={{ paddingTop: headerH, paddingBottom: navClearance }}
+        contentContainerStyle={{ paddingTop: headerH + space.lg, paddingBottom: navClearance }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -118,20 +157,7 @@ export default function Home() {
       >
         <DiscoveryRail />
 
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'baseline',
-            justifyContent: 'space-between',
-            paddingHorizontal: space.gutter,
-            paddingBottom: 14,
-          }}
-        >
-          <T variant="sectionTitle">Recommended for you</T>
-          <T variant="meta" color={C.textSecondary}>
-            {feed.length} items
-          </T>
-        </View>
+        <SectionHeading title="Recommended for you" right={`${feed.length} items`} />
 
         {loading ? (
           <ProductGridSkeleton />
@@ -142,11 +168,15 @@ export default function Home() {
            * than a visual reload — the header and rail above are untouched.
            */
           <FadeIn key={cat} x={14} duration={260}>
-            <ProductGrid products={feed} meta="pin" />
+            <ProductGrid products={feed} />
           </FadeIn>
         )}
 
-        <T variant="meta" color={C.textTertiary} style={{ textAlign: 'center', paddingTop: 28 }}>
+        <T
+          variant="meta"
+          color={C.textMuted}
+          style={{ textAlign: 'center', paddingTop: space['3xl'], paddingHorizontal: space.gutter }}
+        >
           Over 40,000 items from the diaspora
         </T>
       </ScrollView>
@@ -213,9 +243,9 @@ export default function Home() {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
+            gap: space.sm,
             paddingHorizontal: space.gutter,
-            paddingBottom: 4,
+            paddingBottom: space.xs,
           }}
         >
           <Tap
@@ -224,8 +254,8 @@ export default function Home() {
             accessibilityLabel="Search items, brands, categories"
             style={{
               flex: 1,
-              height: 46,
-              borderRadius: radius['2xl'],
+              height: SEARCH_HEIGHT,
+              borderRadius: radius.lg,
               backgroundColor: C.surface,
               borderWidth: 1,
               borderColor: C.border,
@@ -241,14 +271,16 @@ export default function Home() {
             </T>
           </Tap>
 
+          {/* Square, so the filter reads as a peer of the field rather than a
+              control docked inside it. */}
           <PressableScale
             onPress={() => openSheet({ kind: 'filters' })}
             accessibilityRole="button"
             accessibilityLabel="Filters"
             style={{
-              width: 46,
-              height: 46,
-              borderRadius: radius['2xl'],
+              width: SEARCH_HEIGHT,
+              height: SEARCH_HEIGHT,
+              borderRadius: radius.lg,
               borderWidth: 1,
               borderColor: C.border,
               backgroundColor: C.surface,
@@ -263,7 +295,7 @@ export default function Home() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 7, paddingHorizontal: space.gutter, paddingVertical: 11 }}
+          contentContainerStyle={{ gap: 7, paddingHorizontal: space.gutter, paddingVertical: space.md }}
         >
           {CATS.map((n) => (
             <Chip key={n} label={n} active={cat === n} onPress={() => setCat(n)} />
@@ -285,39 +317,48 @@ export default function Home() {
 function DiscoveryRail() {
   const router = useRouter();
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 10, paddingHorizontal: space.gutter, paddingTop: 14, paddingBottom: 22 }}
-    >
-      {DISCOVERY.map(({ label, product }) => (
-        <PressableScale
-          key={label}
-          scale={0.98}
-          onPress={() => router.push({ pathname: '/product/[id]', params: { id: product.id } })}
-          accessibilityRole="button"
-          accessibilityLabel={`${label}: ${product.t}`}
-          style={{ width: 152 }}
-        >
-          <View
-            style={{
-              width: 152,
-              height: 112,
-              borderRadius: radius.xl,
-              overflow: 'hidden',
-              backgroundColor: C.well,
-            }}
+    <>
+      <SectionHeading title="Discover" />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: space.md, paddingHorizontal: space.gutter, paddingBottom: space['2xl'] }}
+      >
+        {DISCOVERY.map(({ label, product }) => (
+          <PressableScale
+            key={label}
+            scale={0.98}
+            onPress={() => router.push({ pathname: '/product/[id]', params: { id: product.id } })}
+            accessibilityRole="button"
+            accessibilityLabel={`${label}: ${product.t}`}
+            style={{ width: DISCOVERY_CARD }}
           >
-            <ImageSlot label={product.t} glyph={22} />
-          </View>
-          <T w={600} size={12} color={C.accent} tracking={0.3} style={{ paddingTop: 8 }}>
-            {label}
-          </T>
-          <T w={500} size={13.5} numberOfLines={1} style={{ marginTop: 2 }}>
-            {product.t}
-          </T>
-        </PressableScale>
-      ))}
-    </ScrollView>
+            <View
+              style={{
+                width: DISCOVERY_CARD,
+                height: 112,
+                borderRadius: radius.lg,
+                overflow: 'hidden',
+                backgroundColor: C.surfaceSecondary,
+              }}
+            >
+              <ImageSlot label={product.t} glyph={22} />
+            </View>
+            {/*
+              An eyebrow in muted caps rather than the accent it used to wear.
+              Four orange labels was the single heaviest use of colour on the
+              screen, and it spent the whole 2% budget on decoration — the
+              accent is now the unread dot alone.
+            */}
+            <T w={600} size={11} color={C.textMuted} tracking={0.7} style={{ paddingTop: space.sm }}>
+              {label.toUpperCase()}
+            </T>
+            <T w={500} size={13.5} numberOfLines={1} style={{ marginTop: 3 }}>
+              {product.t}
+            </T>
+          </PressableScale>
+        ))}
+      </ScrollView>
+    </>
   );
 }

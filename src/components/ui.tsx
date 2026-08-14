@@ -15,7 +15,7 @@ import {
 import { Icon, type IconName } from '@/components/icon';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { tapLight, tapSelect } from '@/lib/haptics';
-import { color as C, font, motion, radius, shadow, type as type_ } from '@/theme/tokens';
+import { alpha, color as C, font, motion, radius, shadow, type as type_ } from '@/theme/tokens';
 
 /* ─────────────────────────── type ─────────────────────────── */
 
@@ -174,7 +174,7 @@ export function Spinner({ size = 16, color = C.onDark }: { size?: number; color?
         height: size,
         borderRadius: size / 2,
         borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.3)',
+        borderColor: alpha.spinnerTrack,
         borderTopColor: color,
         transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
       }}
@@ -225,7 +225,7 @@ export function Button({
       style={[
         {
           height,
-          borderRadius: radius.xl,
+          borderRadius: radius.lg,
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'row',
@@ -275,7 +275,7 @@ export function Card({
           backgroundColor: C.surface,
           borderWidth: 1,
           borderColor: C.border,
-          borderRadius: radius['2xl'],
+          borderRadius: radius.lg,
         },
         padded && { padding: 15 },
         style,
@@ -304,7 +304,7 @@ export function Note({
           backgroundColor: accent ? C.accentBg : C.greenBg,
           borderWidth: 1,
           borderColor: accent ? C.accentBorder : C.greenBorder,
-          borderRadius: radius.xl,
+          borderRadius: radius.lg,
           padding: 13,
         },
         style,
@@ -379,7 +379,7 @@ export function Segmented<K extends string>({
   return (
     <View
       style={[
-        { flexDirection: 'row', gap: 6, backgroundColor: C.track, borderRadius: radius.lg, padding: 3 },
+        { flexDirection: 'row', gap: 6, backgroundColor: C.track, borderRadius: radius.md, padding: 3 },
         style,
       ]}
     >

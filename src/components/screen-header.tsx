@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icon';
 import { T, Tap } from '@/components/ui';
-import { color as C } from '@/theme/tokens';
+import { alpha, color as C, shadow } from '@/theme/tokens';
 
 /**
  * Back-and-title bar used by every pushed screen.
@@ -107,14 +107,10 @@ export function FloatingIconButton({
         width: 38,
         height: 38,
         borderRadius: 19,
-        backgroundColor: 'rgba(250,249,245,0.92)',
+        backgroundColor: alpha.floatingControl,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 3,
+        ...shadow.raised,
       }}
     >
       <Icon name={name} size={19} color={color} fill={fill} strokeWidth={name === 'heart' ? 1.8 : 2} />

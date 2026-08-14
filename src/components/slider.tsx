@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, type GestureResponderEvent } from 'react-native';
 
-import { color as C } from '@/theme/tokens';
+import { color as C, shadow } from '@/theme/tokens';
 
 const KNOB = 22;
 
@@ -77,11 +77,7 @@ export function Slider({
           backgroundColor: C.text,
           borderWidth: 3,
           borderColor: C.surface,
-          shadowColor: '#000',
-          shadowOpacity: 0.25,
-          shadowRadius: 4,
-          shadowOffset: { width: 0, height: 1 },
-          elevation: 3,
+          ...shadow.raised,
         }}
       />
     </View>

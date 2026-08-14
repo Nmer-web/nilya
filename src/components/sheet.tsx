@@ -15,7 +15,7 @@ import { useNavHeight } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
 import { T, Tap } from '@/components/ui';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { color as C, radius, shadow } from '@/theme/tokens';
+import { alpha, color as C, radius, shadow } from '@/theme/tokens';
 
 /** Dimmed backdrop; tapping it dismisses, matching the design's scrim. */
 export function Scrim({ onPress }: { onPress: () => void }) {
@@ -30,7 +30,7 @@ export function Scrim({ onPress }: { onPress: () => void }) {
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
         onPress={onPress}
-        style={[StyleSheet.absoluteFill, { backgroundColor: C.scrim }]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: alpha.scrim }]}
       />
     </Animated.View>
   );
@@ -171,7 +171,7 @@ export function Toast({ message }: { message: string }) {
         right: 16,
         bottom: navHeight + 16,
         backgroundColor: C.bg,
-        borderRadius: radius['2xl'],
+        borderRadius: radius.lg,
         borderWidth: 1,
         borderColor: C.border,
         paddingVertical: 13,

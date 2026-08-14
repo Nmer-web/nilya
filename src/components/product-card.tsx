@@ -14,6 +14,12 @@ import { color as C, motion, radius, shadow, space } from '@/theme/tokens';
 const COLUMN_GAP = 10;
 const ROW_GAP = 20;
 
+/** Listing imagery is portrait everywhere — the card, the tile, the rail. */
+const IMAGE_RATIO = 3 / 4;
+
+/** Minimum comfortable touch target. The visible disc is smaller; see below. */
+const TOUCH = 44;
+
 /** Card width for an n-column feed grid inset by the standard gutter. */
 function useCardWidth(columns = 2) {
   const { width } = useWindowDimensions();
@@ -26,6 +32,9 @@ function useCardWidth(columns = 2) {
  * The press target is a full 44pt square for reach, while the visible disc is
  * 32pt so it does not crowd the photo — the gap between the two is the whole
  * reason the touch area is declared separately from the circle.
+ *
+ * The icon is black in both states; only `fill` changes. State is therefore
+ * legible without relying on colour.
  */
 export function FavouriteButton({ id, size = 32 }: { id: number; size?: number }) {
   const { favs, toggleFav } = useApp();
@@ -55,14 +64,14 @@ export function FavouriteButton({ id, size = 32 }: { id: number; size?: number }
         accessibilityRole="button"
         accessibilityState={{ selected: on }}
         accessibilityLabel={on ? 'Remove from favourites' : 'Save to favourites'}
-        style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+        style={{ width: TOUCH, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}
       >
         <Animated.View
           style={{
             width: size,
             height: size,
             borderRadius: size / 2,
-            backgroundColor: C.bg,
+            backgroundColor: C.background,
             alignItems: 'center',
             justifyContent: 'center',
             transform: [{ scale: s }],
@@ -72,9 +81,9 @@ export function FavouriteButton({ id, size = 32 }: { id: number; size?: number }
           <Icon
             name="heart"
             size={17}
-            color={on ? C.favOn : C.favOff}
-            fill={on ? C.favOn : 'none'}
-            strokeWidth={on ? 2 : 1.8}
+            color={C.favourite}
+            fill={on ? C.favourite : 'none'}
+            strokeWidth={1.9}
           />
         </Animated.View>
       </PressableScale>
@@ -83,24 +92,46 @@ export function FavouriteButton({ id, size = 32 }: { id: number; size?: number }
 }
 
 /**
- * The feed / search / favourites card.
+ * A listing's image well. Shared so that every surface showing a listing gets
+ * the same ratio, radius and placeholder rather than re-deriving them.
+ *
+ * `label` is the placeholder's caption and is only worth passing where nothing
+ * else names the item — on a card that prints the title directly underneath it,
+ * the caption is the same string twice.
+ */
+function ListingImage({ width, label, glyph }: { width: number; label?: string; glyph?: number }) {
+  return (
+    <View
+      style={{
+        width,
+        aspectRatio: IMAGE_RATIO,
+        borderRadius: radius.lg,
+        overflow: 'hidden',
+        backgroundColor: C.surfaceSecondary,
+      }}
+    >
+      <ImageSlot label={label} glyph={glyph} />
+    </View>
+  );
+}
+
+/**
+ * The listing card — feed, search, favourites.
+ *
+ * Image-first and undecorated: no border, no shadow, no surrounding container.
+ * On a white canvas the photography is what separates one card from the next,
+ * so anything drawn around it competes with the thing being sold.
  *
  * Memoised, and deliberately not a consumer of the app store: `FavouriteButton`
  * subscribes on its own, so toggling a heart re-renders that one button instead
  * of every card in the grid.
- *
- * `meta` picks between the two label treatments in the design: Home pairs the
- * condition with a pin-marked city, while Explore and Favorites collapse both
- * onto a single tertiary line.
  */
 export const ProductCard = React.memo(function ProductCard({
   product: p,
   width,
-  meta = 'inline',
 }: {
   product: Product;
   width: number;
-  meta?: 'pin' | 'inline';
 }) {
   const router = useRouter();
   return (
@@ -116,42 +147,29 @@ export const ProductCard = React.memo(function ProductCard({
         accessibilityRole="button"
         accessibilityLabel={`${p.t}, ${euro(p.pr)}, ${p.cd}, ${p.city}`}
       >
-        <View
-          style={{
-            width,
-            aspectRatio: 3 / 4,
-            borderRadius: radius.xl,
-            overflow: 'hidden',
-            backgroundColor: C.well,
-          }}
-        >
-          <ImageSlot label={p.t} />
-        </View>
+        <ListingImage width={width} />
 
-        <View style={{ paddingTop: 9 }}>
+        {/*
+          The text stack tightens as it descends: title to price is the closest
+          pairing on the card, and the metadata falls away from both. Uniform
+          gaps here would read as four unrelated lines.
+        */}
+        <View style={{ paddingTop: space.sm }}>
           <T variant="productTitle" numberOfLines={1}>
             {p.t}
           </T>
-          <T variant="price" style={{ marginTop: 3 }}>
+          <T variant="price" style={{ marginTop: 2 }}>
             {euro(p.pr)}
           </T>
-          {meta === 'pin' ? (
-            <>
-              <T variant="meta" color={C.textSecondary} style={{ marginTop: 3 }}>
-                {p.cd}
-              </T>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 }}>
-                <Icon name="pin" size={11} color={C.textTertiary} />
-                <T size={12} color={C.textTertiary}>
-                  {p.city}, {p.cc}
-                </T>
-              </View>
-            </>
-          ) : (
-            <T size={12} color={C.textTertiary} style={{ marginTop: 3 }}>
-              {p.cd} · {p.city}, {p.cc}
+          <T variant="meta" color={C.textSecondary} style={{ marginTop: 5 }}>
+            {p.cd}
+          </T>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+            <Icon name="pin" size={11} color={C.textMuted} />
+            <T size={12} color={C.textMuted} numberOfLines={1}>
+              {p.city}, {p.cc}
             </T>
-          )}
+          </View>
         </View>
       </PressableScale>
 
@@ -163,11 +181,9 @@ export const ProductCard = React.memo(function ProductCard({
 /** Two-column wrapper on the design's grid gaps. */
 export const ProductGrid = React.memo(function ProductGrid({
   products,
-  meta,
   columns = 2,
 }: {
   products: Product[];
-  meta?: 'pin' | 'inline';
   columns?: number;
 }) {
   const width = useCardWidth(columns);
@@ -182,19 +198,29 @@ export const ProductGrid = React.memo(function ProductGrid({
       }}
     >
       {products.map((p) => (
-        <ProductCard key={p.id} product={p} width={width} meta={meta} />
+        <ProductCard key={p.id} product={p} width={width} />
       ))}
     </View>
   );
 });
 
-/** Compact price-only tile used on the Profile and Seller listing grids. */
+/**
+ * Compact tile for the dense surfaces: the profile and seller listing grids,
+ * and the "more from this seller" rail.
+ *
+ * Same imagery treatment as the full card, minus the favourite and the
+ * metadata — at this size they would be unreadable rather than subtle. `title`
+ * is optional because the three-up grids read as a wall of prices, while the
+ * rail needs to name what it is offering.
+ */
 export const PriceTile = React.memo(function PriceTile({
   product: p,
   width,
+  title,
 }: {
   product: Product;
   width: number;
+  title?: boolean;
 }) {
   const router = useRouter();
   return (
@@ -205,18 +231,14 @@ export const PriceTile = React.memo(function PriceTile({
       accessibilityLabel={`${p.t}, ${euro(p.pr)}`}
       style={{ width }}
     >
-      <View
-        style={{
-          width,
-          aspectRatio: 3 / 4,
-          borderRadius: radius.lg,
-          overflow: 'hidden',
-          backgroundColor: C.well,
-        }}
-      >
-        <ImageSlot label={p.t} glyph={20} />
-      </View>
-      <T w={700} size={14} tracking={-0.2} style={{ marginTop: 6 }}>
+      {/* Caption only carries the name when the tile itself does not. */}
+      <ListingImage width={width} label={title ? undefined : p.t} glyph={20} />
+      {title && (
+        <T size={12.5} numberOfLines={1} style={{ marginTop: space.sm }}>
+          {p.t}
+        </T>
+      )}
+      <T w={700} size={14} tracking={-0.2} style={{ marginTop: title ? 1 : 6 }}>
         {euro(p.pr)}
       </T>
     </PressableScale>

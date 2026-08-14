@@ -27,7 +27,7 @@ export function Field({ label, error, style, ...rest }: FieldProps) {
       <View
         style={{
           height: 50,
-          borderRadius: radius.xl,
+          borderRadius: radius.lg,
           backgroundColor: C.bg,
           borderColor: error ? C.error : focused ? C.text : C.border,
           /* Focus is carried by weight as well as colour, per §23. */
@@ -82,7 +82,7 @@ export function PasswordField({ label, error, ...rest }: FieldProps) {
       <View
         style={{
           height: 50,
-          borderRadius: radius.xl,
+          borderRadius: radius.lg,
           backgroundColor: C.bg,
           borderColor: error ? C.error : focused ? C.text : C.border,
           /* Focus is carried by weight as well as colour, per §23. */
@@ -126,7 +126,7 @@ export function FormError({ message }: { message?: string | null }) {
         backgroundColor: C.accentBg,
         borderWidth: 1,
         borderColor: C.accentBorder,
-        borderRadius: radius.xl,
+        borderRadius: radius.lg,
         padding: 12,
         marginBottom: 16,
       }}

@@ -5,27 +5,42 @@
  * warm accent held in reserve. The intended balance is roughly 90% white and
  * neutral, 8% black, 2% accent — so `accent` belongs on unread badges, counts
  * and the occasional editorial tag, and nowhere else. Anything that wants to
- * "stand out" should reach for `text` on `bg` first; contrast, not colour, is
- * what carries hierarchy here.
+ * "stand out" should reach for `text` on `background` first; contrast, not
+ * colour, is what carries hierarchy here.
+ *
+ * Nothing outside this file should contain a colour literal. Translucent
+ * values are as much a part of the system as opaque ones, so the `alpha` group
+ * exists to stop `rgba(…)` being retyped into screens — that is exactly how
+ * the previous palette's cream and terracotta survived a full reskin.
  */
 
 export const color = {
-  /** App canvas */
-  bg: '#FFFFFF',
-  /** Cards, inputs, raised rows */
+  /* ── canvas ── */
+  background: '#FFFFFF',
+  /** Cards, inputs, raised rows. */
   surface: '#F7F7F5',
-  /** Image wells, skeletons */
-  well: '#F2F2EF',
-  /** Segmented-control track, icon circles */
-  track: '#F2F2EF',
+  /** Image wells, skeletons, segmented tracks. */
+  surfaceSecondary: '#F2F2EF',
+
+  /* ── ink ── */
+  text: '#111111',
+  textSecondary: '#666666',
+  textMuted: '#8A8A8A',
 
   border: '#E5E5E2',
   borderStrong: '#D8D8D5',
 
-  text: '#111111',
-  textSecondary: '#666666',
-  textTertiary: '#8A8A8A',
-  onDark: '#FFFFFF',
+  /* ── actions ── */
+  primary: '#111111',
+  primaryText: '#FFFFFF',
+
+  /* ── status ── */
+  success: '#16835B',
+  successBg: '#E8F4EF',
+  successBorder: '#CDE7DC',
+  error: '#D64545',
+  errorBg: '#FBECEC',
+  warning: '#C58A20',
 
   /**
    * Warm orange, rationed. Dark enough to clear 4.5:1 against white text,
@@ -36,25 +51,71 @@ export const color = {
   accentBg: '#FCF1EA',
   accentBorder: '#F0DACB',
 
-  /** Trust / success */
-  green: '#16835B',
-  greenBg: '#E8F4EF',
-  greenBorder: '#CDE7DC',
+  /**
+   * Favourite heart. One colour, both states: saved and unsaved differ by fill
+   * alone. A greyed-out unsaved heart would encode state in hue, which fails
+   * for anyone who cannot separate the two — and on a white card the outline
+   * reads as the stronger affordance anyway.
+   */
+  favourite: '#111111',
 
-  error: '#D64545',
-  errorBg: '#FBECEC',
-  warning: '#C58A20',
-
-  /** Favourite heart — state is carried by fill, not hue. */
-  favOn: '#111111',
-  favOff: '#777777',
-
-  /** Chat bubbles */
+  /** Chat bubbles. */
   bubbleIn: '#F2F2F0',
   bubbleOut: '#111111',
 
+  /** The face of the saved payment card on checkout. */
+  cardFace: '#33414F',
+
+  /* ──────────────────────────────────────────────────────────────
+   * Back-compatible aliases.
+   *
+   * The app was built against these names before the system was named.
+   * They are the same values, kept so that renaming ~200 call sites is not a
+   * precondition for using the system. Prefer the canonical names above in
+   * new code.
+   * ────────────────────────────────────────────────────────────── */
+  /** @deprecated use `background` */
+  bg: '#FFFFFF',
+  /** @deprecated use `surfaceSecondary` */
+  well: '#F2F2EF',
+  /** @deprecated use `surfaceSecondary` */
+  track: '#F2F2EF',
+  /** @deprecated use `textMuted` */
+  textTertiary: '#8A8A8A',
+  /** @deprecated use `primaryText` */
+  onDark: '#FFFFFF',
+  /** @deprecated use `success` */
+  green: '#16835B',
+  /** @deprecated use `successBg` */
+  greenBg: '#E8F4EF',
+  /** @deprecated use `successBorder` */
+  greenBorder: '#CDE7DC',
+} as const;
+
+/**
+ * Translucent values.
+ *
+ * Every one of these is a tint of a colour above; they are spelled out rather
+ * than computed so the module stays a plain lookup table with no runtime.
+ */
+export const alpha = {
   /** Sheet backdrop — the spec's 20–30% black. */
   scrim: 'rgba(17,17,17,0.28)',
+  /** Ink chips laid over photography: "Cover" tags, gallery page dots. */
+  inkStrong: 'rgba(17,17,17,0.80)',
+  inkMedium: 'rgba(17,17,17,0.75)',
+  inkFaint: 'rgba(17,17,17,0.28)',
+  /** Hairlines drawn over a surface, such as the delivery map grid. */
+  hairline: 'rgba(138,138,138,0.35)',
+  /** Halo around the active step of the order timeline. */
+  accentRing: 'rgba(184,78,28,0.16)',
+  /** Frosted bars: the blurred iOS tint and the near-opaque Android fallback. */
+  barBlur: 'rgba(255,255,255,0.72)',
+  barSolid: 'rgba(255,255,255,0.97)',
+  /** Floating controls over imagery — back and favourite on a gallery. */
+  floatingControl: 'rgba(255,255,255,0.92)',
+  /** The unfilled portion of a spinner ring on a dark fill. */
+  spinnerTrack: 'rgba(255,255,255,0.30)',
 } as const;
 
 /**
@@ -82,14 +143,22 @@ export const space = {
   gutter: 16,
 } as const;
 
+/**
+ * Corner radii, restricted to five steps.
+ *
+ * Constraining the ladder is the point: it is what stops a card ending up at
+ * 14 next to a field at 13. Product imagery and controls sit at `lg` (16) —
+ * the top of what still reads as a crisp marketplace card. Going rounder makes
+ * a grid look like a toy, so `xl` and above are reserved for sheets and other
+ * large surfaces.
+ */
 export const radius = {
-  sm: 6,
-  md: 10,
-  lg: 12,
-  /** Product imagery and other primary surfaces. */
-  xl: 14,
-  '2xl': 16,
-  '3xl': 20,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  '2xl': 24,
+  /** Semantic alias — bottom sheets pin to the top of the ladder. */
   sheet: 24,
   pill: 999,
 } as const;
@@ -100,10 +169,10 @@ export const radius = {
  * float above content — the heart on an image, a sheet, a toast.
  */
 export const shadow = {
-  /** Heart button, toggle knob. */
+  /** Heart button, toggle knob, floating gallery controls. */
   raised: {
     shadowColor: '#000',
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
@@ -111,15 +180,15 @@ export const shadow = {
   /** Toast. */
   floating: {
     shadowColor: '#000',
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
     elevation: 10,
   },
   /** Bottom sheet. */
   sheet: {
     shadowColor: '#000',
-    shadowOpacity: 0.14,
+    shadowOpacity: 0.12,
     shadowRadius: 32,
     shadowOffset: { width: 0, height: -10 },
     elevation: 24,

@@ -93,7 +93,7 @@ function OfferSheet() {
           style={{
             flex: 1,
             height: 56,
-            borderRadius: radius['2xl'],
+            borderRadius: radius.lg,
             backgroundColor: C.surface,
             borderWidth: 1.5,
             borderColor: C.text,
@@ -150,7 +150,7 @@ function StepperButton({
       style={{
         width: 44,
         height: 44,
-        borderRadius: radius.xl,
+        borderRadius: radius.lg,
         borderWidth: 1,
         borderColor: C.border,
         backgroundColor: C.surface,
@@ -313,7 +313,7 @@ function PriceField({ label, value }: { label: string; value: string }) {
       style={{
         flex: 1,
         height: 52,
-        borderRadius: radius.xl,
+        borderRadius: radius.lg,
         backgroundColor: C.surface,
         borderWidth: 1,
         borderColor: C.border,
