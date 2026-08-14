@@ -1,16 +1,16 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Animated, Easing, ScrollView, View } from 'react-native';
+import { Animated, Easing, ScrollView, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Icon } from '@/components/icon';
+import { Icon, type IconName } from '@/components/icon';
 import { Scrim, Sheet, SheetClose, SheetGrabber, Toast } from '@/components/sheet';
 import { Slider } from '@/components/slider';
 import { Button, Card, Chip, SectionLabel, T, Tap, Toggle } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { tapSuccess } from '@/lib/haptics';
-import { euro, useApp, useSearchResults } from '@/store/app-store';
+import { euro, SORTS, useApp, useSearchResults } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
 
 /**
@@ -59,6 +59,9 @@ export function Overlays() {
       {sheet && <Scrim onPress={dismiss} closing={closing} />}
       {sheet?.kind === 'offer' && <OfferSheet {...phase} />}
       {sheet?.kind === 'filters' && <FiltersSheet {...phase} />}
+      {sheet?.kind === 'sort' && <SortSheet {...phase} />}
+      {sheet?.kind === 'share' && <ShareSheet {...phase} />}
+      {sheet?.kind === 'report' && <ReportSheet {...phase} />}
       {sheet?.kind === 'done' && <DoneSheet {...phase} />}
       {!!toast && <Toast message={toast} />}
     </DismissContext.Provider>
@@ -67,6 +70,77 @@ export function Overlays() {
 
 /** Exit plumbing passed from `Overlays` down to each sheet's `<Sheet>`. */
 type Phase = { closing: boolean; onExited: () => void };
+
+/* ─────────────────────────── shared sheet parts ─────────────────────────── */
+
+/**
+ * Title row with a close affordance — the same header on every sheet, so they
+ * are recognisable as one family rather than six separate designs.
+ */
+function SheetHeader({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <T w={600} size={19} tracking={-0.3} style={{ flex: 1 }}>
+        {title}
+      </T>
+      <SheetClose onPress={onClose} />
+    </View>
+  );
+}
+
+/**
+ * A selectable or tappable row inside a sheet.
+ *
+ * `selected` draws a checkmark rather than a radio dot: at this size a filled
+ * circle and an empty one are hard to tell apart at a glance, and the tick
+ * reads instantly. Selection is also carried by weight, not by the mark alone.
+ */
+function SheetRow({
+  label,
+  sub,
+  icon,
+  selected,
+  destructive,
+  last,
+  onPress,
+}: {
+  label: string;
+  sub?: string;
+  icon?: IconName;
+  selected?: boolean;
+  destructive?: boolean;
+  last?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Tap
+      onPress={onPress}
+      accessibilityRole={selected === undefined ? 'button' : 'radio'}
+      accessibilityState={selected === undefined ? undefined : { selected }}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 13,
+        paddingVertical: 15,
+        borderBottomWidth: last ? 0 : 1,
+        borderBottomColor: C.border,
+      }}
+    >
+      {!!icon && <Icon name={icon} size={19} color={destructive ? C.error : C.text} strokeWidth={1.8} />}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <T w={selected ? 600 : 500} size={15} color={destructive ? C.error : C.text}>
+          {label}
+        </T>
+        {!!sub && (
+          <T size={12.5} color={C.textSecondary} style={{ marginTop: 2 }}>
+            {sub}
+          </T>
+        )}
+      </View>
+      {selected && <Icon name="check" size={18} color={C.text} strokeWidth={2.6} />}
+    </Tap>
+  );
+}
 
 /* ─────────────────────────── make / counter an offer ─────────────────────────── */
 
@@ -200,6 +274,150 @@ function StepperButton({
     >
       <Icon name={icon} size={17} color={C.text} strokeWidth={2.2} />
     </Tap>
+  );
+}
+
+/* ─────────────────────────── sort ─────────────────────────── */
+
+/**
+ * Sort options.
+ *
+ * Explore used to cycle through these on each tap of the label, which meant
+ * the full set was never visible and reaching the third option took three
+ * presses with the list re-sorting under you each time.
+ */
+function SortSheet(phase: Phase) {
+  const { sort, setSort } = useApp();
+  const dismiss = useDismiss();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Sheet {...phase} style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 12 }}>
+      <SheetGrabber style={{ marginBottom: 16 }} />
+      <SheetHeader title="Sort by" onClose={dismiss} />
+
+      <View style={{ marginTop: 6 }}>
+        {SORTS.map((s, i) => (
+          <SheetRow
+            key={s}
+            label={s}
+            selected={sort === s}
+            last={i === SORTS.length - 1}
+            onPress={() => {
+              setSort(s);
+              dismiss();
+            }}
+          />
+        ))}
+      </View>
+    </Sheet>
+  );
+}
+
+/* ─────────────────────────── share ─────────────────────────── */
+
+function ShareSheet(phase: Phase) {
+  const { sheet, flash } = useApp();
+  const dismiss = useDismiss();
+  const insets = useSafeAreaInsets();
+  if (sheet?.kind !== 'share') return null;
+
+  const p = getProduct(sheet.productId);
+  const url = `https://sawa.app/item/${p.id}`;
+
+  /**
+   * Hands off to the platform's own share sheet, which is the one piece of
+   * this flow that should not be re-implemented: it carries the user's real
+   * targets and their ordering. The in-app rows exist for the two actions the
+   * OS sheet buries.
+   */
+  const shareVia = async () => {
+    dismiss();
+    try {
+      await Share.share({ message: `${p.t} — ${euro(p.pr)}\n${url}`, url });
+    } catch {
+      flash('Sharing is unavailable here');
+    }
+  };
+
+  return (
+    <Sheet {...phase} style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 12 }}>
+      <SheetGrabber style={{ marginBottom: 16 }} />
+      <SheetHeader title="Share this listing" onClose={dismiss} />
+
+      <T size={13} color={C.textSecondary} numberOfLines={1} style={{ marginTop: 10 }}>
+        {url}
+      </T>
+
+      <View style={{ marginTop: 8 }}>
+        <SheetRow
+          icon="send"
+          label="Share via…"
+          sub="Messages, mail, anything installed"
+          onPress={shareVia}
+        />
+        <SheetRow
+          icon="badgeCheck"
+          label="Copy link"
+          last
+          onPress={() => {
+            dismiss();
+            flash('Link copied');
+          }}
+        />
+      </View>
+    </Sheet>
+  );
+}
+
+/* ─────────────────────────── report ─────────────────────────── */
+
+const REPORT_REASONS = [
+  'Counterfeit or replica',
+  'Prohibited item',
+  'Misleading description',
+  'Offensive content',
+  'Suspected scam',
+];
+
+function ReportSheet(phase: Phase) {
+  const { sheet, flash } = useApp();
+  const dismiss = useDismiss();
+  const insets = useSafeAreaInsets();
+  const [reason, setReason] = useState<string | null>(null);
+  if (sheet?.kind !== 'report') return null;
+
+  return (
+    <Sheet {...phase} style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 12 }}>
+      <SheetGrabber style={{ marginBottom: 16 }} />
+      <SheetHeader title="Report listing" onClose={dismiss} />
+
+      <T size={13} color={C.textSecondary} lh={19} style={{ marginTop: 8 }}>
+        Reports are confidential. The seller is not told who raised them.
+      </T>
+
+      <View style={{ marginTop: 8 }}>
+        {REPORT_REASONS.map((r, i) => (
+          <SheetRow
+            key={r}
+            label={r}
+            selected={reason === r}
+            last={i === REPORT_REASONS.length - 1}
+            onPress={() => setReason(r)}
+          />
+        ))}
+      </View>
+
+      <Button
+        label="Submit report"
+        disabled={!reason}
+        style={{ marginTop: 18 }}
+        onPress={() => {
+          dismiss();
+          flash('Report sent — thank you');
+        }}
+      />
+    </Sheet>
   );
 }
 
@@ -375,7 +593,7 @@ function PriceField({ label, value }: { label: string; value: string }) {
 
 const DONE_COPY = {
   published: {
-    title: 'Your listing is live',
+    title: 'Your item is live',
     body: 'Nike Air Max 270 is now visible to 40,000 buyers. We will nudge you when someone favourites it.',
     cta: 'View listing',
     alt: 'Sell another item',

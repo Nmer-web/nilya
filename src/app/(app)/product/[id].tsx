@@ -14,7 +14,7 @@ import { Avatar, Button, T, Tap } from '@/components/ui';
 import { getProduct, initialsOf, listingsBy } from '@/data/catalog';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { tapLight } from '@/lib/haptics';
-import { deliveryFor, euro, useApp } from '@/store/app-store';
+import { deliveryFor, euro, PROTECTION_FEE, useApp } from '@/store/app-store';
 import { alpha, color as C, motion, radius } from '@/theme/tokens';
 
 /** Gallery height relative to width, taken from the design's 393×430 slot. */
@@ -49,8 +49,13 @@ export default function ProductDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 96 + insets.bottom }}>
-        {/* ── gallery ── */}
-        <View style={{ backgroundColor: C.surfaceSecondary }}>
+        {/*
+          ── gallery ──
+          Settles in first, from 0.98 and transparent. The controls and dots
+          ride with it because they are children, so the whole plate arrives as
+          one object rather than the photo appearing under fixed furniture.
+        */}
+        <FadeIn scale={0.98} duration={320} style={{ backgroundColor: C.surfaceSecondary }}>
           <ScrollView
             horizontal
             pagingEnabled
@@ -111,7 +116,7 @@ export default function ProductDetail() {
               />
             ))}
           </View>
-        </View>
+        </FadeIn>
 
         {/*
           ── headline ──
@@ -134,12 +139,30 @@ export default function ProductDetail() {
               </T>
             )}
           </View>
-          <T size={12.5} color={C.textSecondary} style={{ marginTop: 3 }}>
-            {isLocal ? 'Cash on collect · protection at handover' : 'Includes buyer protection'}
+          {/*
+            Condition earns its own line directly under the price rather than
+            sitting as the first of four attribute chips. It is the single fact
+            a second-hand buyer checks after the number, and buried in a chip
+            row it carried no more weight than the colour.
+          */}
+          <T w={500} size={14.5} style={{ marginTop: 8 }}>
+            {p.cd}
           </T>
 
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 14 }}>
-            {[p.cd, p.b, p.sz, p.clr].map((a) => (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 }}>
+            <Icon name="pin" size={13} color={C.textSecondary} strokeWidth={1.9} />
+            <T size={13} color={C.textSecondary}>
+              {p.city}, {p.country}
+            </T>
+          </View>
+
+          <T size={14.5} lh={22.5} style={{ marginTop: 16 }}>
+            {p.desc}
+          </T>
+
+          {/* Brand, size and colour — reference detail, below the description. */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 16 }}>
+            {[p.b, p.sz, p.clr].map((a) => (
               <View
                 key={a}
                 style={{
@@ -158,40 +181,14 @@ export default function ProductDetail() {
               </View>
             ))}
           </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 14 }}>
-            <Icon name="pin" size={13} color={C.textSecondary} strokeWidth={1.9} />
-            <T size={13} color={C.textSecondary}>
-              {p.city}, {p.country}
-            </T>
-          </View>
-
-          <T size={14.5} lh={22.5} style={{ marginTop: 16 }}>
-            {p.desc}
-          </T>
         </FadeIn>
 
-        {/* ── delivery ── */}
-        <Section>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 11 }}>
-            <View style={{ marginTop: 2 }}>
-              <Icon name="truck" size={19} color={C.text} strokeWidth={1.7} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <T w={600} size={15}>
-                {isLocal ? 'Local pickup available' : delivery.kind === 'intl' ? 'International delivery' : 'Delivery'}
-              </T>
-              <T size={13} color={C.textSecondary} style={{ marginTop: 3 }}>
-                {isLocal ? 'Al Riyadh Pickup Point, Khartoum' : `From ${euro(delivery.opts[0].price)}`}
-              </T>
-              <T size={13} color={C.textSecondary}>
-                {delivery.opts[0].eta}
-              </T>
-            </View>
-          </View>
-        </Section>
-
-        {/* ── seller ── */}
+        {/*
+          ── seller ──
+          Above delivery, because on a second-hand marketplace who you are
+          buying from is the question that gates the rest. Logistics only
+          matter once the buyer has decided they trust the person.
+        */}
         <Section>
           <Tap
             onPress={() => router.push({ pathname: '/seller/[name]', params: { name: p.s } })}
@@ -236,6 +233,59 @@ export default function ProductDetail() {
           </View>
         </Section>
 
+        {/* ── delivery ── */}
+        <Section>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 11 }}>
+            <View style={{ marginTop: 2 }}>
+              <Icon name="truck" size={19} color={C.text} strokeWidth={1.7} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <T w={600} size={15}>
+                {isLocal ? 'Local pickup available' : delivery.kind === 'intl' ? 'International delivery' : 'Delivery'}
+              </T>
+              <T size={13} color={C.textSecondary} style={{ marginTop: 3 }}>
+                {isLocal ? 'Al Riyadh Pickup Point, Khartoum' : `From ${euro(delivery.opts[0].price)}`}
+              </T>
+              <T size={13} color={C.textSecondary}>
+                {delivery.opts[0].eta}
+              </T>
+            </View>
+          </View>
+        </Section>
+
+        {/*
+          ── payment ──
+          The reassurance that used to be a single grey line under the price.
+          It reads as boilerplate there and as an answer here, next to the
+          delivery terms a buyer is already weighing.
+        */}
+        <Section>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 11 }}>
+            <View style={{ marginTop: 2 }}>
+              <Icon name={isLocal ? 'cash' : 'card'} size={19} color={C.text} strokeWidth={1.7} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <T w={600} size={15}>
+                {isLocal ? 'Cash on collection' : 'Secure payment'}
+              </T>
+              <T size={13} color={C.textSecondary} lh={19} style={{ marginTop: 3 }}>
+                {isLocal
+                  ? 'Pay the seller at the pickup point. Nothing is taken from your card.'
+                  : 'Card payment handled by Stripe. Your details never reach the seller.'}
+              </T>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10 }}>
+                <Icon name="shieldCheck" size={15} color={C.success} strokeWidth={1.9} />
+                <T size={12.5} color={C.textSecondary} style={{ flex: 1 }}>
+                  {isLocal
+                    ? 'Protection applies at handover — check the item before you pay.'
+                    : `Buyer protection included · ${euro(PROTECTION_FEE)}`}
+                </T>
+              </View>
+            </View>
+          </View>
+        </Section>
+
         {/* ── more from this seller ── */}
         {related.length > 0 && (
           <View style={{ marginHorizontal: 16, marginBottom: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 16 }}>
@@ -255,6 +305,51 @@ export default function ProductDetail() {
             </ScrollView>
           </View>
         )}
+
+        {/*
+          Share and report live at the foot of the listing rather than behind an
+          overflow menu in the gallery: both are rare, and neither deserves to
+          compete with the back and favourite controls over the photography.
+        */}
+        <View style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 8 }}>
+          <Tap
+            onPress={() => openSheet({ kind: 'share', productId: p.id })}
+            accessibilityRole="button"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              paddingVertical: 15,
+              borderTopWidth: 1,
+              borderTopColor: C.border,
+            }}
+          >
+            <Icon name="send" size={18} color={C.text} strokeWidth={1.8} />
+            <T w={500} size={14.5} style={{ flex: 1 }}>
+              Share this listing
+            </T>
+            <Icon name="chevronRight" size={16} color={C.borderStrong} />
+          </Tap>
+
+          <Tap
+            onPress={() => openSheet({ kind: 'report', productId: p.id })}
+            accessibilityRole="button"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              paddingVertical: 15,
+              borderTopWidth: 1,
+              borderTopColor: C.border,
+            }}
+          >
+            <Icon name="shield" size={18} color={C.textSecondary} strokeWidth={1.8} />
+            <T w={500} size={14.5} color={C.textSecondary} style={{ flex: 1 }}>
+              Report this listing
+            </T>
+            <Icon name="chevronRight" size={16} color={C.borderStrong} />
+          </Tap>
+        </View>
       </ScrollView>
 
       {/* ── buy bar ── */}

@@ -98,12 +98,18 @@ export const PROTECTION_FEE = 2.5;
 /* ─────────────────────────── state ─────────────────────────── */
 
 export type SortKey = 'Relevance' | 'Price: low to high' | 'Newest first';
+
+/** The sort options, in the order the sheet lists them. */
+export const SORTS: SortKey[] = ['Relevance', 'Price: low to high', 'Newest first'];
 export type OfferState = 'open' | 'countered' | 'accepted' | 'declined';
 export type Message = { me: boolean; t: string };
 
 export type Sheet =
   | { kind: 'offer'; mode: 'buyer' | 'counter'; productId: number; amount: number }
   | { kind: 'filters' }
+  | { kind: 'sort' }
+  | { kind: 'share'; productId: number }
+  | { kind: 'report'; productId: number }
   | { kind: 'done'; doneKind: 'published' | 'placed' | 'paid' }
   | null;
 
@@ -172,9 +178,10 @@ type AppActions = {
   toggleFav: (id: number) => void;
   setCat: (cat: string) => void;
   setQuery: (q: string) => void;
-  cycleSort: () => void;
+  setSort: (s: SortKey) => void;
 
   addPhotos: () => void;
+  removePhoto: () => void;
   applySuggestion: () => void;
   toggleSudanPickup: () => void;
   publish: () => void;
@@ -243,20 +250,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }),
       setCat: (cat) => patch({ cat }),
       setQuery: (q) => patch({ q }),
-      cycleSort: () =>
-        patch((s) => ({
-          sort:
-            s.sort === 'Relevance'
-              ? 'Price: low to high'
-              : s.sort === 'Price: low to high'
-                ? 'Newest first'
-                : 'Relevance',
-        })),
+      setSort: (sort) => patch({ sort }),
 
       addPhotos: () => {
         patch({ photos: 3, scanning: true, suggested: false });
         later(() => patch({ scanning: false, suggested: true }), 1300);
       },
+      /**
+       * Removing the last photo returns the composer to its empty state:
+       * a suggestion derived from photographs that no longer exist would keep
+       * a filled-in title and price on screen with nothing backing them.
+       */
+      removePhoto: () =>
+        patch((s) => {
+          const photos = Math.max(0, s.photos - 1);
+          return photos === 0
+            ? { photos, scanning: false, suggested: false, filled: false }
+            : { photos };
+        }),
       applySuggestion: () => {
         patch({ filled: true, suggested: false });
         flash('Details filled in — check the price');

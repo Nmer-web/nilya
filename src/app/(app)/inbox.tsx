@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavClearance } from '@/components/bottom-nav';
 import { ListingThumb, THUMB } from '@/components/product-card';
 import { TabTitle } from '@/components/screen-header';
-import { Avatar, Button, Card, EmptyState, Segmented, T, Tap } from '@/components/ui';
+import { Avatar, Badge, Button, Card, EmptyState, Segmented, T, Tap } from '@/components/ui';
 import { useApp } from '@/store/app-store';
 import { avatarColor, color as C } from '@/theme/tokens';
 
@@ -74,24 +74,8 @@ export default function Inbox() {
             {
               key: 'Offers',
               label: 'Offers',
-              badge:
-                offerState === 'open' ? (
-                  <View
-                    style={{
-                      minWidth: 18,
-                      height: 18,
-                      paddingHorizontal: 5,
-                      borderRadius: 9,
-                      backgroundColor: C.accent,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <T w={700} size={11} color={C.primaryText}>
-                      1
-                    </T>
-                  </View>
-                ) : undefined,
+              /* The shared Badge, rather than a fourth hand-rolled count pill. */
+              badge: offerState === 'open' ? <Badge>1</Badge> : undefined,
             },
           ]}
         />
@@ -143,7 +127,19 @@ export default function Inbox() {
                 </T>
               </View>
               <ListingThumb width={THUMB.sm} />
-              {t.unread && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent }} />}
+              {/*
+                The unread dot sits at the trailing edge and is reserved a slot
+                whether or not it shows, so a read row's thumbnail lines up with
+                an unread one's instead of shifting 14pt across.
+              */}
+              <View style={{ width: 8, alignItems: 'center' }}>
+                {t.unread && (
+                  <View
+                    accessibilityLabel="Unread"
+                    style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent }}
+                  />
+                )}
+              </View>
             </Tap>
           ))}
 

@@ -15,7 +15,7 @@ import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
 import { ListingThumb, THUMB } from '@/components/product-card';
 import { FadeIn } from '@/components/skeleton';
-import { Avatar, Chip, T, Tap } from '@/components/ui';
+import { Avatar, Chip, PressableScale, T, Tap } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { euro, useApp } from '@/store/app-store';
@@ -27,7 +27,7 @@ const LISTING = 1;
 export default function Chat() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { msgs, typing, sendMessage, openSheet } = useApp();
+  const { msgs, typing, sendMessage, openSheet, flash } = useApp();
   const [draft, setDraft] = useState('');
   const scroller = useRef<ScrollView>(null);
 
@@ -80,9 +80,15 @@ export default function Chat() {
             Usually replies in an hour
           </T>
         </View>
+        {/*
+          This was a dead control — an affordance with no handler. It now opens
+          the report sheet, which is the one conversation-level action a
+          marketplace actually needs at hand.
+        */}
         <Tap
+          onPress={() => openSheet({ kind: 'report', productId: LISTING })}
           accessibilityRole="button"
-          accessibilityLabel="Conversation options"
+          accessibilityLabel="Report this conversation"
           hitSlop={8}
           style={{ width: 34, height: 34, alignItems: 'center', justifyContent: 'center' }}
         >
@@ -110,13 +116,17 @@ export default function Chat() {
           <T w={500} size={13.5} numberOfLines={1}>
             {p.t}
           </T>
-          <T w={700} size={15} style={{ marginTop: 1 }}>
-            {euro(p.pr)}
-          </T>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7, marginTop: 1 }}>
+            <T w={700} size={15}>
+              {euro(p.pr)}
+            </T>
+            <T size={12} color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
+              {p.cd}
+            </T>
+          </View>
         </View>
-        <T w={600} size={12.5} color={C.text}>
-          View listing
-        </T>
+        {/* A chevron, not a text link: the whole strip is the target. */}
+        <Icon name="chevronRight" size={17} color={C.textMuted} strokeWidth={1.9} />
       </Tap>
 
       {/* ── transcript ── */}
@@ -124,9 +134,9 @@ export default function Chat() {
         ref={scroller}
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="interactive"
-        contentContainerStyle={{ padding: 16, paddingBottom: 8, gap: 8 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
       >
-        <T size={11.5} color={C.textMuted} style={{ textAlign: 'center', paddingBottom: 6 }}>
+        <T size={11.5} color={C.textMuted} style={{ textAlign: 'center', paddingBottom: 14 }}>
           Today
         </T>
 
@@ -134,29 +144,39 @@ export default function Chat() {
           Bubbles carry no border: fill alone separates them from the canvas,
           and §14 asks not to overuse borders. Each arrives with a short rise —
           keyed by index, so only the newly appended one animates.
+
+          Runs from the same sender are grouped: they sit 2pt apart instead of
+          8, and only the last bubble in a run gets the pointed corner. A tail
+          on every bubble makes a three-line reply look like three separate
+          messages arriving at once.
         */}
-        {msgs.map((m, i) => (
-          <FadeIn key={i} y={6} duration={200}>
-            <View style={{ flexDirection: 'row', justifyContent: m.me ? 'flex-end' : 'flex-start' }}>
-              <View
-                style={{
-                  maxWidth: '76%',
-                  paddingVertical: 10,
-                  paddingHorizontal: 14,
-                  backgroundColor: m.me ? C.bubbleOut : C.bubbleIn,
-                  borderTopLeftRadius: 18,
-                  borderTopRightRadius: 18,
-                  borderBottomLeftRadius: m.me ? 18 : 5,
-                  borderBottomRightRadius: m.me ? 5 : 18,
-                }}
-              >
-                <T size={14.5} lh={20.3} color={m.me ? C.primaryText : C.text}>
-                  {m.t}
-                </T>
+        {msgs.map((m, i) => {
+          const startsRun = i === 0 || msgs[i - 1].me !== m.me;
+          const endsRun = i === msgs.length - 1 || msgs[i + 1].me !== m.me;
+
+          return (
+            <FadeIn key={i} y={6} duration={200} style={{ marginTop: startsRun && i > 0 ? 8 : 2 }}>
+              <View style={{ flexDirection: 'row', justifyContent: m.me ? 'flex-end' : 'flex-start' }}>
+                <View
+                  style={{
+                    maxWidth: '76%',
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                    backgroundColor: m.me ? C.bubbleOut : C.bubbleIn,
+                    borderTopLeftRadius: 18,
+                    borderTopRightRadius: 18,
+                    borderBottomLeftRadius: m.me || !endsRun ? 18 : 5,
+                    borderBottomRightRadius: m.me && endsRun ? 5 : 18,
+                  }}
+                >
+                  <T size={14.5} lh={20.3} color={m.me ? C.primaryText : C.text}>
+                    {m.t}
+                  </T>
+                </View>
               </View>
-            </View>
-          </FadeIn>
-        ))}
+            </FadeIn>
+          );
+        })}
 
         {typing && <TypingBubble />}
       </ScrollView>
@@ -191,9 +211,11 @@ export default function Chat() {
           paddingBottom: Math.max(insets.bottom, 10),
         }}
       >
-        <Tap
+        <PressableScale
+          scale={0.94}
+          onPress={() => flash('Photo attachments are coming soon')}
           accessibilityRole="button"
-          accessibilityLabel="Attach"
+          accessibilityLabel="Attach a photo"
           style={{
             width: 38,
             height: 38,
@@ -206,8 +228,14 @@ export default function Chat() {
           }}
         >
           <Icon name="plus" size={18} color={C.text} />
-        </Tap>
+        </PressableScale>
 
+        {/*
+          Multiline, growing to four lines before it scrolls. A single-line
+          field turns anything longer than a sentence into a horizontal crawl,
+          and in a marketplace the longest messages are the ones that matter —
+          measurements, condition questions, collection arrangements.
+        */}
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -215,21 +243,27 @@ export default function Chat() {
           placeholder="Message…"
           placeholderTextColor={C.textSecondary}
           returnKeyType="send"
+          multiline
           style={{
             flex: 1,
             minWidth: 0,
-            height: 40,
-            borderRadius: 20,
+            minHeight: 38,
+            maxHeight: 108,
+            borderRadius: 19,
             borderWidth: 1,
             borderColor: C.border,
             backgroundColor: C.surface,
             paddingHorizontal: 15,
+            paddingTop: Platform.OS === 'ios' ? 10 : 8,
+            paddingBottom: Platform.OS === 'ios' ? 10 : 8,
             fontSize: 14.5,
+            lineHeight: 19,
             color: C.text,
           }}
         />
 
-        <Tap
+        <PressableScale
+          scale={0.94}
           onPress={() => send()}
           disabled={!canSend}
           accessibilityRole="button"
@@ -238,13 +272,13 @@ export default function Chat() {
             width: 38,
             height: 38,
             borderRadius: 19,
-            backgroundColor: canSend ? C.text : C.borderStrong,
+            backgroundColor: canSend ? C.text : C.surfaceSecondary,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon name="send" size={17} color={C.primaryText} />
-        </Tap>
+          <Icon name="send" size={17} color={canSend ? C.primaryText : C.textMuted} />
+        </PressableScale>
       </FrostedBar>
     </KeyboardAvoidingView>
   );

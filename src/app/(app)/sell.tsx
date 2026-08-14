@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, Easing, ScrollView, View } from 'react-native';
+import { Animated, Easing, ScrollView, View, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavHeight } from '@/components/bottom-nav';
@@ -7,7 +7,6 @@ import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
 import { ImageSlot } from '@/components/image-slot';
 import { TabTitle } from '@/components/screen-header';
-import { FadeIn } from '@/components/skeleton';
 import { Button, Card, Note, T, Tap, Toggle } from '@/components/ui';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { tapSuccess } from '@/lib/haptics';
@@ -17,8 +16,7 @@ import { alpha, color as C, radius } from '@/theme/tokens';
 export default function Sell() {
   const insets = useSafeAreaInsets();
   const navHeight = useNavHeight();
-  const { photos, scanning, suggested, filled, sudanPickup, addPhotos, applySuggestion, toggleSudanPickup, publish } =
-    useApp();
+  const { photos, scanning, suggested, filled, addPhotos, removePhoto, applySuggestion, publish } = useApp();
   const [publishing, setPublishing] = useState(false);
 
   const hasPhotos = photos > 0;
@@ -86,41 +84,8 @@ export default function Sell() {
               contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
             >
               {/* Photos stagger in as they attach, rather than all appearing at once. */}
-              {[1, 2, 3].map((n) => (
-                <FadeIn
-                  key={n}
-                  y={8}
-                  delay={(n - 1) * 70}
-                  duration={240}
-                  style={{
-                    width: 94,
-                    height: 118,
-                    borderRadius: radius.lg,
-                    overflow: 'hidden',
-                    backgroundColor: C.surfaceSecondary,
-                  }}
-                >
-                  <ImageSlot label={`Photo ${n}`} glyph={20} />
-                  {n === 1 && (
-                    <View
-                      style={{
-                        position: 'absolute',
-                        bottom: 5,
-                        left: 5,
-                        height: 19,
-                        paddingHorizontal: 7,
-                        borderRadius: radius.sm,
-                        backgroundColor: alpha.inkStrong,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <T w={600} size={10.5} color={C.primaryText}>
-                        Cover
-                      </T>
-                    </View>
-                  )}
-                </FadeIn>
+              {Array.from({ length: photos }, (_, i) => (
+                <PhotoCard key={i} index={i} cover={i === 0} onRemove={removePhoto} />
               ))}
 
               <Tap
@@ -201,27 +166,6 @@ export default function Sell() {
             )}
 
             <SellForm filled={filled} />
-
-            <Card
-              style={{
-                marginTop: 14,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingVertical: 14,
-                paddingHorizontal: 15,
-              }}
-            >
-              <View style={{ flex: 1, paddingRight: 14 }}>
-                <T w={600} size={14}>
-                  Ships from Lyon
-                </T>
-                <T size={12.5} color={C.textSecondary} style={{ marginTop: 2 }}>
-                  Buyers pay shipping. Sudan pickup available.
-                </T>
-              </View>
-              <Toggle on={sudanPickup} onPress={toggleSudanPickup} />
-            </Card>
           </>
         )}
       </ScrollView>
@@ -267,6 +211,115 @@ export default function Sell() {
   );
 }
 
+const PHOTO_W = 94;
+const PHOTO_H = 118;
+
+/**
+ * One attached photo.
+ *
+ * Arrival and removal are deliberately asymmetric: a photo fades up into place
+ * over 240ms, but leaves in 160ms. Deletion is a decision already made, and
+ * making the user watch it play out at the same pace as the arrival makes the
+ * interface feel like it is arguing.
+ *
+ * The card animates itself out and only then tells the store, so the row never
+ * reflows out from under the thing being dismissed.
+ */
+function PhotoCard({
+  index,
+  cover,
+  onRemove,
+}: {
+  index: number;
+  cover: boolean;
+  onRemove: () => void;
+}) {
+  const p = useAnimatedValue(0);
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    Animated.timing(p, {
+      toValue: 1,
+      duration: 240,
+      delay: index * 70,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: NATIVE_DRIVER,
+    }).start();
+  }, [p, index]);
+
+  const remove = () => {
+    if (leaving) return;
+    setLeaving(true);
+    Animated.timing(p, {
+      toValue: 0,
+      duration: 160,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: NATIVE_DRIVER,
+    }).start(({ finished }) => {
+      if (finished) onRemove();
+    });
+  };
+
+  return (
+    <Animated.View
+      style={{
+        width: PHOTO_W,
+        height: PHOTO_H,
+        borderRadius: radius.lg,
+        overflow: 'hidden',
+        backgroundColor: C.surfaceSecondary,
+        opacity: p,
+        transform: [
+          { scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+          { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
+        ],
+      }}
+    >
+      <ImageSlot label={`Photo ${index + 1}`} glyph={20} />
+
+      {cover && (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 5,
+            left: 5,
+            height: 19,
+            paddingHorizontal: 7,
+            borderRadius: radius.sm,
+            backgroundColor: alpha.inkStrong,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <T w={600} size={10.5} color={C.primaryText}>
+            Cover
+          </T>
+        </View>
+      )}
+
+      <Tap
+        onPress={remove}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove photo ${index + 1}`}
+        hitSlop={8}
+        style={{
+          position: 'absolute',
+          top: 5,
+          right: 5,
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          backgroundColor: alpha.inkStrong,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Icon name="close" size={11} color={C.primaryText} strokeWidth={2.8} />
+      </Tap>
+    </Animated.View>
+  );
+}
+
 function StatCard({ title, sub }: { title: string; sub: string }) {
   return (
     <Card style={{ flex: 1, padding: 12, borderRadius: radius.lg }}>
@@ -307,40 +360,44 @@ function Spinner({ size = 19, color = C.text }: { size?: number; color?: string 
   );
 }
 
+/** Ordered as a seller fills them: what it is, then what it is like, then what it costs. */
 const FIELDS = [
   { label: 'Title', empty: 'What are you selling?', full: 'Nike Air Max 270' },
   { label: 'Category', empty: 'Choose a category', full: 'Shoes · Trainers' },
-  { label: 'Brand', empty: 'Add a brand', full: 'Nike' },
   { label: 'Condition', empty: 'How worn is it?', full: 'Very good' },
+  { label: 'Brand', empty: 'Add a brand', full: 'Nike' },
   { label: 'Colour', empty: 'Add a colour', full: 'Black' },
   { label: 'Price', empty: 'Set a price', full: '€45' },
 ];
 
 function SellForm({ filled }: { filled: boolean }) {
-  const { flash } = useApp();
+  const { flash, sudanPickup, toggleSudanPickup } = useApp();
+
   const rows = [
     ...FIELDS.map((f) => ({ label: f.label, value: filled ? f.full : f.empty, resolved: filled })),
     { label: 'Location', value: 'Lyon, France', resolved: true },
   ];
 
+  const line = (last: boolean): ViewStyle => ({
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 15,
+    borderBottomWidth: last ? 0 : 1,
+    borderBottomColor: C.border,
+  });
+
   return (
     <Card style={{ marginTop: 18, overflow: 'hidden' }}>
-      {rows.map((r, i) => (
+      {rows.map((r) => (
         <Tap
           key={r.label}
           accessibilityRole="button"
           onPress={() =>
             flash(filled ? `Editing ${r.label.toLowerCase()}` : 'Add photos and we will suggest this')
           }
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-            paddingVertical: 14,
-            paddingHorizontal: 15,
-            borderBottomWidth: i === rows.length - 1 ? 0 : 1,
-            borderBottomColor: C.border,
-          }}
+          style={line(false)}
         >
           <T size={13.5} color={C.textSecondary} style={{ width: 76 }}>
             {r.label}
@@ -357,6 +414,26 @@ function SellForm({ filled }: { filled: boolean }) {
           <Icon name="chevronRight" size={16} color={C.borderStrong} />
         </Tap>
       ))}
+
+      {/*
+        Delivery closes the form rather than sitting in a detached card below
+        it. It is the last thing a seller decides, and as a separate surface it
+        read as an unrelated setting instead of the final field.
+      */}
+      <View style={line(true)}>
+        <T size={13.5} color={C.textSecondary} style={{ width: 76 }}>
+          Delivery
+        </T>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <T w={500} size={14.5}>
+            {sudanPickup ? 'Shipping + Sudan pickup' : 'Shipping only'}
+          </T>
+          <T size={12} color={C.textSecondary} style={{ marginTop: 2 }}>
+            Buyers pay shipping
+          </T>
+        </View>
+        <Toggle on={sudanPickup} onPress={toggleSudanPickup} />
+      </View>
     </Card>
   );
 }

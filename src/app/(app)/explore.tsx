@@ -16,7 +16,7 @@ export default function Explore() {
   const insets = useSafeAreaInsets();
   const navClearance = useNavClearance();
   const app = useApp();
-  const { q, setQuery, cat, setCat, sort, cycleSort, openSheet } = app;
+  const { q, setQuery, cat, setCat, sort, openSheet } = app;
   const results = useSearchResults();
   const active = filtersActive(app);
 
@@ -119,8 +119,9 @@ export default function Explore() {
           <T size={13} color={C.textSecondary}>
             {results.length} items{cat !== 'All' ? ` in ${cat}` : ''}
           </T>
+          {/* Opens the full list rather than cycling — see SortSheet. */}
           <Tap
-            onPress={cycleSort}
+            onPress={() => openSheet({ kind: 'sort' })}
             accessibilityRole="button"
             accessibilityLabel={`Sort by ${sort}. Tap to change.`}
             hitSlop={8}
