@@ -41,7 +41,7 @@ export default function OrderTracking() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: 40 + insets.bottom }}
       >
-        <Tap onPress={() => router.push({ pathname: '/product/[id]', params: { id: 1 } })} accessibilityRole="button">
+        <Tap onPress={() => router.push({ pathname: '/listing/[id]', params: { id: 1 } })} accessibilityRole="button">
           <Card style={{ flexDirection: 'row', gap: 12, padding: 14 }}>
             <ListingThumb />
             <View style={{ flex: 1, minWidth: 0 }}>

@@ -591,13 +591,12 @@ function PriceField({ label, value }: { label: string; value: string }) {
 
 /* ─────────────────────────── confirmation ─────────────────────────── */
 
+/*
+ * Publishing no longer lands here. The real Sell flow navigates straight to the
+ * listing it created, so a sheet naming a hard-coded product would be reporting
+ * something that did not happen.
+ */
 const DONE_COPY = {
-  published: {
-    title: 'Your item is live',
-    body: 'Nike Air Max 270 is now visible to 40,000 buyers. We will nudge you when someone favourites it.',
-    cta: 'View listing',
-    alt: 'Sell another item',
-  },
   placed: {
     title: 'Order placed',
     body: 'Bring 35,000 SDG to Al Riyadh Pickup Point. Amal has been notified and will drop the item today.',
@@ -613,7 +612,7 @@ const DONE_COPY = {
 } as const;
 
 function DoneSheet(phase: Phase) {
-  const { sheet, resetComposer } = useApp();
+  const { sheet } = useApp();
   const dismiss = useDismiss();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -638,24 +637,11 @@ function DoneSheet(phase: Phase) {
    */
   const primary = () => {
     dismiss();
-    if (sheet.doneKind === 'published') {
-      resetComposer();
-      router.dismissTo('/profile');
-    } else {
-      router.dismissTo('/');
-      router.push({ pathname: '/order/[id]', params: { id: 'SS28491' } });
-    }
+    router.dismissTo('/');
+    router.push({ pathname: '/order/[id]', params: { id: 'SS28491' } });
   };
 
-  /**
-   * "Sell another item" only means anything if the composer is empty when the
-   * seller lands back on it — otherwise they return to the finished listing
-   * they just published, on its final step.
-   */
-  const secondary = () => {
-    dismiss();
-    if (sheet.doneKind === 'published') resetComposer();
-  };
+  const secondary = () => dismiss();
 
   return (
     <Sheet

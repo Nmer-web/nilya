@@ -98,7 +98,7 @@ export default function Chat() {
 
       {/* ── listing strip ── */}
       <Tap
-        onPress={() => router.push({ pathname: '/product/[id]', params: { id: LISTING } })}
+        onPress={() => router.push({ pathname: '/listing/[id]', params: { id: LISTING } })}
         accessibilityRole="button"
         style={{
           flexDirection: 'row',
@@ -195,7 +195,7 @@ export default function Chat() {
           round={16}
           onPress={() => openSheet({ kind: 'offer', mode: 'buyer', productId: LISTING, amount: Math.round(p.pr * 0.85) })}
         />
-        <Chip label="View listing" height={32} round={16} onPress={() => router.push({ pathname: '/product/[id]', params: { id: LISTING } })} />
+        <Chip label="View listing" height={32} round={16} onPress={() => router.push({ pathname: '/listing/[id]', params: { id: LISTING } })} />
         <Chip label="Is the price firm?" height={32} round={16} onPress={() => send('Is the price firm?')} />
       </ScrollView>
 

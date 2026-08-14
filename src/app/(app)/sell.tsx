@@ -71,6 +71,7 @@ export default function Sell() {
   const [images, setImages] = useState<PickedImage[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [phase, setPhase] = useState<'preparing' | 'uploading' | 'publishing'>('preparing');
   const [error, setError] = useState<string | null>(null);
 
   const categories = useAsync(() => fetchCategories('explore'), 'categories:explore');
@@ -185,10 +186,12 @@ export default function Sell() {
    * upload fails, so a half-uploaded listing never reaches the feed. Only after
    * it resolves does this claim success.
    */
+  /** The guard is the real duplicate-submission block; the disabled button is the visible half. */
   const publish = async () => {
     if (publishing || !complete) return;
     setPublishing(true);
     setError(null);
+    setPhase('preparing');
     setProgress({ done: 0, total: images.length });
 
     try {
@@ -204,7 +207,10 @@ export default function Sell() {
           countryCode,
         },
         images,
-        (done, total) => setProgress({ done, total })
+        (done, total) => {
+          setPhase(done === total ? 'publishing' : 'uploading');
+          setProgress({ done, total });
+        }
       );
 
       tapSuccess();
@@ -348,10 +354,18 @@ export default function Sell() {
           <Button
             label="Publish listing"
             loading={publishing}
+            /*
+             * Three distinct phases, because they fail differently: creating
+             * the row, uploading each photo, then publishing. A single
+             * "Publishing…" would leave the longest step — the uploads —
+             * looking like a hang.
+             */
             loadingLabel={
-              progress && progress.total > 0
-                ? `Uploading ${progress.done}/${progress.total}…`
-                : 'Publishing…'
+              phase === 'preparing'
+                ? 'Preparing…'
+                : phase === 'uploading' && progress
+                  ? `Uploading ${progress.done}/${progress.total}…`
+                  : 'Publishing…'
             }
             disabled={!complete}
             style={{ flex: 1 }}

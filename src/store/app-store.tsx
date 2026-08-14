@@ -104,50 +104,13 @@ export const SORTS: SortKey[] = ['Relevance', 'Price: low to high', 'Newest firs
 export type OfferState = 'open' | 'countered' | 'accepted' | 'declined';
 export type Message = { me: boolean; t: string };
 
-export type Draft = {
-  title: string;
-  category: string;
-  condition: string;
-  brand: string;
-  colour: string;
-  price: string;
-};
-
-const EMPTY_DRAFT: Draft = { title: '', category: '', condition: '', brand: '', colour: '', price: '' };
-
-/**
- * A listing is publishable once it has a photograph and the four facts a buyer
- * cannot shop without. Brand and colour stay optional — plenty of real listings
- * are unbranded, and blocking on them would strand the seller on a step they
- * have nothing to enter.
- */
-export const draftComplete = (s: { photos: number[]; draft: Draft }) =>
-  s.photos.length > 0 &&
-  s.draft.title.trim() !== '' &&
-  s.draft.category !== '' &&
-  s.draft.condition !== '' &&
-  s.draft.price.trim() !== '';
-
-/**
- * What the suggestion fills in once it has read the photos. Kept beside the
- * empty draft so the two stay the same shape.
- */
-const SUGGESTED_DRAFT: Draft = {
-  title: 'Nike Air Max 270',
-  category: 'Shoes',
-  condition: 'Very good',
-  brand: 'Nike',
-  colour: 'Black',
-  price: '45',
-};
-
 export type Sheet =
   | { kind: 'offer'; mode: 'buyer' | 'counter'; productId: number; amount: number }
   | { kind: 'filters' }
   | { kind: 'sort' }
   | { kind: 'share'; productId: number }
   | { kind: 'report'; productId: number }
-  | { kind: 'done'; doneKind: 'published' | 'placed' | 'paid' }
+  | { kind: 'done'; doneKind: 'placed' | 'paid' }
   | null;
 
 type AppState = {
@@ -159,23 +122,10 @@ type AppState = {
   recent: string[];
   sort: SortKey;
 
-  /* Sell composer */
-  /**
-   * Attached photo ids — identities, not a count.
-   *
-   * A count forces the rail to key its cards by array index, and an index is
-   * not an identity: removing the first of three leaves React reusing that
-   * slot's component instance, which still holds the finished exit animation
-   * of the photo that just left. Ids let the removed card actually unmount.
+  /*
+   * The Sell composer no longer lives here. It writes to Supabase, so its
+   * state is local to the screen and its result is a row rather than a flag.
    */
-  photos: number[];
-  scanning: boolean;
-  suggested: boolean;
-  sudanPickup: boolean;
-  /** Which step of the compose flow is on screen, zero-based. */
-  step: number;
-  /** The listing being written. Real values now, not a filled/empty toggle. */
-  draft: Draft;
 
   /* Inbox */
   offerState: OfferState;
@@ -202,12 +152,6 @@ const INITIAL: AppState = {
   q: '',
   recent: [],
   sort: 'Relevance',
-  photos: [],
-  scanning: false,
-  suggested: false,
-  sudanPickup: true,
-  step: 0,
-  draft: EMPTY_DRAFT,
   offerState: 'open',
   msgs: [
     { me: true, t: 'Is this still available?' },
@@ -234,14 +178,6 @@ type AppActions = {
   /** Records a term in the recent list and applies it as the active query. */
   submitSearch: (q: string) => void;
 
-  addPhotos: () => void;
-  removePhoto: (id: number) => void;
-  applySuggestion: () => void;
-  toggleSudanPickup: () => void;
-  setStep: (n: number) => void;
-  setDraftField: (key: keyof Draft, value: string) => void;
-  resetComposer: () => void;
-  publish: () => void;
 
   setOfferState: (s: OfferState) => void;
   sendMessage: (text: string) => void;
@@ -316,42 +252,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           // Most recent first, de-duplicated case-insensitively, capped at six.
           recent: [q, ...s.recent.filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, 6),
         }));
-      },
-
-      addPhotos: () => {
-        patch({ photos: [1, 2, 3], scanning: true, suggested: false });
-        later(() => patch({ scanning: false, suggested: true }), 1300);
-      },
-      /**
-       * Removing the last photo returns the composer to its empty state:
-       * a suggestion derived from photographs that no longer exist would keep
-       * a filled-in title and price on screen with nothing backing them.
-       */
-      removePhoto: (id) =>
-        patch((s) => {
-          const photos = s.photos.filter((p) => p !== id);
-          return photos.length === 0
-            ? { photos, scanning: false, suggested: false, draft: EMPTY_DRAFT, step: 0 }
-            : { photos };
-        }),
-      applySuggestion: () => {
-        patch({ draft: SUGGESTED_DRAFT, suggested: false });
-        flash('Details filled in — check the price');
-      },
-      toggleSudanPickup: () => patch((s) => ({ sudanPickup: !s.sudanPickup })),
-
-      setStep: (step) => patch({ step }),
-      setDraftField: (key, value) => patch((s) => ({ draft: { ...s.draft, [key]: value } })),
-      /** Returns the composer to a blank listing after a successful publish. */
-      resetComposer: () =>
-        patch({ photos: [], scanning: false, suggested: false, step: 0, draft: EMPTY_DRAFT }),
-
-      publish: () => {
-        if (!draftComplete(latest.current)) {
-          flash('Fill in the remaining steps to publish');
-          return;
-        }
-        patch({ sheet: { kind: 'done', doneKind: 'published' } });
       },
 
       setOfferState: (offerState) => patch({ offerState }),

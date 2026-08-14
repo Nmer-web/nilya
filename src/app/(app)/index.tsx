@@ -1,25 +1,37 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Animated, RefreshControl, ScrollView, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Animated, FlatList, RefreshControl, ScrollView, View, type FlatListProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavClearance } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
-import { ListingGrid } from '@/components/listing-card';
+import { ListingCard } from '@/components/listing-card';
 import { ProductGridSkeleton } from '@/components/skeleton';
-import { Button, Chip, EmptyState, PressableScale, T, Tap } from '@/components/ui';
+import { Button, Chip, EmptyState, PressableScale, Spinner, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { useFavorites } from '@/hooks/use-favorites';
-import { fetchCategories, fetchListings } from '@/lib/queries';
-import { useApp } from '@/store/app-store';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
+import { useFavorites } from '@/hooks/use-favorites';
+import { useListingFeed } from '@/hooks/use-listing-feed';
+import type { ListingRow } from '@/lib/database.types';
+import { fetchCategories } from '@/lib/queries';
+import { useApp } from '@/store/app-store';
 import { color as C, radius, space } from '@/theme/tokens';
 
-/** Height of the wordmark row — the amount the header gives back on scroll. */
 const BRAND_ROW = 44;
-
-/** Search field and its filter button share a height so they read as one row. */
 const SEARCH_HEIGHT = 46;
+const COLUMN_GAP = 10;
+
+/**
+ * A FlatList that can accept a native-driven `Animated.event`.
+ *
+ * Created once at module scope: building an animated component inside render
+ * remounts the list on every pass, losing its scroll position and its windowing
+ * state. The cast restores the item generic, which `createAnimatedComponent`
+ * erases.
+ */
+const AnimatedFlatList = Animated.createAnimatedComponent(
+  FlatList as unknown as React.ComponentType<FlatListProps<ListingRow>>
+);
 
 export default function Home() {
   const insets = useSafeAreaInsets();
@@ -31,16 +43,10 @@ export default function Home() {
   const scrollY = useAnimatedValue(0);
 
   const favorites = useFavorites();
-
-  /** Reference data. Ten seeded rows; no fallback list, because there is one. */
   const categories = useAsync(() => fetchCategories('home'), 'categories:home');
 
-  /**
-   * The feed. `cat` holds a category slug, or 'All'. The key is what re-runs
-   * the query, so it has to name every input the query depends on.
-   */
-  const feed = useAsync(
-    () => fetchListings({ category: cat === 'All' ? null : cat }),
+  const feed = useListingFeed(
+    { category: cat === 'All' ? null : cat },
     `listings:${cat}`
   );
 
@@ -60,17 +66,98 @@ export default function Home() {
     extrapolate: 'clamp',
   });
 
-  const listings = feed.data?.rows ?? [];
+  /**
+   * `FlatList` with two columns rather than a mapped grid: it windows its rows,
+   * so a long feed keeps a bounded number of cards mounted, and it owns the
+   * end-of-list callback that drives pagination.
+   */
+  const renderItem = useCallback(
+    ({ item }: { item: ListingRow }) => (
+      <View style={{ flex: 1 / 2, paddingHorizontal: COLUMN_GAP / 2 }}>
+        <ListingCardCell listing={item} saved={favorites.saved.has(item.id)} onToggle={favorites.toggle} />
+      </View>
+    ),
+    [favorites.saved, favorites.toggle]
+  );
+
+  const body = () => {
+    if (feed.loading) return <ProductGridSkeleton />;
+
+    if (feed.error) {
+      return (
+        <EmptyState
+          icon="close"
+          title="Could not load listings"
+          body={feed.error.message}
+          action={<Button label="Try again" height={44} size={14} onPress={feed.retry} style={{ marginTop: 18 }} />}
+        />
+      );
+    }
+
+    /*
+     * The database genuinely has no listings. Nothing is invented to fill the
+     * grid; the way out is the Sell flow rather than a seeded catalog.
+     */
+    return (
+      <EmptyState
+        icon="bag"
+        title={cat === 'All' ? 'No listings yet' : 'Nothing here yet'}
+        body={
+          cat === 'All'
+            ? 'Be the first to list something on SAWA.'
+            : 'Try another category, or list something here yourself.'
+        }
+        action={
+          <Button label="Start selling" height={48} onPress={() => router.push('/sell')} style={{ marginTop: 20 }} />
+        }
+      />
+    );
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <Animated.ScrollView
+      {/*
+        Animated.FlatList, not FlatList. With `useNativeDriver: true`,
+        `Animated.event` returns an AnimatedEvent object rather than a
+        function — only an Animated component unwraps it, via AnimatedProps.
+        A plain list calls the prop directly and throws "Object is not a
+        function" on the first scroll frame. Web never sees it, because
+        NATIVE_DRIVER is false there and the call returns a real function.
+
+        This is the same trap that caught the ScrollView here before the list
+        was paginated; swapping the component out is what reintroduced it.
+      */}
+      <AnimatedFlatList
+        data={feed.listings}
+        keyExtractor={(l) => l.id}
+        renderItem={renderItem}
+        numColumns={2}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
           useNativeDriver: NATIVE_DRIVER,
         })}
-        contentContainerStyle={{ paddingTop: headerH + space.lg, paddingBottom: navClearance }}
+        columnWrapperStyle={{ paddingHorizontal: space.gutter - COLUMN_GAP / 2 }}
+        contentContainerStyle={{
+          paddingTop: headerH + space.lg,
+          paddingBottom: navClearance,
+          rowGap: 20,
+        }}
+        /* Only when the feed is genuinely empty; a populated list keeps its rows. */
+        ListEmptyComponent={body()}
+        onEndReachedThreshold={0.6}
+        onEndReached={feed.loadMore}
+        ListFooterComponent={
+          feed.loadingMore ? (
+            <View style={{ paddingVertical: space.xl, alignItems: 'center' }}>
+              <Spinner color={C.textMuted} />
+            </View>
+          ) : !feed.hasMore && feed.listings.length > 0 ? (
+            <T variant="meta" color={C.textMuted} style={{ textAlign: 'center', paddingTop: space.xl }}>
+              That is everything for now
+            </T>
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={feed.refreshing}
@@ -82,78 +169,15 @@ export default function Home() {
             tintColor={C.textMuted}
           />
         }
-      >
-        {feed.loading ? (
-          <ProductGridSkeleton />
-        ) : feed.error ? (
-          <EmptyState
-            icon="close"
-            title="Could not load listings"
-            body={feed.error.message}
-            action={
-              <Button
-                label="Try again"
-                height={44}
-                size={14}
-                onPress={feed.refetch}
-                style={{ marginTop: 18 }}
-              />
-            }
-          />
-        ) : listings.length === 0 ? (
-          /*
-           * The database genuinely has no listings. This is the honest state:
-           * nothing is invented to fill the grid, and the way out of it is the
-           * Sell flow rather than a seeded catalog.
-           */
-          <EmptyState
-            icon="bag"
-            title={cat === 'All' ? 'No listings yet' : `Nothing in ${cat} yet`}
-            body={
-              cat === 'All'
-                ? 'Be the first to list something on SAWA.'
-                : 'Try another category, or list something here yourself.'
-            }
-            action={
-              <Button
-                label="Start selling"
-                height={48}
-                onPress={() => router.push('/sell')}
-                style={{ marginTop: 20 }}
-              />
-            }
-          />
-        ) : (
-          <>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'baseline',
-                justifyContent: 'space-between',
-                paddingHorizontal: space.gutter,
-                paddingBottom: space.md,
-              }}
-            >
-              <T variant="sectionTitle">Recommended for you</T>
-              <T variant="meta" color={C.textSecondary}>
-                {listings.length} item{listings.length === 1 ? '' : 's'}
-              </T>
-            </View>
+      />
 
-            <ListingGrid
-              listings={listings}
-              savedIds={favorites.saved}
-              onToggleSave={favorites.toggle}
-            />
-          </>
-        )}
-
-        {!!favorites.error && (
-          <T variant="meta" color={C.error} style={{ textAlign: 'center', paddingTop: space.lg }}>
+      {!!favorites.error && (
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: navClearance }}>
+          <T variant="meta" color={C.error} style={{ textAlign: 'center' }}>
             {favorites.error}
           </T>
-        )}
-      </Animated.ScrollView>
+        </View>
+      )}
 
       <Animated.View
         onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
@@ -251,7 +275,7 @@ export default function Home() {
           </PressableScale>
         </View>
 
-        {/* Real categories. Absent until the query lands — no placeholder chips. */}
+        {/* Real categories, absent until they load — no placeholder chips. */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -265,6 +289,27 @@ export default function Home() {
 
         <Animated.View style={{ height: 1, backgroundColor: C.border, opacity: hairline }} />
       </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * A grid cell. Split out so the card measures itself against the column it is
+ * given rather than recomputing the screen width for every item.
+ */
+function ListingCardCell({
+  listing,
+  saved,
+  onToggle,
+}: {
+  listing: ListingRow;
+  saved: boolean;
+  onToggle: (id: string) => void;
+}) {
+  const [width, setWidth] = useState(0);
+  return (
+    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      {width > 0 && <ListingCard listing={listing} width={width} saved={saved} onToggleSave={onToggle} />}
     </View>
   );
 }

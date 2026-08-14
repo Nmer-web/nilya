@@ -172,7 +172,7 @@ export const ProductCard = React.memo(function ProductCard({
     <View style={{ width }}>
       <PressableScale
         scale={0.98}
-        onPress={() => router.push({ pathname: '/product/[id]', params: { id: p.id } })}
+        onPress={() => router.push({ pathname: '/listing/[id]', params: { id: p.id } })}
         accessibilityRole="button"
         accessibilityLabel={`${p.t}, ${euro(p.pr)}, ${p.cd}, ${p.city}`}
       >
@@ -255,7 +255,7 @@ export const PriceTile = React.memo(function PriceTile({
   return (
     <PressableScale
       scale={0.98}
-      onPress={() => router.push({ pathname: '/product/[id]', params: { id: p.id } })}
+      onPress={() => router.push({ pathname: '/listing/[id]', params: { id: p.id } })}
       accessibilityRole="button"
       accessibilityLabel={`${p.t}, ${euro(p.pr)}`}
       style={{ width }}
