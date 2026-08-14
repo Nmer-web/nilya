@@ -82,15 +82,24 @@ export default function ProductDetail() {
             }}
           >
             <FloatingIconButton name="chevronLeft" label="Back" onPress={() => router.back()} />
-            <Animated.View style={{ transform: [{ scale: heart }] }}>
+
+            {/* Share sits beside the favourite, per the overlay spec. */}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
               <FloatingIconButton
-                name="heart"
-                label={faved ? 'Remove from favourites' : 'Save to favourites'}
-                color={C.favourite}
-                fill={faved ? C.favourite : 'none'}
-                onPress={favourite}
+                name="send"
+                label="Share this listing"
+                onPress={() => openSheet({ kind: 'share', productId: p.id })}
               />
-            </Animated.View>
+              <Animated.View style={{ transform: [{ scale: heart }] }}>
+                <FloatingIconButton
+                  name="heart"
+                  label={faved ? 'Remove from favourites' : 'Save to favourites'}
+                  color={C.favourite}
+                  fill={faved ? C.favourite : 'none'}
+                  onPress={favourite}
+                />
+              </Animated.View>
+            </View>
           </View>
 
           <View
@@ -308,29 +317,12 @@ export default function ProductDetail() {
 
         {/*
           Share and report live at the foot of the listing rather than behind an
-          overflow menu in the gallery: both are rare, and neither deserves to
-          compete with the back and favourite controls over the photography.
+          Report stays at the foot of the listing. Share moved up to the gallery
+          overlay, where the brief places it; reporting is rare enough that a
+          third floating control over the photography would cost more than it
+          returns.
         */}
         <View style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 8 }}>
-          <Tap
-            onPress={() => openSheet({ kind: 'share', productId: p.id })}
-            accessibilityRole="button"
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              paddingVertical: 15,
-              borderTopWidth: 1,
-              borderTopColor: C.border,
-            }}
-          >
-            <Icon name="send" size={18} color={C.text} strokeWidth={1.8} />
-            <T w={500} size={14.5} style={{ flex: 1 }}>
-              Share this listing
-            </T>
-            <Icon name="chevronRight" size={16} color={C.borderStrong} />
-          </Tap>
-
           <Tap
             onPress={() => openSheet({ kind: 'report', productId: p.id })}
             accessibilityRole="button"

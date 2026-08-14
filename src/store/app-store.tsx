@@ -104,6 +104,43 @@ export const SORTS: SortKey[] = ['Relevance', 'Price: low to high', 'Newest firs
 export type OfferState = 'open' | 'countered' | 'accepted' | 'declined';
 export type Message = { me: boolean; t: string };
 
+export type Draft = {
+  title: string;
+  category: string;
+  condition: string;
+  brand: string;
+  colour: string;
+  price: string;
+};
+
+const EMPTY_DRAFT: Draft = { title: '', category: '', condition: '', brand: '', colour: '', price: '' };
+
+/**
+ * A listing is publishable once it has a photograph and the four facts a buyer
+ * cannot shop without. Brand and colour stay optional — plenty of real listings
+ * are unbranded, and blocking on them would strand the seller on a step they
+ * have nothing to enter.
+ */
+export const draftComplete = (s: { photos: number[]; draft: Draft }) =>
+  s.photos.length > 0 &&
+  s.draft.title.trim() !== '' &&
+  s.draft.category !== '' &&
+  s.draft.condition !== '' &&
+  s.draft.price.trim() !== '';
+
+/**
+ * What the suggestion fills in once it has read the photos. Kept beside the
+ * empty draft so the two stay the same shape.
+ */
+const SUGGESTED_DRAFT: Draft = {
+  title: 'Nike Air Max 270',
+  category: 'Shoes',
+  condition: 'Very good',
+  brand: 'Nike',
+  colour: 'Black',
+  price: '45',
+};
+
 export type Sheet =
   | { kind: 'offer'; mode: 'buyer' | 'counter'; productId: number; amount: number }
   | { kind: 'filters' }
@@ -118,6 +155,8 @@ type AppState = {
   /** Category chip, shared by Home and Explore exactly as in the prototype. */
   cat: string;
   q: string;
+  /** Recent search terms, most recent first. */
+  recent: string[];
   sort: SortKey;
 
   /* Sell composer */
@@ -132,8 +171,11 @@ type AppState = {
   photos: number[];
   scanning: boolean;
   suggested: boolean;
-  filled: boolean;
   sudanPickup: boolean;
+  /** Which step of the compose flow is on screen, zero-based. */
+  step: number;
+  /** The listing being written. Real values now, not a filled/empty toggle. */
+  draft: Draft;
 
   /* Inbox */
   offerState: OfferState;
@@ -158,12 +200,14 @@ const INITIAL: AppState = {
   favs: { 1: true, 6: true, 13: true },
   cat: 'All',
   q: '',
+  recent: [],
   sort: 'Relevance',
   photos: [],
   scanning: false,
   suggested: false,
-  filled: false,
   sudanPickup: true,
+  step: 0,
+  draft: EMPTY_DRAFT,
   offerState: 'open',
   msgs: [
     { me: true, t: 'Is this still available?' },
@@ -187,11 +231,16 @@ type AppActions = {
   setCat: (cat: string) => void;
   setQuery: (q: string) => void;
   setSort: (s: SortKey) => void;
+  /** Records a term in the recent list and applies it as the active query. */
+  submitSearch: (q: string) => void;
 
   addPhotos: () => void;
   removePhoto: (id: number) => void;
   applySuggestion: () => void;
   toggleSudanPickup: () => void;
+  setStep: (n: number) => void;
+  setDraftField: (key: keyof Draft, value: string) => void;
+  resetComposer: () => void;
   publish: () => void;
 
   setOfferState: (s: OfferState) => void;
@@ -259,6 +308,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setCat: (cat) => patch({ cat }),
       setQuery: (q) => patch({ q }),
       setSort: (sort) => patch({ sort }),
+      submitSearch: (raw) => {
+        const q = raw.trim();
+        if (!q) return;
+        patch((s) => ({
+          q,
+          // Most recent first, de-duplicated case-insensitively, capped at six.
+          recent: [q, ...s.recent.filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, 6),
+        }));
+      },
 
       addPhotos: () => {
         patch({ photos: [1, 2, 3], scanning: true, suggested: false });
@@ -273,17 +331,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         patch((s) => {
           const photos = s.photos.filter((p) => p !== id);
           return photos.length === 0
-            ? { photos, scanning: false, suggested: false, filled: false }
+            ? { photos, scanning: false, suggested: false, draft: EMPTY_DRAFT, step: 0 }
             : { photos };
         }),
       applySuggestion: () => {
-        patch({ filled: true, suggested: false });
+        patch({ draft: SUGGESTED_DRAFT, suggested: false });
         flash('Details filled in — check the price');
       },
       toggleSudanPickup: () => patch((s) => ({ sudanPickup: !s.sudanPickup })),
+
+      setStep: (step) => patch({ step }),
+      setDraftField: (key, value) => patch((s) => ({ draft: { ...s.draft, [key]: value } })),
+      /** Returns the composer to a blank listing after a successful publish. */
+      resetComposer: () =>
+        patch({ photos: [], scanning: false, suggested: false, step: 0, draft: EMPTY_DRAFT }),
+
       publish: () => {
-        if (!latest.current.filled) {
-          flash('Add a title and price to publish');
+        if (!draftComplete(latest.current)) {
+          flash('Fill in the remaining steps to publish');
           return;
         }
         patch({ sheet: { kind: 'done', doneKind: 'published' } });
@@ -351,9 +416,18 @@ export function filtersActive(s: {
   return s.fCond !== 'Any' || s.fDel !== 'Any' || s.maxPrice < 300 || s.verifiedOnly;
 }
 
+/**
+ * `From Sudan` is a place, not a product category — no listing carries it as
+ * `cat`, so matching on that field would render the chip permanently empty. It
+ * selects on the seller's country instead, which is what the label promises and
+ * what the discovery rail of the same name shows.
+ */
+export const matchesCategory = (p: Product, cat: string) =>
+  cat === 'All' || (cat === 'From Sudan' ? p.cc === 'SD' : p.cat === cat);
+
 export function useHomeFeed() {
   const { cat } = useApp();
-  return useMemo(() => PRODUCTS.filter((p) => cat === 'All' || p.cat === cat), [cat]);
+  return useMemo(() => PRODUCTS.filter((p) => matchesCategory(p, cat)), [cat]);
 }
 
 export function useSearchResults() {
@@ -362,7 +436,7 @@ export function useSearchResults() {
     const ql = q.trim().toLowerCase();
     let out = PRODUCTS.filter(
       (p) =>
-        (cat === 'All' || p.cat === cat) &&
+        matchesCategory(p, cat) &&
         (!ql || `${p.t} ${p.b} ${p.cat} ${p.city} ${p.country}`.toLowerCase().includes(ql)) &&
         p.pr <= maxPrice &&
         (fCond === 'Any' || p.cd === fCond) &&

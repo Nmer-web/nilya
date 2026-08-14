@@ -284,7 +284,7 @@ export const PRODUCTS: Product[] = [
  * its listing — dropping it to match the shortlist exactly would strand that
  * product behind `All`.
  */
-export const CATS = ['All', 'Women', 'Men', 'Kids', 'Home', 'Electronics', 'Shoes', 'Beauty', 'Sports'];
+export const CATS = ['All', 'Women', 'Men', 'Kids', 'Home', 'Electronics', 'Shoes', 'Beauty', 'From Sudan', 'Sports'];
 
 export const EXCATS = [
   'All',

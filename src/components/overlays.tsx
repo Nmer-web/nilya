@@ -613,7 +613,7 @@ const DONE_COPY = {
 } as const;
 
 function DoneSheet(phase: Phase) {
-  const { sheet } = useApp();
+  const { sheet, resetComposer } = useApp();
   const dismiss = useDismiss();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -639,11 +639,22 @@ function DoneSheet(phase: Phase) {
   const primary = () => {
     dismiss();
     if (sheet.doneKind === 'published') {
+      resetComposer();
       router.dismissTo('/profile');
     } else {
       router.dismissTo('/');
       router.push({ pathname: '/order/[id]', params: { id: 'SS28491' } });
     }
+  };
+
+  /**
+   * "Sell another item" only means anything if the composer is empty when the
+   * seller lands back on it — otherwise they return to the finished listing
+   * they just published, on its final step.
+   */
+  const secondary = () => {
+    dismiss();
+    if (sheet.doneKind === 'published') resetComposer();
   };
 
   return (
@@ -679,7 +690,7 @@ function DoneSheet(phase: Phase) {
 
       <Button label={copy.cta} onPress={primary} style={{ marginTop: 22, alignSelf: 'stretch' }} />
       <Tap
-        onPress={dismiss}
+        onPress={secondary}
         accessibilityRole="button"
         style={{ height: 46, marginTop: 8, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}
       >

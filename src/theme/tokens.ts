@@ -24,10 +24,10 @@ export const color = {
 
   /* ── ink ── */
   text: '#111111',
-  textSecondary: '#666666',
+  textSecondary: '#717171',
   textMuted: '#8A8A8A',
 
-  border: '#E5E5E2',
+  border: '#E5E5E5',
   borderStrong: '#D8D8D5',
 
   /* ── actions ── */

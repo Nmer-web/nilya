@@ -11,19 +11,35 @@ import { FadeIn, ProductGridSkeleton } from '@/components/skeleton';
 import { Chip, PressableScale, T, Tap } from '@/components/ui';
 import { CATS, PRODUCTS, type Product } from '@/data/catalog';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { useApp, useHomeFeed } from '@/store/app-store';
+import { euro, useApp, useHomeFeed } from '@/store/app-store';
 import { color as C, radius, space } from '@/theme/tokens';
 
 /**
- * Editorial rail above the feed. Deliberately small and photographic — §6 asks
- * for discovery, not an advertising banner, so each card is a listing wearing a
- * label rather than a promo slot.
+ * Editorial rails, each a real slice of the catalog rather than a hand-picked
+ * list. Deriving them means a rail is never empty and never shows a listing
+ * that contradicts its own title.
  */
-const DISCOVERY: { label: string; product: Product }[] = [
-  { label: 'New today', product: PRODUCTS[2] },
-  { label: 'From Sudan', product: PRODUCTS[5] },
-  { label: 'Popular near you', product: PRODUCTS[10] },
-  { label: 'Great deals', product: PRODUCTS[7] },
+const RAILS: { title: string; caption: string; items: Product[] }[] = [
+  {
+    title: 'New today',
+    caption: 'Just listed',
+    items: [...PRODUCTS].sort((a, b) => b.id - a.id).slice(0, 6),
+  },
+  {
+    title: 'From Sudan',
+    caption: 'Shipped or collected locally',
+    items: PRODUCTS.filter((p) => p.cc === 'SD'),
+  },
+  {
+    title: 'Great deals',
+    caption: 'Under €40',
+    items: PRODUCTS.filter((p) => p.pr < 40).sort((a, b) => a.pr - b.pr),
+  },
+  {
+    title: 'Sudanese favourites',
+    caption: 'Handmade by the diaspora',
+    items: PRODUCTS.filter((p) => p.b === 'Handmade'),
+  },
 ];
 
 /** Height of the wordmark row — the amount the header gives back on scroll. */
@@ -36,7 +52,7 @@ const BRAND_ROW = 44;
  * whose last visible card ends flush reads as a finished row, and nobody
  * scrolls it.
  */
-const DISCOVERY_CARD = 152;
+const DISCOVERY_CARD = 158;
 
 /** Search field and its filter button share a height so they read as one row. */
 const SEARCH_HEIGHT = 46;
@@ -164,7 +180,13 @@ export default function Home() {
           />
         }
       >
-        <DiscoveryRail />
+        {/*
+          The rails only make sense against the whole catalog. Under a category
+          filter they would contradict the chip above them — "From Sudan" while
+          Electronics is selected — so the feed stands alone there.
+        */}
+        {cat === 'All' &&
+          RAILS.map((rail) => <DiscoveryRail key={rail.title} {...rail} />)}
 
         <SectionHeading title="Recommended for you" right={`${feed.length} items`} />
 
@@ -258,7 +280,7 @@ export default function Home() {
           }}
         >
           <Tap
-            onPress={() => router.push('/explore')}
+            onPress={() => router.push('/search')}
             accessibilityRole="search"
             accessibilityLabel="Search items, brands, categories"
             style={{
@@ -323,51 +345,63 @@ export default function Home() {
   );
 }
 
-function DiscoveryRail() {
+/**
+ * One editorial rail.
+ *
+ * Cards are taller and narrower than the old 152×112 landscape tiles — a
+ * portrait crop at the same 3:4 the grid uses, so the rails and the feed read
+ * as the same catalog rather than two different products.
+ */
+function DiscoveryRail({ title, caption, items }: (typeof RAILS)[number]) {
   const router = useRouter();
+  if (items.length === 0) return null;
+
   return (
-    <>
-      <SectionHeading title="Discover" />
+    <View style={{ paddingBottom: space['2xl'] }}>
+      <View style={{ paddingHorizontal: space.gutter, paddingBottom: space.md }}>
+        <T variant="sectionTitle">{title}</T>
+        <T variant="meta" color={C.textSecondary} style={{ marginTop: 2 }}>
+          {caption}
+        </T>
+      </View>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: space.md, paddingHorizontal: space.gutter, paddingBottom: space['2xl'] }}
+        contentContainerStyle={{ gap: space.md, paddingHorizontal: space.gutter }}
       >
-        {DISCOVERY.map(({ label, product }) => (
+        {items.map((product) => (
           <PressableScale
-            key={label}
+            key={product.id}
             scale={0.98}
             onPress={() => router.push({ pathname: '/product/[id]', params: { id: product.id } })}
             accessibilityRole="button"
-            accessibilityLabel={`${label}: ${product.t}`}
+            accessibilityLabel={`${product.t}, ${euro(product.pr)}`}
             style={{ width: DISCOVERY_CARD }}
           >
             <View
               style={{
                 width: DISCOVERY_CARD,
-                height: 112,
+                height: DISCOVERY_CARD * (4 / 3),
                 borderRadius: radius.lg,
                 overflow: 'hidden',
                 backgroundColor: C.surfaceSecondary,
               }}
             >
-              <ImageSlot label={product.t} glyph={22} />
+              <ImageSlot label={product.t} glyph={24} />
             </View>
-            {/*
-              An eyebrow in muted caps rather than the accent it used to wear.
-              Four orange labels was the single heaviest use of colour on the
-              screen, and it spent the whole 2% budget on decoration — the
-              accent is now the unread dot alone.
-            */}
-            <T w={600} size={11} color={C.textMuted} tracking={0.7} style={{ paddingTop: space.sm }}>
-              {label.toUpperCase()}
-            </T>
-            <T w={500} size={13.5} numberOfLines={1} style={{ marginTop: 3 }}>
+            <T w={500} size={14} numberOfLines={1} style={{ marginTop: space.sm }}>
               {product.t}
+            </T>
+            <T w={700} size={15} tracking={-0.2} style={{ marginTop: 2 }}>
+              {euro(product.pr)}
+            </T>
+            <T size={12} color={C.textSecondary} numberOfLines={1} style={{ marginTop: 2 }}>
+              {product.cd} · {product.city}
             </T>
           </PressableScale>
         ))}
       </ScrollView>
-    </>
+    </View>
   );
 }

@@ -41,6 +41,13 @@ export default function AppLayout() {
 
         <Stack.Screen name="checkout" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="verify" options={{ animation: 'slide_from_bottom' }} />
+
+        {/*
+          Search fades rather than sliding. It is not a place you travel to —
+          it is the search field growing to fill the screen, and a lateral slide
+          would contradict that by implying somewhere new.
+        */}
+        <Stack.Screen name="search" options={{ animation: 'fade', animationDuration: 180 }} />
       </Stack>
 
       {showNav && <BottomNav pathname={pathname} />}
