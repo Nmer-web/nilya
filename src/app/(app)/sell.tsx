@@ -19,7 +19,7 @@ export default function Sell() {
   const { photos, scanning, suggested, filled, addPhotos, removePhoto, applySuggestion, publish } = useApp();
   const [publishing, setPublishing] = useState(false);
 
-  const hasPhotos = photos > 0;
+  const hasPhotos = photos.length > 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
@@ -83,9 +83,12 @@ export default function Sell() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
             >
-              {/* Photos stagger in as they attach, rather than all appearing at once. */}
-              {Array.from({ length: photos }, (_, i) => (
-                <PhotoCard key={i} index={i} cover={i === 0} onRemove={removePhoto} />
+              {/*
+                Photos stagger in as they attach, rather than all appearing at
+                once. Keyed by id, never by index: see AppState.photos.
+              */}
+              {photos.map((id, i) => (
+                <PhotoCard key={id} id={id} index={i} cover={i === 0} onRemove={removePhoto} />
               ))}
 
               <Tap
@@ -107,7 +110,7 @@ export default function Sell() {
               >
                 <Icon name="plus" size={20} color={C.textSecondary} />
                 <T size={11.5} color={C.textSecondary}>
-                  {photos} / 10
+                  {photos.length} / 10
                 </T>
               </Tap>
             </ScrollView>
@@ -226,26 +229,35 @@ const PHOTO_H = 118;
  * reflows out from under the thing being dismissed.
  */
 function PhotoCard({
+  id,
   index,
   cover,
   onRemove,
 }: {
+  id: number;
   index: number;
   cover: boolean;
-  onRemove: () => void;
+  onRemove: (id: number) => void;
 }) {
   const p = useAnimatedValue(0);
   const [leaving, setLeaving] = useState(false);
+
+  /**
+   * The stagger is fixed at mount. Deriving the delay from the live `index`
+   * would make every surviving card replay its entrance each time a deletion
+   * shifted it along the rail.
+   */
+  const [enterDelay] = useState(() => index * 70);
 
   useEffect(() => {
     Animated.timing(p, {
       toValue: 1,
       duration: 240,
-      delay: index * 70,
+      delay: enterDelay,
       easing: Easing.out(Easing.quad),
       useNativeDriver: NATIVE_DRIVER,
     }).start();
-  }, [p, index]);
+  }, [p, enterDelay]);
 
   const remove = () => {
     if (leaving) return;
@@ -256,7 +268,7 @@ function PhotoCard({
       easing: Easing.in(Easing.quad),
       useNativeDriver: NATIVE_DRIVER,
     }).start(({ finished }) => {
-      if (finished) onRemove();
+      if (finished) onRemove(id);
     });
   };
 

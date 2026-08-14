@@ -121,7 +121,15 @@ type AppState = {
   sort: SortKey;
 
   /* Sell composer */
-  photos: number;
+  /**
+   * Attached photo ids — identities, not a count.
+   *
+   * A count forces the rail to key its cards by array index, and an index is
+   * not an identity: removing the first of three leaves React reusing that
+   * slot's component instance, which still holds the finished exit animation
+   * of the photo that just left. Ids let the removed card actually unmount.
+   */
+  photos: number[];
   scanning: boolean;
   suggested: boolean;
   filled: boolean;
@@ -151,7 +159,7 @@ const INITIAL: AppState = {
   cat: 'All',
   q: '',
   sort: 'Relevance',
-  photos: 0,
+  photos: [],
   scanning: false,
   suggested: false,
   filled: false,
@@ -181,7 +189,7 @@ type AppActions = {
   setSort: (s: SortKey) => void;
 
   addPhotos: () => void;
-  removePhoto: () => void;
+  removePhoto: (id: number) => void;
   applySuggestion: () => void;
   toggleSudanPickup: () => void;
   publish: () => void;
@@ -253,7 +261,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSort: (sort) => patch({ sort }),
 
       addPhotos: () => {
-        patch({ photos: 3, scanning: true, suggested: false });
+        patch({ photos: [1, 2, 3], scanning: true, suggested: false });
         later(() => patch({ scanning: false, suggested: true }), 1300);
       },
       /**
@@ -261,10 +269,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        * a suggestion derived from photographs that no longer exist would keep
        * a filled-in title and price on screen with nothing backing them.
        */
-      removePhoto: () =>
+      removePhoto: (id) =>
         patch((s) => {
-          const photos = Math.max(0, s.photos - 1);
-          return photos === 0
+          const photos = s.photos.filter((p) => p !== id);
+          return photos.length === 0
             ? { photos, scanning: false, suggested: false, filled: false }
             : { photos };
         }),
