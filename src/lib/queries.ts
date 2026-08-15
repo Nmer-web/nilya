@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { NEW_CONDITION } from '@/lib/database.types';
 import type {
   CategoryRow,
   ListingDetailRow,
@@ -42,8 +43,6 @@ export type FeedFilters = {
   query?: string;
   minPriceCents?: number | null;
   maxPriceCents?: number | null;
-  /** A `listing_condition` enum value. */
-  condition?: string | null;
   countryCode?: string | null;
   /** Restricts the feed to one seller, for their profile. */
   sellerId?: string | null;
@@ -64,16 +63,22 @@ export async function fetchListings(
 ): Promise<{ rows: ListingRow[]; hasMore: boolean }> {
   const from = page * PAGE_SIZE;
 
+  /*
+   * `condition = 'new'` on every feed read. SAWA is a new-product marketplace,
+   * and the enum still accepts the two used values — so this is what keeps a
+   * used listing written by anything other than this app out of the feed,
+   * rather than trusting that none exists.
+   */
   let q = supabase
     .from('listings')
     .select(LISTING_SELECT)
     .eq('status', 'active')
+    .eq('condition', NEW_CONDITION)
     .range(from, from + PAGE_SIZE - 1);
 
   if (filters.category) q = q.eq('category_slug', filters.category);
   if (filters.sellerId) q = q.eq('seller_id', filters.sellerId);
   if (filters.countryCode) q = q.eq('country_code', filters.countryCode);
-  if (filters.condition) q = q.eq('condition', filters.condition);
   if (filters.minPriceCents != null) q = q.gte('price_cents', filters.minPriceCents);
   if (filters.maxPriceCents != null) q = q.lte('price_cents', filters.maxPriceCents);
 

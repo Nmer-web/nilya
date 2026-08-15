@@ -116,7 +116,7 @@ export default function Profile() {
           variant="outline"
           height={42}
           size={13.5}
-          onPress={() => flash('Profile editing is out of scope for this prototype')}
+          onPress={() => router.push('/edit-profile')}
           style={{ flex: 1, borderRadius: 11 }}
         />
         <Button

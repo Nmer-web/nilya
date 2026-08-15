@@ -6,13 +6,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavClearance } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
 import { ListingFeedGrid } from '@/components/listing-feed-grid';
+import { ListingRail } from '@/components/listing-rail';
 import { Button, Chip, PressableScale, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { useFavorites } from '@/hooks/use-favorites';
 import { useListingFeed } from '@/hooks/use-listing-feed';
-import { fetchCategories } from '@/lib/queries';
+import { fetchCategories, fetchProfile } from '@/lib/queries';
 import { filtersActive, useApp } from '@/store/app-store';
+import { useAuth } from '@/store/auth-store';
 import { color as C, radius, space } from '@/theme/tokens';
 
 const BRAND_ROW = 44;
@@ -28,6 +30,7 @@ export default function Home() {
   const scrollY = useAnimatedValue(0);
 
   const favorites = useFavorites();
+  const { user } = useAuth();
   const categories = useAsync(() => fetchCategories('home'), 'categories:home');
 
   /*
@@ -43,14 +46,24 @@ export default function Home() {
       category,
       minPriceCents: filters.minCents,
       maxPriceCents: filters.maxCents,
-      condition: filters.condition,
       countryCode: filters.countryCode,
       sort,
     },
-    `home:${category}:${filters.minCents}:${filters.maxCents}:${filters.condition}:${filters.countryCode}:${sort}`
+    `home:${category}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${sort}`
   );
 
   const hasFilters = filtersActive(filters);
+
+  /**
+   * The viewer's own country, for the "Near you" rail. It comes from their
+   * profile rather than from device location: `profiles.country_code` is a real
+   * column the person set, and SAWA asks for no location permission.
+   */
+  const myProfile = useAsync(
+    async () => (user ? fetchProfile(user.id) : null),
+    `home-profile:${user?.id ?? 'none'}`
+  );
+  const myCountry = myProfile.data?.country_code ?? null;
 
   const headerShift = scrollY.interpolate({
     inputRange: [0, BRAND_ROW],
@@ -77,6 +90,45 @@ export default function Home() {
         the note on that component.
       */}
       <ListingFeedGrid
+        /*
+         * Section rails, above the grid and scrolling with it.
+         *
+         * Only where the schema supplies a real signal: "From Sudan" is
+         * `country_code = 'SD'`, "Near you" is the viewer's own country from
+         * their profile. There is no Popular rail — `listings` carries neither
+         * a view count nor a favourite count, so any ordering called popular
+         * would be one this app made up.
+         *
+         * They are hidden while a filter or a category chip is active: a rail
+         * that ignores the filter the person just set reads as a bug.
+         */
+        listHeader={
+          category === null && !hasFilters ? (
+            <View>
+              <ListingRail
+                title="From Sudan"
+                subtitle="Sellers listing from Sudan"
+                filters={{ countryCode: 'SD' }}
+                cacheKey="rail:sudan"
+                savedIds={favorites.saved}
+                onToggleSave={favorites.toggle}
+              />
+              {!!myCountry && myCountry !== 'SD' && (
+                <ListingRail
+                  title="Near you"
+                  subtitle={`Listed in ${myCountry}`}
+                  filters={{ countryCode: myCountry }}
+                  cacheKey={`rail:near:${myCountry}`}
+                  savedIds={favorites.saved}
+                  onToggleSave={favorites.toggle}
+                />
+              )}
+              <T w={600} size={17} tracking={-0.3} style={{ paddingHorizontal: space.gutter, paddingTop: space.xl, paddingBottom: space.md }}>
+                New arrivals
+              </T>
+            </View>
+          ) : null
+        }
         feed={feed}
         savedIds={favorites.saved}
         onToggleSave={favorites.toggle}

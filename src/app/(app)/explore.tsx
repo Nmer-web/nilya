@@ -38,11 +38,10 @@ export default function Explore() {
       category,
       minPriceCents: filters.minCents,
       maxPriceCents: filters.maxCents,
-      condition: filters.condition,
       countryCode: filters.countryCode,
       sort,
     },
-    `explore:${category}:${filters.minCents}:${filters.maxCents}:${filters.condition}:${filters.countryCode}:${sort}`
+    `explore:${category}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${sort}`
   );
 
   const active = filtersActive(filters);

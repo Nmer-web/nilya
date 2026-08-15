@@ -1,3 +1,6 @@
+import { File } from 'expo-file-system';
+import { Platform } from 'react-native';
+
 import { supabase } from '@/lib/supabase';
 import type { ListingCondition } from '@/lib/database.types';
 import type { MessageRow } from '@/lib/queries';
@@ -75,6 +78,39 @@ export async function createDraftListing(input: NewListing): Promise<string> {
 }
 
 /**
+ * Reads a picked photograph into bytes.
+ *
+ * The picker returns two different kinds of URI and only one of them can be
+ * read the same way:
+ *
+ *   web    — `URL.createObjectURL(file)`, a `blob:` URL. `fetch` is the only
+ *            thing that reads it; expo-file-system does not handle blob URLs.
+ *   native — a `file://` path. `fetch` on `file://` is not part of the fetch
+ *            standard and React Native's implementation of it is inconsistent,
+ *            which is what produced "Could not read the selected photo" from a
+ *            photograph that was perfectly readable.
+ *
+ * `new File(uri).bytes()` is the SDK 57 way to read a local file and returns a
+ * Uint8Array, which is what Storage wants anyway.
+ */
+async function readPickedImage(image: PickedImage): Promise<Uint8Array> {
+  if (Platform.OS === 'web') {
+    const res = await fetch(image.uri);
+    if (!res.ok) throw new ListingError('Could not read the selected photo');
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  try {
+    const file = new File(image.uri);
+    return await file.bytes();
+  } catch (e) {
+    throw new ListingError(
+      e instanceof Error ? `Could not read the selected photo: ${e.message}` : 'Could not read the selected photo'
+    );
+  }
+}
+
+/**
  * Uploads one photograph and records it against the listing.
  *
  * The object path is `<listing_id>/<position>-<random>.<ext>` — the listing id
@@ -85,18 +121,15 @@ export async function createDraftListing(input: NewListing): Promise<string> {
  * *listing* exists with the user's id, which it never does, and every upload is
  * refused.
  *
- * The bytes go up as an ArrayBuffer. `fetch(uri)` on a local file gives a Blob
- * whose size React Native reports correctly, whereas passing the Blob straight
- * to supabase-js has historically uploaded zero bytes on Android.
+ * Reading the bytes is platform-split, because the two platforms hand back two
+ * different kinds of URI. See `readPickedImage`.
  */
 export async function uploadListingImage(
   listingId: string,
   image: PickedImage,
   position: number
 ): Promise<string> {
-  const res = await fetch(image.uri);
-  if (!res.ok) throw new ListingError('Could not read the selected photo');
-  const bytes = await res.arrayBuffer();
+  const bytes = await readPickedImage(image);
 
   if (bytes.byteLength === 0) throw new ListingError('The selected photo was empty');
 
@@ -522,4 +555,79 @@ export async function markNotificationRead(id: string): Promise<void> {
     .is('read_at', null);
 
   if (error) throw error;
+}
+
+/* ─────────────────────────── profile ─────────────────────────── */
+
+/**
+ * Updates the signed-in user's own profile.
+ *
+ * `profiles_update_own` restricts this to `id = auth.uid()`, so the row is
+ * chosen by the session rather than by an argument. Only the fields a person
+ * actually edits are here — `rating_avg`, `lifetime_sales` and `is_verified`
+ * are maintained elsewhere and are not the account holder's to set.
+ */
+export async function updateProfile(input: {
+  displayName?: string;
+  bio?: string | null;
+  city?: string | null;
+  countryCode?: string | null;
+  avatarUrl?: string | null;
+}): Promise<void> {
+  const me = await requireUserId();
+
+  const patch: Record<string, unknown> = {};
+  if (input.displayName !== undefined) {
+    const name = input.displayName.trim();
+    /* `check (length(trim(display_name)) between 1 and 60)` — caught here so the
+       person sees a sentence rather than a constraint violation. */
+    if (name.length < 1 || name.length > 60) {
+      throw new Error('Your name needs to be between 1 and 60 characters');
+    }
+    patch.display_name = name;
+  }
+  if (input.bio !== undefined) patch.bio = input.bio?.trim() || null;
+  if (input.city !== undefined) patch.city = input.city?.trim() || null;
+  if (input.countryCode !== undefined) {
+    patch.country_code = input.countryCode ? input.countryCode.trim().toUpperCase() : null;
+  }
+  if (input.avatarUrl !== undefined) patch.avatar_url = input.avatarUrl;
+
+  if (Object.keys(patch).length === 0) return;
+
+  const { error } = await supabase.from('profiles').update(patch).eq('id', me);
+  if (error) throw error;
+}
+
+/**
+ * Uploads an avatar and points the profile at it.
+ *
+ * The object path must start with the user's id: `avatars_write_own` checks
+ * `(storage.foldername(name))[1] = auth.uid()::text`, so any other layout is
+ * refused. The bucket is public, so the resulting URL needs no signing.
+ *
+ * The old object is not deleted — a URL already handed to a rendered image
+ * would break, and the bucket's 2 MB cap makes the leak cheap. Cleaning up
+ * properly belongs with a storage lifecycle rule, not a client delete.
+ */
+export async function uploadAvatar(image: PickedImage): Promise<string> {
+  const me = await requireUserId();
+  const bytes = await readPickedImage(image);
+
+  if (bytes.byteLength === 0) throw new ListingError('That photo could not be read');
+
+  const ext = (image.mimeType.split('/')[1] ?? 'jpg').replace('jpeg', 'jpg');
+  const path = `${me}/${Math.random().toString(36).slice(2, 10)}.${ext}`;
+
+  const { error: upErr } = await supabase.storage
+    .from('avatars')
+    .upload(path, bytes, { contentType: image.mimeType, upsert: false });
+
+  if (upErr) throw new ListingError(`Photo upload failed: ${upErr.message}`);
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+  const url = data.publicUrl;
+
+  await updateProfile({ avatarUrl: url });
+  return url;
 }

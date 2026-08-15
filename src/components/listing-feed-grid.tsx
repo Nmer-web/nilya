@@ -46,6 +46,7 @@ export function ListingFeedGrid({
   contentPaddingBottom = 0,
   refreshOffset = 0,
   onRefresh,
+  listHeader,
 }: {
   feed: ReturnType<typeof useListingFeed>;
   savedIds: Set<string>;
@@ -56,6 +57,12 @@ export function ListingFeedGrid({
   contentPaddingBottom?: number;
   refreshOffset?: number;
   onRefresh?: () => void;
+  /**
+   * Rendered above the grid and scrolling with it. Home puts its section rails
+   * here rather than in a wrapping ScrollView — nesting a FlatList inside one
+   * gives it unbounded height and forfeits recycling entirely.
+   */
+  listHeader?: React.ReactElement | null;
 }) {
   const renderItem = useCallback(
     ({ item }: { item: ListingRow }) => (
@@ -89,6 +96,7 @@ export function ListingFeedGrid({
       keyExtractor={(l) => l.id}
       renderItem={renderItem}
       numColumns={2}
+      ListHeaderComponent={listHeader}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"

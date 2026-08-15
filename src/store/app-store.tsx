@@ -34,7 +34,7 @@ export const SORTS: { key: SortKey; label: string }[] = [
 /**
  * Discovery filters.
  *
- * Held in database units — cents, category slugs, `listing_condition` values,
+ * Held in database units — cents, category slugs,
  * ISO country codes — so the sheet and the query speak the same language and
  * nothing is translated in between.
  */
@@ -42,7 +42,6 @@ export type Filters = {
   categorySlug: string | null;
   minCents: number | null;
   maxCents: number | null;
-  condition: string | null;
   countryCode: string | null;
 };
 
@@ -50,7 +49,6 @@ export const EMPTY_FILTERS: Filters = {
   categorySlug: null,
   minCents: null,
   maxCents: null,
-  condition: null,
   countryCode: null,
 };
 /*
@@ -69,8 +67,13 @@ export const EMPTY_FILTERS: Filters = {
 export type Sheet = { kind: 'filters' } | { kind: 'sort' } | null;
 
 type AppState = {
-  favs: Record<number, true>;
-  /** Category chip, shared by Home and Explore exactly as in the prototype. */
+  /*
+   * No `favs` here. It held `{1: true, 6: true, 13: true}` — three numeric
+   * catalog ids marked as favourites of nobody. Favourites are rows in
+   * `favorites` keyed by listing UUID, read and written by `useFavorites`.
+   */
+
+  /** Category chip, shared by Home and Explore. */
   cat: string;
   q: string;
   /** Recent search terms, most recent first. */
@@ -84,7 +87,7 @@ type AppState = {
 
   /*
    * Discovery filters, in the shape the query takes them. Prices are cents and
-   * `condition` is a `listing_condition` value, so nothing has to be translated
+   * so nothing has to be translated
    * between the sheet and the database.
    */
   filters: Filters;
@@ -95,7 +98,6 @@ type AppState = {
 };
 
 const INITIAL: AppState = {
-  favs: { 1: true, 6: true, 13: true },
   cat: 'All',
   q: '',
   recent: [],
@@ -107,7 +109,6 @@ const INITIAL: AppState = {
 };
 
 type AppActions = {
-  toggleFav: (id: number) => void;
   setCat: (cat: string) => void;
   setQuery: (q: string) => void;
   setSort: (s: SortKey) => void;
@@ -157,13 +158,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const actions = useMemo<AppActions>(
     () => ({
-      toggleFav: (id) =>
-        patch((s) => {
-          const favs = { ...s.favs };
-          if (favs[id]) delete favs[id];
-          else favs[id] = true;
-          return { favs };
-        }),
       setCat: (cat) => patch({ cat }),
       setQuery: (q) => patch({ q }),
       setSort: (sort) => patch({ sort }),

@@ -6,7 +6,6 @@ import { Icon, type IconName } from '@/components/icon';
 import { Scrim, Sheet, SheetClose, SheetGrabber, Toast } from '@/components/sheet';
 import { Button, Chip, SectionLabel, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import type { ListingCondition } from '@/lib/database.types';
 import { fetchCategories, fetchListingCountries, fetchListings } from '@/lib/queries';
 import { EMPTY_FILTERS, SORTS, useApp, type Filters } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
@@ -183,15 +182,11 @@ function SortSheet(phase: Phase) {
 
 /* ─────────────────────────── filters ─────────────────────────── */
 
-/**
- * The three values `listing_condition` accepts, with human labels. Adding a
- * fourth here would produce a filter that matches nothing.
+/*
+ * No condition filter. Every SAWA listing is new — `fetchListings` pins
+ * `condition = 'new'` on every read — so a control offering "Very good" and
+ * "Good" would filter a marketplace that does not exist and return nothing.
  */
-const CONDITION_OPTIONS: { value: ListingCondition; label: string }[] = [
-  { value: 'new', label: 'New' },
-  { value: 'very_good', label: 'Very good' },
-  { value: 'good', label: 'Good' },
-];
 
 /** €12.50 → 1250, and '' → null so an empty field clears the bound. */
 function toCents(text: string): number | null {
@@ -206,7 +201,7 @@ const fromCents = (cents: number | null) => (cents == null ? '' : String(cents /
  *
  * Every control here writes a field that `fetchListings` turns into a `where`
  * clause — the category into `category_slug`, the bounds into `price_cents`,
- * the condition into the enum column, the place into `country_code`. The sheet
+ * the place into `country_code`. The sheet
  * holds a working copy and commits it on apply, so a half-set price range never
  * re-queries mid-typing.
  */
@@ -230,7 +225,6 @@ function FiltersSheet(phase: Phase) {
           category: draft.categorySlug,
           minPriceCents: draft.minCents,
           maxPriceCents: draft.maxCents,
-          condition: draft.condition,
           countryCode: draft.countryCode,
         },
         0
@@ -319,27 +313,6 @@ function FiltersSheet(phase: Phase) {
           <PriceInput label="Minimum" value={minText} onChange={setMinText} />
           <View style={{ width: 12, height: 1, backgroundColor: C.borderStrong }} />
           <PriceInput label="Maximum" value={maxText} onChange={setMaxText} />
-        </View>
-
-        <SectionLabel style={{ paddingTop: 22, paddingBottom: 10 }}>Condition</SectionLabel>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-          <Chip
-            label="Any"
-            active={draft.condition === null}
-            height={36}
-            round={radius.md}
-            onPress={() => set('condition', null)}
-          />
-          {CONDITION_OPTIONS.map((c) => (
-            <Chip
-              key={c.value}
-              label={c.label}
-              active={draft.condition === c.value}
-              height={36}
-              round={radius.md}
-              onPress={() => set('condition', c.value)}
-            />
-          ))}
         </View>
 
         <SectionLabel style={{ paddingTop: 22, paddingBottom: 10 }}>Location</SectionLabel>

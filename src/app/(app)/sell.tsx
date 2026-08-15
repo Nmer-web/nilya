@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/skeleton';
 import { Button, Card, Chip, EmptyState, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { CONDITION_LABEL, type ListingCondition } from '@/lib/database.types';
+import { CONDITION_LABEL, NEW_CONDITION } from '@/lib/database.types';
 import { tapSuccess } from '@/lib/haptics';
 import { createListing, fetchDeliveryOptions, ListingError, type PickedImage } from '@/lib/mutations';
 import { fetchCategories } from '@/lib/queries';
@@ -22,14 +22,16 @@ import { useApp } from '@/store/app-store';
 import { useAuth } from '@/store/auth-store';
 import { alpha, color as C, radius, space } from '@/theme/tokens';
 
-/** The three values `listing_condition` actually accepts. */
-const CONDITIONS: ListingCondition[] = ['new', 'very_good', 'good'];
+/*
+ * No condition step. SAWA sells new products only, so every listing is written
+ * with `condition: 'new'` — asking the seller to grade wear would describe a
+ * marketplace this is not.
+ */
 
 const STEPS = [
   { key: 'photos', title: 'Add your photos', sub: 'The first photo becomes your cover.' },
   { key: 'title', title: 'What are you selling?', sub: 'Buyers search this text, so name it plainly.' },
   { key: 'category', title: 'Pick a category', sub: 'This decides where your listing shows up.' },
-  { key: 'condition', title: 'What condition is it in?', sub: 'Be honest — buyers check this first.' },
   { key: 'details', title: 'Describe it', sub: 'Brand and detail. Optional, but they sell faster.' },
   { key: 'price', title: 'Set your price', sub: 'You keep 97% of the sale.' },
   { key: 'location', title: 'Where is it?', sub: 'Buyers see this, and it sets your delivery options.' },
@@ -41,7 +43,6 @@ type Draft = {
   description: string;
   brand: string;
   categorySlug: string;
-  condition: ListingCondition | '';
   price: string;
   /** null until the seller edits it — the profile supplies the default. */
   city: string | null;
@@ -53,11 +54,13 @@ const EMPTY: Draft = {
   description: '',
   brand: '',
   categorySlug: '',
-  condition: '',
   price: '',
   city: null,
   countryCode: null,
 };
+
+/** Ten photographs per listing, enforced in the picker and the grid alike. */
+const MAX_PHOTOS = 10;
 
 export default function Sell() {
   const navHeight = useNavHeight();
@@ -135,8 +138,6 @@ export default function Sell() {
         return draft.title.trim() !== '';
       case 'category':
         return draft.categorySlug !== '';
-      case 'condition':
-        return draft.condition !== '';
       case 'price':
         return draft.price.trim() !== '';
       case 'location':
@@ -150,31 +151,56 @@ export default function Sell() {
     images.length > 0 &&
     draft.title.trim() !== '' &&
     draft.categorySlug !== '' &&
-    draft.condition !== '' &&
     draft.price.trim() !== '' &&
     countryCode.trim().length === 2;
 
+  /**
+   * Opens the photo library.
+   *
+   * No permission request. The SDK 57 documentation is explicit that "no
+   * permissions request is necessary for launching the image library" — the
+   * system picker returns only what the person chose, so there is nothing to
+   * authorise. Asking anyway could only ever fail closed: on iOS a "Limited
+   * Access" grant reports `granted: false`, which turned a working picker into
+   * "SAWA needs access to your photos" and stopped the flow dead.
+   */
   const pick = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      setError('SAWA needs access to your photos to add them to a listing.');
+    let res: ImagePicker.ImagePickerResult;
+    try {
+      res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        /* Guarded: at ten the button is hidden, but 0 means *unlimited* to the
+           native picker rather than none. */
+        selectionLimit: Math.max(1, MAX_PHOTOS - images.length),
+        quality: 0.85,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not open your photo library.');
       return;
     }
 
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      selectionLimit: 10 - images.length,
-      quality: 0.85,
-    });
-
     if (res.canceled) return;
+
+    /*
+     * `uri` is the only field the upload needs and the only one guaranteed to
+     * be present — `fileName` is null under limited permissions and `mimeType`
+     * can be undefined when the type is indeterminate. Anything without a URI
+     * is dropped here rather than failing later mid-upload.
+     */
+    const usable = res.assets.filter((a) => typeof a.uri === 'string' && a.uri.length > 0);
+
+    if (usable.length === 0) {
+      setError('That photo could not be read. Try choosing a different one.');
+      return;
+    }
+
     setError(null);
     setImages((prev) =>
       [
         ...prev,
-        ...res.assets.map((a) => ({ uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg' })),
-      ].slice(0, 10)
+        ...usable.map((a) => ({ uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg' })),
+      ].slice(0, MAX_PHOTOS)
     );
   };
 
@@ -201,7 +227,7 @@ export default function Sell() {
           description: draft.description,
           brand: draft.brand,
           categorySlug: draft.categorySlug,
-          condition: draft.condition as ListingCondition,
+          condition: NEW_CONDITION,
           price: draft.price,
           city,
           countryCode,
@@ -267,20 +293,6 @@ export default function Sell() {
               selected={draft.categorySlug}
               onSelect={(slug) => set('categorySlug', slug)}
             />
-          )}
-
-          {current.key === 'condition' && (
-            <View>
-              {CONDITIONS.map((c, i) => (
-                <Choice
-                  key={c}
-                  label={CONDITION_LABEL[c]}
-                  selected={draft.condition === c}
-                  last={i === CONDITIONS.length - 1}
-                  onPress={() => set('condition', c)}
-                />
-              ))}
-            </View>
           )}
 
           {current.key === 'details' && (
@@ -564,7 +576,7 @@ function PhotosStep({
         </View>
       ))}
 
-      {images.length < 10 && (
+      {images.length < MAX_PHOTOS && (
         <Tap
           onPress={onPick}
           accessibilityRole="button"
@@ -718,7 +730,7 @@ function Preview({
   const cat = categories.find((c) => c.slug === draft.categorySlug)?.label ?? '—';
   const rows: [string, string][] = [
     ['Category', cat],
-    ['Condition', draft.condition ? CONDITION_LABEL[draft.condition] : '—'],
+    ['Condition', CONDITION_LABEL[NEW_CONDITION]],
     ['Brand', draft.brand || 'Not given'],
     ['Location', [city, countryCode].filter(Boolean).join(', ') || '—'],
   ];
@@ -830,35 +842,7 @@ function Field({
   );
 }
 
-function Choice({
-  label,
-  selected,
-  last,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  last: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Tap
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 17,
-        borderBottomWidth: last ? 0 : 1,
-        borderBottomColor: C.border,
-      }}
-    >
-      <T w={selected ? 600 : 400} size={15.5} style={{ flex: 1 }}>
-        {label}
-      </T>
-      {selected && <Icon name="check" size={19} color={C.text} strokeWidth={2.6} />}
-    </Tap>
-  );
-}
+/*
+ * The `Choice` radio row went with the condition step — it was the only
+ * screen that offered a list of mutually exclusive values.
+ */

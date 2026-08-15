@@ -50,11 +50,10 @@ export default function Search() {
       category: filters.categorySlug,
       minPriceCents: filters.minCents,
       maxPriceCents: filters.maxCents,
-      condition: filters.condition,
       countryCode: filters.countryCode,
       sort,
     },
-    `search:${query}:${filters.categorySlug}:${filters.minCents}:${filters.maxCents}:${filters.condition}:${filters.countryCode}:${sort}`
+    `search:${query}:${filters.categorySlug}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${sort}`
   );
 
   const hasFilters = filtersActive(filters);

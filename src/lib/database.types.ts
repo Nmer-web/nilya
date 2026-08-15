@@ -64,9 +64,28 @@ export type ListingDetailRow = ListingRow & {
   seller_id: string;
 };
 
-/** The catalog's `listing_condition` enum, in the wording the UI shows. */
+/**
+ * The `listing_condition` enum, in the wording the UI shows.
+ *
+ * The type still lists all three values because that is what the column
+ * accepts — writing it down as `'new'` alone would be a description of the
+ * database that is not true.
+ *
+ * SAWA sells new products only, so `'new'` is the only value the app writes and
+ * the only one it reads: `createDraftListing` sets it, and every feed query
+ * filters on it. The other two are reachable in Postgres and by nothing else.
+ *
+ * SCHEMA LIMITATION: the enum permits `very_good` and `good`, so the rule is
+ * enforced by this application rather than by the database. A row written by
+ * any other client could still carry a used condition. Closing that properly
+ * needs a migration — `alter table listings add constraint listings_are_new
+ * check (condition = 'new')` — which is outside what this task may change.
+ */
 export const CONDITION_LABEL: Record<ListingCondition, string> = {
   new: 'New',
   very_good: 'Very good',
   good: 'Good',
 };
+
+/** Every SAWA product is new. The single value the app ever writes or filters. */
+export const NEW_CONDITION: ListingCondition = 'new';
