@@ -1,34 +1,107 @@
-import React from 'react';
-import { ScrollView, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavClearance } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
-import { ProductGrid } from '@/components/product-card';
+import { ListingFeedGrid } from '@/components/listing-feed-grid';
 import { TabTitle } from '@/components/screen-header';
-import { FadeIn } from '@/components/skeleton';
-import { Button, Chip, EmptyState, T, Tap } from '@/components/ui';
-import { EXCATS } from '@/data/catalog';
-import { filtersActive, useApp, useSearchResults } from '@/store/app-store';
-import { color as C, radius } from '@/theme/tokens';
+import { Button, Chip, PressableScale, T, Tap } from '@/components/ui';
+import { useAsync } from '@/hooks/use-async';
+import { useFavorites } from '@/hooks/use-favorites';
+import { useListingFeed } from '@/hooks/use-listing-feed';
+import { fetchCategories } from '@/lib/queries';
+import { filtersActive, SORTS, useApp } from '@/store/app-store';
+import { color as C, radius, space } from '@/theme/tokens';
 
 export default function Explore() {
   const insets = useSafeAreaInsets();
   const navClearance = useNavClearance();
-  const app = useApp();
-  const { q, setQuery, cat, setCat, sort, openSheet } = app;
-  const results = useSearchResults();
-  const active = filtersActive(app);
+  const router = useRouter();
+  const { cat, setCat, sort, filters, openSheet } = useApp();
+
+  const [headerH, setHeaderH] = useState(0);
+
+  const favorites = useFavorites();
+  const categories = useAsync(() => fetchCategories('explore'), 'categories:explore');
+
+  /**
+   * The category chip and the filter sheet both narrow the same query. The chip
+   * wins where they disagree, because it is the control on screen — a sheet set
+   * days ago should not silently override what the user just tapped.
+   */
+  const category = cat === 'All' ? filters.categorySlug : cat;
+
+  const feed = useListingFeed(
+    {
+      category,
+      minPriceCents: filters.minCents,
+      maxPriceCents: filters.maxCents,
+      condition: filters.condition,
+      countryCode: filters.countryCode,
+      sort,
+    },
+    `explore:${category}:${filters.minCents}:${filters.maxCents}:${filters.condition}:${filters.countryCode}:${sort}`
+  );
+
+  const active = filtersActive(filters);
+  const sortLabel = SORTS.find((s) => s.key === sort)?.label ?? 'Newest first';
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <View style={{ paddingTop: insets.top, backgroundColor: C.background }}>
-        <View style={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12 }}>
+      <ListingFeedGrid
+        feed={feed}
+        savedIds={favorites.saved}
+        onToggleSave={favorites.toggle}
+        contentPaddingTop={headerH + space.lg}
+        contentPaddingBottom={navClearance}
+        refreshOffset={headerH}
+        onRefresh={() => {
+          feed.refresh();
+          favorites.refresh();
+        }}
+        empty={{
+          icon: 'bag',
+          title: active || category ? 'Nothing matches those filters' : 'Nothing here yet',
+          body:
+            active || category
+              ? 'Try widening your price range, or clearing a filter.'
+              : 'New listings will appear here.',
+          action:
+            active || category ? (
+              <Button
+                label="Adjust filters"
+                height={46}
+                size={14}
+                variant="outline"
+                onPress={() => openSheet({ kind: 'filters' })}
+                style={{ marginTop: 18 }}
+              />
+            ) : undefined,
+        }}
+      />
+
+      <View
+        onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: 0,
+          paddingTop: insets.top,
+          backgroundColor: C.background,
+        }}
+      >
+        <View style={{ paddingHorizontal: space.gutter, paddingTop: 2, paddingBottom: space.md }}>
           <TabTitle>Explore</TabTitle>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16 }}>
-          <View
+        <View style={{ flexDirection: 'row', gap: space.sm, paddingHorizontal: space.gutter }}>
+          <Tap
+            onPress={() => router.push('/search')}
+            accessibilityRole="search"
+            accessibilityLabel="Search listings"
             style={{
               flex: 1,
               height: 46,
@@ -39,46 +112,16 @@ export default function Explore() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 9,
-              paddingHorizontal: 13,
+              paddingHorizontal: 14,
             }}
           >
             <Icon name="search" size={17} color={C.textSecondary} />
-            <TextInput
-              value={q}
-              onChangeText={setQuery}
-              placeholder="Search items, brands, categories…"
-              placeholderTextColor={C.textSecondary}
-              returnKeyType="search"
-              autoCorrect={false}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                fontSize: 14.5,
-                color: C.text,
-                padding: 0,
-              }}
-            />
-            {!!q && (
-              <Tap
-                onPress={() => setQuery('')}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-                hitSlop={8}
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 10,
-                  backgroundColor: C.surfaceSecondary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Icon name="close" size={11} color={C.textSecondary} strokeWidth={2.6} />
-              </Tap>
-            )}
-          </View>
+            <T size={14.5} color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
+              What are you looking for?
+            </T>
+          </Tap>
 
-          <Tap
+          <PressableScale
             onPress={() => openSheet({ kind: 'filters' })}
             accessibilityRole="button"
             accessibilityLabel="Filters"
@@ -94,16 +137,17 @@ export default function Explore() {
             }}
           >
             <Icon name="sliders" size={19} color={active ? C.primaryText : C.text} />
-          </Tap>
+          </PressableScale>
         </View>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 7, paddingHorizontal: 16, paddingVertical: 12 }}
+          contentContainerStyle={{ gap: 7, paddingHorizontal: space.gutter, paddingVertical: space.md }}
         >
-          {EXCATS.map((n) => (
-            <Chip key={n} label={n} active={cat === n} onPress={() => setCat(n)} />
+          <Chip label="All" active={cat === 'All'} onPress={() => setCat('All')} />
+          {(categories.data ?? []).map((c) => (
+            <Chip key={c.slug} label={c.label} active={cat === c.slug} onPress={() => setCat(c.slug)} />
           ))}
         </ScrollView>
 
@@ -112,56 +156,30 @@ export default function Explore() {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: 16,
-            paddingBottom: 12,
+            paddingHorizontal: space.gutter,
+            paddingBottom: space.md,
           }}
         >
           <T size={13} color={C.textSecondary}>
-            {results.length} items{cat !== 'All' ? ` in ${cat}` : ''}
+            {feed.loading
+              ? 'Loading…'
+              : `${feed.listings.length}${feed.hasMore ? '+' : ''} item${feed.listings.length === 1 && !feed.hasMore ? '' : 's'}`}
           </T>
-          {/* Opens the full list rather than cycling — see SortSheet. */}
+
           <Tap
             onPress={() => openSheet({ kind: 'sort' })}
             accessibilityRole="button"
-            accessibilityLabel={`Sort by ${sort}. Tap to change.`}
+            accessibilityLabel={`Sort by ${sortLabel}. Tap to change.`}
             hitSlop={8}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
             <T w={500} size={13}>
-              {sort}
+              {sortLabel}
             </T>
             <Icon name="chevronDown" size={13} color={C.text} />
           </Tap>
         </View>
       </View>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: navClearance }}
-      >
-        {results.length > 0 ? (
-          /* Same category transition as Home — keyed so a change replays it. */
-          <FadeIn key={cat} x={14} duration={260}>
-            <ProductGrid products={results} />
-          </FadeIn>
-        ) : (
-          <EmptyState
-            icon="search"
-            title={`No items match “${q}”`}
-            body="Try a shorter search, or browse a category instead."
-            action={
-              <Button
-                label="Clear search"
-                height={42}
-                size={14}
-                onPress={() => setQuery('')}
-                style={{ marginTop: 18, paddingHorizontal: 20, borderRadius: 11 }}
-              />
-            }
-          />
-        )}
-      </ScrollView>
     </View>
   );
 }

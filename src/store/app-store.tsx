@@ -8,7 +8,7 @@ import React, {
   useState,
 } from 'react';
 
-import { PRODUCTS, type Product } from '@/data/catalog';
+import { type Product } from '@/data/catalog';
 
 /* ─────────────────────────── formatting ─────────────────────────── */
 
@@ -97,10 +97,37 @@ export const PROTECTION_FEE = 2.5;
 
 /* ─────────────────────────── state ─────────────────────────── */
 
-export type SortKey = 'Relevance' | 'Price: low to high' | 'Newest first';
+export type SortKey = 'recent' | 'price_asc' | 'price_desc';
 
 /** The sort options, in the order the sheet lists them. */
-export const SORTS: SortKey[] = ['Relevance', 'Price: low to high', 'Newest first'];
+export const SORTS: { key: SortKey; label: string }[] = [
+  { key: 'recent', label: 'Newest first' },
+  { key: 'price_asc', label: 'Price: low to high' },
+  { key: 'price_desc', label: 'Price: high to low' },
+];
+
+/**
+ * Discovery filters.
+ *
+ * Held in database units — cents, category slugs, `listing_condition` values,
+ * ISO country codes — so the sheet and the query speak the same language and
+ * nothing is translated in between.
+ */
+export type Filters = {
+  categorySlug: string | null;
+  minCents: number | null;
+  maxCents: number | null;
+  condition: string | null;
+  countryCode: string | null;
+};
+
+export const EMPTY_FILTERS: Filters = {
+  categorySlug: null,
+  minCents: null,
+  maxCents: null,
+  condition: null,
+  countryCode: null,
+};
 export type OfferState = 'open' | 'countered' | 'accepted' | 'declined';
 export type Message = { me: boolean; t: string };
 
@@ -132,11 +159,12 @@ type AppState = {
   msgs: Message[];
   typing: boolean;
 
-  /* Filters */
-  maxPrice: number;
-  fCond: string;
-  fDel: string;
-  verifiedOnly: boolean;
+  /*
+   * Discovery filters, in the shape the query takes them. Prices are cents and
+   * `condition` is a `listing_condition` value, so nothing has to be translated
+   * between the sheet and the database.
+   */
+  filters: Filters;
 
   /* Checkout */
   delKey: string | null;
@@ -151,7 +179,7 @@ const INITIAL: AppState = {
   cat: 'All',
   q: '',
   recent: [],
-  sort: 'Relevance',
+  sort: 'recent',
   offerState: 'open',
   msgs: [
     { me: true, t: 'Is this still available?' },
@@ -160,10 +188,7 @@ const INITIAL: AppState = {
     { me: false, t: 'Yes, no problem. I can post it tomorrow.' },
   ],
   typing: false,
-  maxPrice: 300,
-  fCond: 'Any',
-  fDel: 'Any',
-  verifiedOnly: false,
+  filters: EMPTY_FILTERS,
   delKey: null,
   notifRead: false,
   sheet: null,
@@ -182,10 +207,7 @@ type AppActions = {
   setOfferState: (s: OfferState) => void;
   sendMessage: (text: string) => void;
 
-  setMaxPrice: (n: number) => void;
-  setCond: (c: string) => void;
-  setDel: (d: string) => void;
-  toggleVerifiedOnly: () => void;
+  setFilters: (f: Filters) => void;
   resetFilters: () => void;
 
   setDelKey: (k: string) => void;
@@ -269,11 +291,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         );
       },
 
-      setMaxPrice: (maxPrice) => patch({ maxPrice }),
-      setCond: (fCond) => patch({ fCond }),
-      setDel: (fDel) => patch({ fDel }),
-      toggleVerifiedOnly: () => patch((s) => ({ verifiedOnly: !s.verifiedOnly })),
-      resetFilters: () => patch({ fCond: 'Any', fDel: 'Any', maxPrice: 300, verifiedOnly: false }),
+      setFilters: (filters) => patch({ filters }),
+      resetFilters: () => patch({ filters: EMPTY_FILTERS }),
 
       setDelKey: (delKey) => patch({ delKey }),
       markNotifsRead: () => {
@@ -306,50 +325,14 @@ export function useApp() {
 
 /* ─────────────────────────── selectors ─────────────────────────── */
 
-/** True when any filter differs from its default — drives the filter button's filled state. */
-export function filtersActive(s: {
-  fCond: string;
-  fDel: string;
-  maxPrice: number;
-  verifiedOnly: boolean;
-}) {
-  return s.fCond !== 'Any' || s.fDel !== 'Any' || s.maxPrice < 300 || s.verifiedOnly;
+/** True when any filter is set — drives the filter button's filled state. */
+export function filtersActive(f: Filters) {
+  return Object.values(f).some((v) => v !== null);
 }
 
 /**
- * `From Sudan` is a place, not a product category — no listing carries it as
- * `cat`, so matching on that field would render the chip permanently empty. It
- * selects on the seller's country instead, which is what the label promises and
- * what the discovery rail of the same name shows.
+ * The client-side filtering that used to live here is gone. Discovery now
+ * filters in the database — `fetchListings` takes these same fields — so
+ * loading the whole catalog to narrow it locally would be both wrong and
+ * unbounded.
  */
-export const matchesCategory = (p: Product, cat: string) =>
-  cat === 'All' || (cat === 'From Sudan' ? p.cc === 'SD' : p.cat === cat);
-
-export function useHomeFeed() {
-  const { cat } = useApp();
-  return useMemo(() => PRODUCTS.filter((p) => matchesCategory(p, cat)), [cat]);
-}
-
-export function useSearchResults() {
-  const { cat, q, maxPrice, fCond, fDel, sort } = useApp();
-  return useMemo(() => {
-    const ql = q.trim().toLowerCase();
-    let out = PRODUCTS.filter(
-      (p) =>
-        matchesCategory(p, cat) &&
-        (!ql || `${p.t} ${p.b} ${p.cat} ${p.city} ${p.country}`.toLowerCase().includes(ql)) &&
-        p.pr <= maxPrice &&
-        (fCond === 'Any' || p.cd === fCond) &&
-        (fDel === 'Any' ||
-          (fDel === 'Local pickup' ? p.cc === 'SD' : fDel === 'International' ? p.cc !== 'FR' : p.cc === 'FR'))
-    );
-    if (sort === 'Price: low to high') out = [...out].sort((a, b) => a.pr - b.pr);
-    if (sort === 'Newest first') out = [...out].sort((a, b) => b.id - a.id);
-    return out;
-  }, [cat, q, maxPrice, fCond, fDel, sort]);
-}
-
-export function useFavourites() {
-  const { favs } = useApp();
-  return useMemo(() => PRODUCTS.filter((p) => favs[p.id]), [favs]);
-}

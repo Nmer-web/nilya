@@ -8,8 +8,9 @@ import { Icon } from '@/components/icon';
 import { PriceTileGrid } from '@/components/product-card';
 import { ReviewList } from '@/components/reviews';
 import { Badge, Button, Card, EmptyState, Row, T, Tap, UnderlineTabs } from '@/components/ui';
+import { useFavorites } from '@/hooks/use-favorites';
 import { myListings } from '@/data/catalog';
-import { useApp, useFavourites } from '@/store/app-store';
+import { useApp } from '@/store/app-store';
 import { useAuth } from '@/store/auth-store';
 import { avatarColor, color as C } from '@/theme/tokens';
 
@@ -21,7 +22,9 @@ export default function Profile() {
   const router = useRouter();
   const { flash } = useApp();
   const { user, signOut } = useAuth();
-  const favourites = useFavourites();
+  /* The saved count is real; the rest of this screen is still the prototype's
+     and is converted by a later task. */
+  const favorites = useFavorites();
   const [tab, setTab] = useState<Tab>('Listings');
   const [signingOut, setSigningOut] = useState(false);
   const listings = myListings();
@@ -118,7 +121,7 @@ export default function Profile() {
         <Row
           icon="heart"
           label="Favorites"
-          value={`${favourites.length} saved`}
+          value={`${favorites.saved.size} saved`}
           onPress={() => router.push('/favorites')}
         />
         <Row

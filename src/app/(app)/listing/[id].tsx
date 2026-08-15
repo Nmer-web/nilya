@@ -8,7 +8,7 @@ import { Icon } from '@/components/icon';
 import { formatPrice } from '@/components/listing-card';
 import { FloatingIconButton } from '@/components/screen-header';
 import { Skeleton } from '@/components/skeleton';
-import { Avatar, Button, EmptyState, T } from '@/components/ui';
+import { Avatar, Button, EmptyState, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { useAnimatedValue, NATIVE_DRIVER } from '@/hooks/use-animated-value';
 import { useFavorites } from '@/hooks/use-favorites';
@@ -254,6 +254,7 @@ export default function ListingDetail() {
 }
 
 function SellerBlock({ seller }: { seller: NonNullable<Awaited<ReturnType<typeof fetchListing>>>['seller'] }) {
+  const router = useRouter();
   if (!seller) return null;
 
   const initials = seller.display_name
@@ -264,7 +265,10 @@ function SellerBlock({ seller }: { seller: NonNullable<Awaited<ReturnType<typeof
     .toUpperCase();
 
   return (
-    <View
+    <Tap
+      onPress={() => router.push({ pathname: '/seller/[id]', params: { id: seller.id } })}
+      accessibilityRole="button"
+      accessibilityLabel={`View ${seller.display_name}'s profile`}
       style={{
         marginHorizontal: space.gutter,
         marginTop: space.xl,
@@ -307,7 +311,9 @@ function SellerBlock({ seller }: { seller: NonNullable<Awaited<ReturnType<typeof
           {seller.lifetime_sales === 1 ? '1 sale' : `${seller.lifetime_sales} sales`}
         </T>
       </View>
-    </View>
+
+      <Icon name="chevronRight" size={17} color={C.borderStrong} />
+    </Tap>
   );
 }
 

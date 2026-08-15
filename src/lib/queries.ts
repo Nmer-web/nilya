@@ -26,15 +26,21 @@ const LISTING_SELECT = `
 
 export const PAGE_SIZE = 20;
 
+export type FeedSort = 'recent' | 'price_asc' | 'price_desc';
+
 export type FeedFilters = {
   /** Category slug, or null for everything. */
   category?: string | null;
   /** Free text, matched against title, brand, city and description. */
   query?: string;
+  minPriceCents?: number | null;
   maxPriceCents?: number | null;
+  /** A `listing_condition` enum value. */
   condition?: string | null;
   countryCode?: string | null;
-  sort?: 'recent' | 'price_asc';
+  /** Restricts the feed to one seller, for their profile. */
+  sellerId?: string | null;
+  sort?: FeedSort;
 };
 
 /**
@@ -58,8 +64,10 @@ export async function fetchListings(
     .range(from, from + PAGE_SIZE - 1);
 
   if (filters.category) q = q.eq('category_slug', filters.category);
+  if (filters.sellerId) q = q.eq('seller_id', filters.sellerId);
   if (filters.countryCode) q = q.eq('country_code', filters.countryCode);
   if (filters.condition) q = q.eq('condition', filters.condition);
+  if (filters.minPriceCents != null) q = q.gte('price_cents', filters.minPriceCents);
   if (filters.maxPriceCents != null) q = q.lte('price_cents', filters.maxPriceCents);
 
   /**
@@ -70,9 +78,12 @@ export async function fetchListings(
   const text = filters.query?.trim();
   if (text) q = q.textSearch('search_tsv', text, { type: 'websearch', config: 'simple' });
 
-  q = filters.sort === 'price_asc'
-    ? q.order('price_cents', { ascending: true })
-    : q.order('published_at', { ascending: false });
+  q =
+    filters.sort === 'price_asc'
+      ? q.order('price_cents', { ascending: true })
+      : filters.sort === 'price_desc'
+        ? q.order('price_cents', { ascending: false })
+        : q.order('published_at', { ascending: false });
 
   const { data, error } = await q;
   if (error) throw error;
@@ -103,6 +114,62 @@ export async function fetchCategories(scope: 'home' | 'explore'): Promise<Catego
 
   if (error) throw error;
   return (data ?? []) as CategoryRow[];
+}
+
+/* ─────────────────────────── sellers ─────────────────────────── */
+
+export type SellerProfile = {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  bio: string | null;
+  city: string | null;
+  country_code: string | null;
+  is_verified: boolean;
+  lifetime_sales: number;
+  rating_avg: number | null;
+  rating_count: number;
+  created_at: string;
+};
+
+/** A seller's public profile, or null when the id does not resolve. */
+export async function fetchSellerProfile(id: string): Promise<SellerProfile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(
+      'id, display_name, avatar_url, bio, city, country_code, is_verified, lifetime_sales, rating_avg, rating_count, created_at'
+    )
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as SellerProfile) ?? null;
+}
+
+/*
+ * A seller's listings are `fetchListings({ sellerId })` rather than a function
+ * of their own: same columns, same page size, same `status = 'active'` filter,
+ * so a separate query would only be a second thing to keep in step.
+ */
+
+/**
+ * Country codes that currently have listings, for the location filter.
+ *
+ * PostgREST has no DISTINCT, so this reads the column and reduces client-side.
+ * Bounded to a page so it cannot become a full-table read as the catalog grows;
+ * a `listing_countries` view would be the answer at real scale, and that is a
+ * schema change this task is not permitted to make.
+ */
+export async function fetchListingCountries(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('listings')
+    .select('country_code')
+    .eq('status', 'active')
+    .limit(200);
+
+  if (error) throw error;
+  const set = new Set((data ?? []).map((r) => (r as { country_code: string }).country_code));
+  return [...set].sort();
 }
 
 /* ─────────────────────────── favourites ─────────────────────────── */

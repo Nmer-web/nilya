@@ -1,16 +1,18 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Animated, Easing, ScrollView, Share, View } from 'react-native';
+import { Animated, Easing, ScrollView, Share, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icon';
 import { Scrim, Sheet, SheetClose, SheetGrabber, Toast } from '@/components/sheet';
-import { Slider } from '@/components/slider';
-import { Button, Card, Chip, SectionLabel, T, Tap, Toggle } from '@/components/ui';
+import { Button, Chip, SectionLabel, T, Tap } from '@/components/ui';
 import { getProduct } from '@/data/catalog';
+import { useAsync } from '@/hooks/use-async';
 import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
+import type { ListingCondition } from '@/lib/database.types';
+import { fetchCategories, fetchListingCountries, fetchListings } from '@/lib/queries';
 import { tapSuccess } from '@/lib/haptics';
-import { euro, SORTS, useApp, useSearchResults } from '@/store/app-store';
+import { EMPTY_FILTERS, euro, SORTS, useApp, type Filters } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
 
 /**
@@ -296,15 +298,16 @@ function SortSheet(phase: Phase) {
       <SheetGrabber style={{ marginBottom: 16 }} />
       <SheetHeader title="Sort by" onClose={dismiss} />
 
+      {/* Each key maps to an ORDER BY in `fetchListings`, not a client sort. */}
       <View style={{ marginTop: 6 }}>
         {SORTS.map((s, i) => (
           <SheetRow
-            key={s}
-            label={s}
-            selected={sort === s}
+            key={s.key}
+            label={s.label}
+            selected={sort === s.key}
             last={i === SORTS.length - 1}
             onPress={() => {
-              setSort(s);
+              setSort(s.key);
               dismiss();
             }}
           />
@@ -423,43 +426,96 @@ function ReportSheet(phase: Phase) {
 
 /* ─────────────────────────── filters ─────────────────────────── */
 
-const CONDITIONS = ['Any', 'New', 'Very good', 'Good'];
-const DELIVERIES = ['Any', 'Pickup point', 'Local pickup', 'International'];
-const FILTER_ROWS = [
-  { n: 'Size', v: 'Any' },
-  { n: 'Brand', v: 'Any' },
-  { n: 'Colour', v: 'Any' },
-  { n: 'Location', v: 'Worldwide' },
-  { n: 'Seller rating', v: '4.0+' },
+/**
+ * The three values `listing_condition` accepts, with human labels. Adding a
+ * fourth here would produce a filter that matches nothing.
+ */
+const CONDITION_OPTIONS: { value: ListingCondition; label: string }[] = [
+  { value: 'new', label: 'New' },
+  { value: 'very_good', label: 'Very good' },
+  { value: 'good', label: 'Good' },
 ];
 
+/** €12.50 → 1250, and '' → null so an empty field clears the bound. */
+function toCents(text: string): number | null {
+  const n = Number(text.replace(',', '.').trim());
+  return text.trim() === '' || !Number.isFinite(n) || n < 0 ? null : Math.round(n * 100);
+}
+
+const fromCents = (cents: number | null) => (cents == null ? '' : String(cents / 100));
+
+/**
+ * Filters, applied to the database.
+ *
+ * Every control here writes a field that `fetchListings` turns into a `where`
+ * clause — the category into `category_slug`, the bounds into `price_cents`,
+ * the condition into the enum column, the place into `country_code`. The sheet
+ * holds a working copy and commits it on apply, so a half-set price range never
+ * re-queries mid-typing.
+ */
 function FiltersSheet(phase: Phase) {
-  const {
-    cat,
-    fCond,
-    fDel,
-    maxPrice,
-    verifiedOnly,
-    setCond,
-    setDel,
-    setMaxPrice,
-    toggleVerifiedOnly,
-    resetFilters,
-    flash,
-  } = useApp();
+  const { filters, setFilters, resetFilters } = useApp();
   const dismiss = useDismiss();
   const insets = useSafeAreaInsets();
-  const results = useSearchResults();
-  const rows = [{ n: 'Category', v: cat }, ...FILTER_ROWS];
+
+  const [draft, setDraft] = useState<Filters>(filters);
+  const [minText, setMinText] = useState(fromCents(filters.minCents));
+  const [maxText, setMaxText] = useState(fromCents(filters.maxCents));
+
+  const categories = useAsync(() => fetchCategories('explore'), 'categories:explore');
+  const countries = useAsync(fetchListingCountries, 'listing-countries');
+
+  /** Counts what the current draft would return, so the CTA is not a guess. */
+  const preview = useAsync(
+    () =>
+      fetchListings(
+        {
+          category: draft.categorySlug,
+          minPriceCents: draft.minCents,
+          maxPriceCents: draft.maxCents,
+          condition: draft.condition,
+          countryCode: draft.countryCode,
+        },
+        0
+      ),
+    `filter-preview:${JSON.stringify(draft)}`
+  );
+
+  const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setDraft((d) => ({ ...d, [k]: v }));
+
+  const apply = () => {
+    setFilters({ ...draft, minCents: toCents(minText), maxCents: toCents(maxText) });
+    dismiss();
+  };
+
+  const count = preview.data?.rows.length ?? 0;
+  const more = preview.data?.hasMore ?? false;
 
   return (
     <Sheet {...phase} top={78} style={{ overflow: 'hidden' }}>
-      <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border }}>
+      <View
+        style={{
+          paddingHorizontal: 20,
+          paddingTop: 12,
+          paddingBottom: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: C.border,
+        }}
+      >
         <SheetGrabber style={{ marginBottom: 14 }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Tap onPress={resetFilters} accessibilityRole="button" hitSlop={8}>
+          <Tap
+            onPress={() => {
+              resetFilters();
+              setDraft(EMPTY_FILTERS);
+              setMinText('');
+              setMaxText('');
+            }}
+            accessibilityRole="button"
+            hitSlop={8}
+          >
             <T w={500} size={13.5} color={C.textSecondary}>
-              Reset
+              Clear
             </T>
           </Tap>
           <T w={600} size={16.5}>
@@ -472,81 +528,91 @@ function FiltersSheet(phase: Phase) {
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: 20 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <SectionLabel style={{ paddingTop: 16, paddingBottom: 10 }}>Condition</SectionLabel>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-          {CONDITIONS.map((n) => (
-            <Chip key={n} label={n} active={fCond === n} height={36} round={10} onPress={() => setCond(n)} />
-          ))}
-        </View>
+        <SectionLabel style={{ paddingTop: 16, paddingBottom: 10 }}>Category</SectionLabel>
+        {categories.loading ? (
+          <T size={13} color={C.textSecondary}>
+            Loading categories…
+          </T>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+            <Chip
+              label="Any"
+              active={draft.categorySlug === null}
+              height={36}
+              round={radius.md}
+              onPress={() => set('categorySlug', null)}
+            />
+            {(categories.data ?? []).map((c) => (
+              <Chip
+                key={c.slug}
+                label={c.label}
+                active={draft.categorySlug === c.slug}
+                height={36}
+                round={radius.md}
+                onPress={() => set('categorySlug', c.slug)}
+              />
+            ))}
+          </View>
+        )}
 
         <SectionLabel style={{ paddingTop: 22, paddingBottom: 10 }}>Price range</SectionLabel>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <PriceField label="Min" value="€0" />
+          <PriceInput label="Minimum" value={minText} onChange={setMinText} />
           <View style={{ width: 12, height: 1, backgroundColor: C.borderStrong }} />
-          <PriceField label="Max" value={maxPrice >= 300 ? '€300+' : `€${maxPrice}`} />
+          <PriceInput label="Maximum" value={maxText} onChange={setMaxText} />
         </View>
-        <Slider
-          value={maxPrice}
-          min={20}
-          max={300}
-          onChange={setMaxPrice}
-          label="Maximum price"
-        />
 
-        <SectionLabel style={{ paddingTop: 18, paddingBottom: 10 }}>Delivery</SectionLabel>
+        <SectionLabel style={{ paddingTop: 22, paddingBottom: 10 }}>Condition</SectionLabel>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-          {DELIVERIES.map((n) => (
-            <Chip key={n} label={n} active={fDel === n} height={36} round={10} onPress={() => setDel(n)} />
+          <Chip
+            label="Any"
+            active={draft.condition === null}
+            height={36}
+            round={radius.md}
+            onPress={() => set('condition', null)}
+          />
+          {CONDITION_OPTIONS.map((c) => (
+            <Chip
+              key={c.value}
+              label={c.label}
+              active={draft.condition === c.value}
+              height={36}
+              round={radius.md}
+              onPress={() => set('condition', c.value)}
+            />
           ))}
         </View>
 
-        <Card style={{ marginTop: 22, overflow: 'hidden' }}>
-          {rows.map((r, i) => (
-            <Tap
-              key={r.n}
-              onPress={() => flash(`${r.n} filter`)}
-              accessibilityRole="button"
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 14,
-                paddingHorizontal: 15,
-                borderBottomWidth: i === rows.length - 1 ? 0 : 1,
-                borderBottomColor: C.border,
-              }}
-            >
-              <T w={500} size={14.5} style={{ flex: 1 }}>
-                {r.n}
-              </T>
-              <T size={13.5} color={C.textSecondary} style={{ paddingRight: 8 }}>
-                {r.v}
-              </T>
-              <Icon name="chevronRight" size={16} color={C.borderStrong} />
-            </Tap>
-          ))}
-        </Card>
-
-        <Card
-          style={{
-            marginTop: 10,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingVertical: 14,
-            paddingHorizontal: 15,
-          }}
-        >
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <T w={600} size={14}>
-              Verified sellers only
-            </T>
-            <T size={12.5} color={C.textSecondary} style={{ marginTop: 2 }}>
-              ID and payouts checked
-            </T>
+        <SectionLabel style={{ paddingTop: 22, paddingBottom: 10 }}>Location</SectionLabel>
+        {(countries.data ?? []).length === 0 ? (
+          <T size={13} color={C.textSecondary} lh={19}>
+            {countries.loading
+              ? 'Loading locations…'
+              : 'Locations appear here once there are listings to filter.'}
+          </T>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+            <Chip
+              label="Anywhere"
+              active={draft.countryCode === null}
+              height={36}
+              round={radius.md}
+              onPress={() => set('countryCode', null)}
+            />
+            {(countries.data ?? []).map((cc) => (
+              <Chip
+                key={cc}
+                label={cc}
+                active={draft.countryCode === cc}
+                height={36}
+                round={radius.md}
+                onPress={() => set('countryCode', cc)}
+              />
+            ))}
           </View>
-          <Toggle on={verifiedOnly} onPress={toggleVerifiedOnly} />
-        </Card>
+        )}
       </ScrollView>
 
       <View
@@ -559,18 +625,39 @@ function FiltersSheet(phase: Phase) {
           backgroundColor: C.background,
         }}
       >
-        <Button label={`Show ${results.length} results`} onPress={dismiss} />
+        {/*
+          The count is a real query against the draft, capped at one page — so
+          it reads "20+" rather than claiming a total the query never asked for.
+        */}
+        <Button
+          label={
+            preview.loading
+              ? 'Counting…'
+              : preview.error
+                ? 'Show results'
+                : `Show ${more ? `${count}+` : count} result${count === 1 && !more ? '' : 's'}`
+          }
+          onPress={apply}
+        />
       </View>
     </Sheet>
   );
 }
 
-function PriceField({ label, value }: { label: string; value: string }) {
+function PriceInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <View
       style={{
         flex: 1,
-        height: 52,
+        height: 56,
         borderRadius: radius.lg,
         backgroundColor: C.surface,
         borderWidth: 1,
@@ -582,9 +669,19 @@ function PriceField({ label, value }: { label: string; value: string }) {
       <T size={11} color={C.textMuted}>
         {label}
       </T>
-      <T w={600} size={14.5} style={{ marginTop: 1 }}>
-        {value}
-      </T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+        <T w={600} size={14.5}>
+          €
+        </T>
+        <TextInput
+          value={value}
+          onChangeText={(v) => onChange(v.replace(/[^0-9.,]/g, ''))}
+          placeholder="Any"
+          placeholderTextColor={C.textMuted}
+          keyboardType="decimal-pad"
+          style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: '600', color: C.text, padding: 0 }}
+        />
+      </View>
     </View>
   );
 }

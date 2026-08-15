@@ -4,56 +4,68 @@ import { ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icon';
+import { ListingFeedGrid } from '@/components/listing-feed-grid';
 import { FadeIn } from '@/components/skeleton';
-import { PressableScale, T, Tap } from '@/components/ui';
-import { CATS, PRODUCTS } from '@/data/catalog';
+import { SectionLabel, T, Tap } from '@/components/ui';
+import { useAsync } from '@/hooks/use-async';
+import { useDebounced } from '@/hooks/use-debounced';
+import { useFavorites } from '@/hooks/use-favorites';
+import { useListingFeed } from '@/hooks/use-listing-feed';
+import { fetchCategories } from '@/lib/queries';
 import { useApp } from '@/store/app-store';
 import { color as C, radius, space } from '@/theme/tokens';
 
 /**
- * Terms worth surfacing before anyone types.
- *
- * Drawn from the catalog rather than hard-coded so a suggestion always leads
- * somewhere: every brand here has listings behind it.
- */
-const POPULAR = Array.from(new Set(PRODUCTS.map((p) => p.b)))
-  .filter((b) => b !== 'Handmade')
-  .slice(0, 6);
-
-/** Cities with stock, most listings first. */
-const LOCATIONS = Object.entries(
-  PRODUCTS.reduce<Record<string, number>>((acc, p) => {
-    const key = `${p.city}, ${p.country}`;
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {})
-)
-  .sort((a, b) => b[1] - a[1])
-  .slice(0, 5)
-  .map(([place]) => place);
-
-/**
- * The focused search state.
+ * Search.
  *
  * A screen rather than an overlay: it gets the platform's own transition, the
- * back gesture, and a real place in the stack, none of which a hand-rolled
- * overlay would have. The field auto-focuses on arrival, so tapping the home
- * bar and typing is continuous — the expansion is the screen transition.
+ * back gesture, and a real place in the stack. Results appear beneath the field
+ * as the query settles, so a search is one continuous action rather than a
+ * field, a submit and a jump to somewhere else.
+ *
+ * The query runs as Postgres full-text against the generated `search_tsv`
+ * column, which covers title, brand, description and city — so what is matched
+ * is the catalog itself, not a list of terms written here.
  */
 export default function Search() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { recent, submitSearch, setCat } = useApp();
-  const [draft, setDraft] = useState('');
+  const { recent, submitSearch, setCat, sort, filters } = useApp();
+  const favorites = useFavorites();
 
-  /** Applies a term and lands on the results, replacing this screen. */
+  const [draft, setDraft] = useState('');
+  const query = useDebounced(draft.trim(), 320);
+  const searching = query.length > 0;
+
+  const categories = useAsync(() => fetchCategories('explore'), 'categories:explore');
+
+  /*
+   * The feed is keyed on the settled query, so a keystroke does not reset the
+   * list — only a pause does. Filters travel with it: a search inside a price
+   * range is still that search.
+   */
+  const feed = useListingFeed(
+    {
+      query,
+      category: filters.categorySlug,
+      minPriceCents: filters.minCents,
+      maxPriceCents: filters.maxCents,
+      condition: filters.condition,
+      countryCode: filters.countryCode,
+      sort,
+    },
+    `search:${query}:${filters.categorySlug}:${filters.minCents}:${filters.maxCents}:${filters.condition}:${filters.countryCode}:${sort}`
+  );
+
+  /** Records the term and browses its results in place. */
   const go = (term: string) => {
     submitSearch(term);
-    router.dismissTo('/explore');
+    setDraft(term);
   };
 
-  const byCategory = (name: string) => {
-    setCat(name);
+  /** A category lands on Explore, which is the screen built for browsing. */
+  const browse = (slug: string) => {
+    setCat(slug);
     router.dismissTo('/explore');
   };
 
@@ -88,11 +100,12 @@ export default function Search() {
             autoFocus
             value={draft}
             onChangeText={setDraft}
-            onSubmitEditing={() => go(draft)}
+            onSubmitEditing={() => draft.trim() && submitSearch(draft)}
             placeholder="Items, brands, categories, places"
             placeholderTextColor={C.textSecondary}
             returnKeyType="search"
             autoCorrect={false}
+            autoCapitalize="none"
             style={{ flex: 1, minWidth: 0, fontSize: 16, color: C.text, padding: 0 }}
           />
           {!!draft && (
@@ -122,59 +135,71 @@ export default function Search() {
         </Tap>
       </View>
 
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + space['3xl'] }}
-      >
-        <FadeIn y={8} duration={240}>
-          {recent.length > 0 && (
-            <Group title="Recent searches">
-              {recent.map((r) => (
-                <Row key={r} icon="search" label={r} onPress={() => go(r)} />
-              ))}
-            </Group>
+      {searching ? (
+        <>
+          {/*
+            Reported only once the query has settled and returned, so the count
+            never describes a different search than the one on screen.
+          */}
+          {!feed.loading && !feed.error && (
+            <T size={13} color={C.textSecondary} style={{ paddingHorizontal: space.gutter, paddingBottom: space.sm }}>
+              {feed.listings.length === 0
+                ? `No matches for “${query}”`
+                : `${feed.listings.length}${feed.hasMore ? '+' : ''} result${
+                    feed.listings.length === 1 && !feed.hasMore ? '' : 's'
+                  } for “${query}”`}
+            </T>
           )}
 
-          <Group title="Popular near you">
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: space.gutter }}>
-              {POPULAR.map((b) => (
-                <PressableScale
-                  key={b}
-                  scale={0.96}
-                  onPress={() => go(b)}
-                  accessibilityRole="button"
-                  style={{
-                    height: 38,
-                    paddingHorizontal: 15,
-                    borderRadius: radius.pill,
-                    borderWidth: 1,
-                    borderColor: C.border,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <T w={500} size={14}>
-                    {b}
-                  </T>
-                </PressableScale>
-              ))}
-            </View>
-          </Group>
+          <ListingFeedGrid
+            feed={feed}
+            savedIds={favorites.saved}
+            onToggleSave={favorites.toggle}
+            contentPaddingBottom={insets.bottom + space['3xl']}
+            empty={{
+              icon: 'search',
+              title: 'No matches',
+              body: 'Try fewer words, or a different spelling.',
+            }}
+          />
+        </>
+      ) : (
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + space['3xl'] }}
+        >
+          <FadeIn y={8} duration={240}>
+            {recent.length > 0 && (
+              <Group title="Recent searches">
+                {recent.map((r) => (
+                  <Row key={r} icon="search" label={r} onPress={() => go(r)} />
+                ))}
+              </Group>
+            )}
 
-          <Group title="Categories">
-            {CATS.filter((c) => c !== 'All').map((c) => (
-              <Row key={c} icon="search" label={c} onPress={() => byCategory(c)} />
-            ))}
-          </Group>
+            {/*
+              Categories come from the database, and nothing else is offered
+              before a query. Suggesting brands or places would mean either
+              inventing them or scanning the whole catalog to find them, and
+              neither belongs on an empty search screen.
+            */}
+            {(categories.data ?? []).length > 0 && (
+              <Group title="Browse categories">
+                {(categories.data ?? []).map((c) => (
+                  <Row key={c.slug} icon="bag" label={c.label} onPress={() => browse(c.slug)} />
+                ))}
+              </Group>
+            )}
 
-          <Group title="Locations">
-            {LOCATIONS.map((l) => (
-              <Row key={l} icon="pin" label={l} onPress={() => go(l)} />
-            ))}
-          </Group>
-        </FadeIn>
-      </ScrollView>
+            {recent.length === 0 && (
+              <SectionLabel style={{ paddingHorizontal: space.gutter, paddingTop: space.xl }}>
+                Search titles, brands, descriptions and places
+              </SectionLabel>
+            )}
+          </FadeIn>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -190,7 +215,6 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-/** `place` marks the row with a pin; everything else reads as a search term. */
 function Row({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
   return (
     <Tap
