@@ -35,12 +35,7 @@ export default function Language() {
 
   const cont = () => {
     if (selected) onboarding.setLanguage(selected);
-    /*
-     * Country is the next step and does not exist yet, so this goes to the
-     * account screen — a real route rather than a dead one. `/onboarding/country`
-     * slots in ahead of it the moment that screen is built.
-     */
-    router.push('/sign-up');
+    router.push('/onboarding/country');
   };
 
   return (

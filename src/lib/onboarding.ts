@@ -16,8 +16,13 @@ import { useCallback, useEffect, useState } from 'react';
  *   completed  — no `profiles.onboarded_at`. A device flag, which is the right
  *                shape anyway: onboarding is a first-run experience per install.
  *
- * Name, country and avatar are NOT here. Those are real columns on `profiles`
- * and are written straight to the database by the profile step.
+ * `country` is the one hybrid. It IS a real column (`profiles.country_code`),
+ * but the country step runs before an account exists, so there is no row to
+ * write it to yet. It is held here until a session exists and then written to
+ * the profile — local as a staging area, not as the source of truth.
+ *
+ * Name and avatar are not here at all: both steps run after authentication and
+ * go straight to `profiles`.
  */
 
 const KEY = 'sawa.onboarding.v1';
@@ -32,12 +37,14 @@ export const LANGUAGES: { code: LanguageCode; label: string; native: string }[] 
 
 export type OnboardingState = {
   language: LanguageCode | null;
+  /** ISO 3166-1 alpha-2, staged until it can be written to `profiles`. */
+  country: string | null;
   /** Category slugs from the real `categories` table, chosen at first run. */
   categories: string[];
   completed: boolean;
 };
 
-const EMPTY: OnboardingState = { language: null, categories: [], completed: false };
+const EMPTY: OnboardingState = { language: null, country: null, categories: [], completed: false };
 
 async function read(): Promise<OnboardingState> {
   try {
@@ -46,6 +53,7 @@ async function read(): Promise<OnboardingState> {
     const parsed = JSON.parse(raw) as Partial<OnboardingState>;
     return {
       language: parsed.language ?? null,
+      country: parsed.country ?? null,
       categories: Array.isArray(parsed.categories) ? parsed.categories : [],
       completed: parsed.completed === true,
     };
@@ -101,6 +109,7 @@ export function useOnboarding() {
     ...state,
     loading,
     setLanguage: useCallback((language: LanguageCode) => update({ language }), [update]),
+    setCountry: useCallback((country: string) => update({ country: country.toUpperCase() }), [update]),
     setCategories: useCallback((categories: string[]) => update({ categories }), [update]),
     complete: useCallback(() => update({ completed: true }), [update]),
   };
