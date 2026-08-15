@@ -1,18 +1,14 @@
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { Animated, Easing, ScrollView, Share, TextInput, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icon';
 import { Scrim, Sheet, SheetClose, SheetGrabber, Toast } from '@/components/sheet';
 import { Button, Chip, SectionLabel, T, Tap } from '@/components/ui';
-import { getProduct } from '@/data/catalog';
 import { useAsync } from '@/hooks/use-async';
-import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import type { ListingCondition } from '@/lib/database.types';
 import { fetchCategories, fetchListingCountries, fetchListings } from '@/lib/queries';
-import { tapSuccess } from '@/lib/haptics';
-import { EMPTY_FILTERS, euro, SORTS, useApp, type Filters } from '@/store/app-store';
+import { EMPTY_FILTERS, SORTS, useApp, type Filters } from '@/store/app-store';
 import { color as C, radius } from '@/theme/tokens';
 
 /**
@@ -59,12 +55,15 @@ export function Overlays() {
   return (
     <DismissContext.Provider value={dismiss}>
       {sheet && <Scrim onPress={dismiss} closing={closing} />}
-      {sheet?.kind === 'offer' && <OfferSheet {...phase} />}
+      {/*
+        Two sheets, not six. Offer, Share, Report and Done were built around
+        `getProduct(1)` and a fabricated counterparty — an offer sheet that
+        toasted "sent to Leila", a confirmation naming an order that was never
+        placed. Offers are now rows in `offers`, made and answered inside the
+        conversation they belong to, so the sheet had nothing left to do.
+      */}
       {sheet?.kind === 'filters' && <FiltersSheet {...phase} />}
       {sheet?.kind === 'sort' && <SortSheet {...phase} />}
-      {sheet?.kind === 'share' && <ShareSheet {...phase} />}
-      {sheet?.kind === 'report' && <ReportSheet {...phase} />}
-      {sheet?.kind === 'done' && <DoneSheet {...phase} />}
       {!!toast && <Toast message={toast} />}
     </DismissContext.Provider>
   );
@@ -144,141 +143,6 @@ function SheetRow({
   );
 }
 
-/* ─────────────────────────── make / counter an offer ─────────────────────────── */
-
-function OfferSheet(phase: Phase) {
-  const { sheet, setOfferAmount, setOfferState, flash } = useApp();
-  const dismiss = useDismiss();
-  const insets = useSafeAreaInsets();
-  if (sheet?.kind !== 'offer') return null;
-
-  const { mode, productId, amount } = sheet;
-  const p = getProduct(productId);
-  const counter = mode === 'counter';
-  const quick = counter ? [24, 27, 30] : [0.7, 0.8, 0.9].map((f) => Math.round(p.pr * f));
-
-  const send = () => {
-    tapSuccess();
-    if (counter) {
-      dismiss();
-      setOfferState('countered');
-      flash(`Counter of ${euro(amount)} sent to Leila`);
-      return;
-    }
-    dismiss();
-    flash(`Offer of ${euro(amount)} sent — ${p.s.split(' ')[0]} has 24 h to reply`);
-  };
-
-  return (
-    <Sheet {...phase} style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 18 }}>
-      <SheetGrabber style={{ marginBottom: 16 }} />
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <T w={600} size={19} tracking={-0.3}>
-          {counter ? 'Send a counter' : 'Make an offer'}
-        </T>
-        <SheetClose onPress={dismiss} />
-      </View>
-
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          marginTop: 18,
-          paddingBottom: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: C.border,
-        }}
-      >
-        <T size={14} color={C.textSecondary}>
-          {counter ? "Leila's offer" : 'Seller price'}
-        </T>
-        <T w={600} size={16}>
-          {counter ? '€22' : euro(p.pr)}
-        </T>
-      </View>
-
-      <T size={13} color={C.textSecondary} style={{ paddingTop: 16, paddingBottom: 8 }}>
-        Your offer
-      </T>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <StepperButton icon="minus" label="Lower offer" onPress={() => setOfferAmount(amount - 1)} />
-        <View
-          style={{
-            flex: 1,
-            height: 56,
-            borderRadius: radius.lg,
-            backgroundColor: C.surface,
-            borderWidth: 1.5,
-            borderColor: C.text,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <T w={700} size={26} tracking={-0.5}>
-            {euro(amount)}
-          </T>
-        </View>
-        <StepperButton icon="plus" label="Raise offer" onPress={() => setOfferAmount(amount + 1)} />
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: 7, marginTop: 12 }}>
-        {quick.map((v) => (
-          <Chip
-            key={v}
-            label={euro(v)}
-            active={amount === v}
-            height={38}
-            round={10}
-            onPress={() => setOfferAmount(v)}
-            style={{ flex: 1 }}
-          />
-        ))}
-      </View>
-
-      <T size={12.5} color={C.textSecondary} lh={18} style={{ marginTop: 14 }}>
-        {counter
-          ? 'Leila has 24 hours to accept your counter.'
-          : `Offers under ${euro(Math.round(p.pr * 0.6))} are usually declined. Shipping is added at checkout.`}
-      </T>
-
-      <Button label={counter ? 'Send counter' : 'Send offer'} onPress={send} style={{ marginTop: 16 }} />
-    </Sheet>
-  );
-}
-
-function StepperButton({
-  icon,
-  onPress,
-  label,
-}: {
-  icon: 'plus' | 'minus';
-  onPress: () => void;
-  label: string;
-}) {
-  return (
-    <Tap
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{
-        width: 44,
-        height: 44,
-        borderRadius: radius.lg,
-        borderWidth: 1,
-        borderColor: C.border,
-        backgroundColor: C.surface,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <Icon name={icon} size={17} color={C.text} strokeWidth={2.2} />
-    </Tap>
-  );
-}
-
 /* ─────────────────────────── sort ─────────────────────────── */
 
 /**
@@ -313,113 +177,6 @@ function SortSheet(phase: Phase) {
           />
         ))}
       </View>
-    </Sheet>
-  );
-}
-
-/* ─────────────────────────── share ─────────────────────────── */
-
-function ShareSheet(phase: Phase) {
-  const { sheet, flash } = useApp();
-  const dismiss = useDismiss();
-  const insets = useSafeAreaInsets();
-  if (sheet?.kind !== 'share') return null;
-
-  const p = getProduct(sheet.productId);
-  const url = `https://sawa.app/item/${p.id}`;
-
-  /**
-   * Hands off to the platform's own share sheet, which is the one piece of
-   * this flow that should not be re-implemented: it carries the user's real
-   * targets and their ordering. The in-app rows exist for the two actions the
-   * OS sheet buries.
-   */
-  const shareVia = async () => {
-    dismiss();
-    try {
-      await Share.share({ message: `${p.t} — ${euro(p.pr)}\n${url}`, url });
-    } catch {
-      flash('Sharing is unavailable here');
-    }
-  };
-
-  return (
-    <Sheet {...phase} style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 12 }}>
-      <SheetGrabber style={{ marginBottom: 16 }} />
-      <SheetHeader title="Share this listing" onClose={dismiss} />
-
-      <T size={13} color={C.textSecondary} numberOfLines={1} style={{ marginTop: 10 }}>
-        {url}
-      </T>
-
-      <View style={{ marginTop: 8 }}>
-        <SheetRow
-          icon="send"
-          label="Share via…"
-          sub="Messages, mail, anything installed"
-          onPress={shareVia}
-        />
-        <SheetRow
-          icon="badgeCheck"
-          label="Copy link"
-          last
-          onPress={() => {
-            dismiss();
-            flash('Link copied');
-          }}
-        />
-      </View>
-    </Sheet>
-  );
-}
-
-/* ─────────────────────────── report ─────────────────────────── */
-
-const REPORT_REASONS = [
-  'Counterfeit or replica',
-  'Prohibited item',
-  'Misleading description',
-  'Offensive content',
-  'Suspected scam',
-];
-
-function ReportSheet(phase: Phase) {
-  const { sheet, flash } = useApp();
-  const dismiss = useDismiss();
-  const insets = useSafeAreaInsets();
-  const [reason, setReason] = useState<string | null>(null);
-  if (sheet?.kind !== 'report') return null;
-
-  return (
-    <Sheet {...phase} style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 12 }}>
-      <SheetGrabber style={{ marginBottom: 16 }} />
-      <SheetHeader title="Report listing" onClose={dismiss} />
-
-      <T size={13} color={C.textSecondary} lh={19} style={{ marginTop: 8 }}>
-        Reports are confidential. The seller is not told who raised them.
-      </T>
-
-      <View style={{ marginTop: 8 }}>
-        {REPORT_REASONS.map((r, i) => (
-          <SheetRow
-            key={r}
-            label={r}
-            selected={reason === r}
-            last={i === REPORT_REASONS.length - 1}
-            onPress={() => setReason(r)}
-          />
-        ))}
-      </View>
-
-      <Button
-        label="Submit report"
-        disabled={!reason}
-        style={{ marginTop: 18 }}
-        onPress={() => {
-          dismiss();
-          flash('Report sent — thank you');
-        }}
-      />
     </Sheet>
   );
 }
@@ -683,104 +440,5 @@ function PriceInput({
         />
       </View>
     </View>
-  );
-}
-
-/* ─────────────────────────── confirmation ─────────────────────────── */
-
-/*
- * Publishing no longer lands here. The real Sell flow navigates straight to the
- * listing it created, so a sheet naming a hard-coded product would be reporting
- * something that did not happen.
- */
-const DONE_COPY = {
-  placed: {
-    title: 'Order placed',
-    body: 'Bring 35,000 SDG to Al Riyadh Pickup Point. Amal has been notified and will drop the item today.',
-    cta: 'Track order',
-    alt: 'Keep browsing',
-  },
-  paid: {
-    title: 'Payment confirmed',
-    body: 'Yousif has been paid into escrow and has 3 days to ship. Order #SS28491.',
-    cta: 'Track order',
-    alt: 'Keep browsing',
-  },
-} as const;
-
-function DoneSheet(phase: Phase) {
-  const { sheet } = useApp();
-  const dismiss = useDismiss();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const pop = useAnimatedValue(0);
-
-  useEffect(() => {
-    Animated.timing(pop, {
-      toValue: 1,
-      duration: 420,
-      easing: Easing.bezier(0.3, 1.4, 0.4, 1),
-      useNativeDriver: NATIVE_DRIVER,
-    }).start();
-  }, [pop]);
-
-  if (sheet?.kind !== 'done') return null;
-  const copy = DONE_COPY[sheet.doneKind];
-
-  /**
-   * Unwind the checkout/sell flow before landing, so back doesn't walk the user
-   * through the steps they just completed. Same `dismissTo` reasoning as the
-   * bottom nav.
-   */
-  const primary = () => {
-    dismiss();
-    router.dismissTo('/');
-    router.push({ pathname: '/order/[id]', params: { id: 'SS28491' } });
-  };
-
-  const secondary = () => dismiss();
-
-  return (
-    <Sheet
-      {...phase}
-      style={{
-        paddingTop: 26,
-        paddingHorizontal: 22,
-        paddingBottom: insets.bottom + 18,
-        alignItems: 'center',
-      }}
-    >
-      <Animated.View
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: C.success,
-          alignItems: 'center',
-          justifyContent: 'center',
-          transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) }],
-        }}
-      >
-        <Icon name="check" size={27} color={C.primaryText} strokeWidth={2.6} />
-      </Animated.View>
-
-      <T w={600} size={20} tracking={-0.3} style={{ marginTop: 18, textAlign: 'center' }}>
-        {copy.title}
-      </T>
-      <T size={14} color={C.textSecondary} lh={21} style={{ marginTop: 8, textAlign: 'center' }}>
-        {copy.body}
-      </T>
-
-      <Button label={copy.cta} onPress={primary} style={{ marginTop: 22, alignSelf: 'stretch' }} />
-      <Tap
-        onPress={secondary}
-        accessibilityRole="button"
-        style={{ height: 46, marginTop: 8, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <T w={600} size={14} color={C.textSecondary}>
-          {copy.alt}
-        </T>
-      </Tap>
-    </Sheet>
   );
 }

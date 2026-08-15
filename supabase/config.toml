@@ -13,6 +13,13 @@ project_id = "sawa"
 # function ever runs.
 verify_jwt = false
 
+[functions.create-checkout]
+# The buyer's JWT is verified inside the function with auth.getUser(), which is
+# a real server-side check against the auth server rather than a decoded claim.
+# The platform gate is off because this function also serves the /return page
+# that Stripe redirects the buyer to — a plain browser GET carrying no token.
+verify_jwt = false
+
 # ─────────────────────────────── auth ───────────────────────────────
 # This block governs `supabase start` locally. It does NOT reach the hosted
 # project: the Supabase MCP connection exposes no auth configuration tool, so

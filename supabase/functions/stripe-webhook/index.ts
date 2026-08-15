@@ -155,21 +155,39 @@ async function handle(event: Stripe.Event): Promise<void> {
           : charge.payment_intent?.id;
       if (!paymentIntentId) break;
 
-      const fullyRefunded = charge.amount_refunded >= charge.amount;
+      await applyRefund(paymentIntentId, charge.amount_refunded, charge.amount);
+      break;
+    }
 
-      const { data: payment } = await db
-        .from('payments')
-        .update({
-          amount_refunded_cents: charge.amount_refunded,
-          status: fullyRefunded ? 'refunded' : 'partially_refunded',
-        })
-        .eq('stripe_payment_intent_id', paymentIntentId)
-        .select('order_id')
-        .maybeSingle();
+    /*
+     * The endpoint is configured for refund.created and refund.updated, not
+     * charge.refunded — verified against the live test-mode endpoint, whose
+     * enabled_events are payment_intent.succeeded, payment_intent.payment_failed,
+     * checkout.session.completed, refund.created and refund.updated. Handling
+     * only charge.refunded meant every refund landed in the default branch and
+     * changed nothing. Both shapes are handled now, so the integration works
+     * whichever set is enabled.
+     *
+     * A Refund carries no running total, so the charge is re-read for the
+     * authoritative amount_refunded rather than accumulating it here — refunds
+     * arrive at least once and can be superseded.
+     */
+    case 'refund.created':
+    case 'refund.updated': {
+      const refund = event.data.object as Stripe.Refund;
 
-      if (fullyRefunded && payment?.order_id) {
-        await update('orders', { status: 'refunded' }, (q) => q.eq('id', payment.order_id));
-      }
+      // Pending and failed refunds move no money; only a settled one counts.
+      if (refund.status !== 'succeeded') break;
+
+      const paymentIntentId =
+        typeof refund.payment_intent === 'string'
+          ? refund.payment_intent
+          : refund.payment_intent?.id;
+      const chargeId = typeof refund.charge === 'string' ? refund.charge : refund.charge?.id;
+      if (!paymentIntentId || !chargeId) break;
+
+      const charge = await stripe.charges.retrieve(chargeId);
+      await applyRefund(paymentIntentId, charge.amount_refunded, charge.amount);
       break;
     }
 
@@ -193,6 +211,40 @@ async function handle(event: Stripe.Event): Promise<void> {
       // Unhandled types are still recorded in webhook_events, so enabling a new
       // event type in the Stripe dashboard shows up here rather than vanishing.
       console.log('unhandled event type', event.type);
+  }
+}
+
+/**
+ * Records a refund against the payment, and unwinds the order once it is whole.
+ *
+ * Shared by `charge.refunded` and the `refund.*` events so both report the same
+ * state. `amount_refunded` is Stripe's running total for the charge, not this
+ * refund's amount, which is what makes a partial refund followed by another one
+ * land correctly without the webhook keeping a tally of its own.
+ */
+async function applyRefund(
+  paymentIntentId: string,
+  amountRefunded: number,
+  chargeAmount: number
+): Promise<void> {
+  const fullyRefunded = amountRefunded >= chargeAmount;
+
+  const { data: payment, error } = await db
+    .from('payments')
+    .update({
+      amount_refunded_cents: amountRefunded,
+      status: fullyRefunded ? 'refunded' : 'partially_refunded',
+    })
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .select('order_id')
+    .maybeSingle();
+
+  if (error) throw new Error(`payments refund update failed: ${error.message}`);
+
+  /* The order only unwinds on a full refund; a partial one leaves it paid,
+     which is what `partially_refunded` on the payment is there to express. */
+  if (fullyRefunded && payment?.order_id) {
+    await update('orders', { status: 'refunded' }, (q) => q.eq('id', payment.order_id));
   }
 }
 

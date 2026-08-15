@@ -278,9 +278,22 @@ export default function ListingDetail() {
           implementation behind it.
         */}
         {canMessage && (
-          <View style={{ paddingHorizontal: space.gutter, paddingTop: space.lg }}>
+          <View style={{ paddingHorizontal: space.gutter, paddingTop: space.lg, gap: 8 }}>
+            {/*
+              Buy now is real: it opens checkout, which asks the server to price
+              the purchase and create the order. An accepted offer is picked up
+              there rather than being passed from here, so the price cannot be
+              chosen by the client.
+            */}
+            <Button
+              label={row.status === 'active' ? 'Buy now' : 'No longer available'}
+              height={50}
+              disabled={row.status !== 'active'}
+              onPress={() => router.push({ pathname: '/checkout', params: { id: row.id } })}
+            />
             <Button
               label={opening ? 'Opening…' : 'Message seller'}
+              variant="outline"
               height={50}
               disabled={opening}
               onPress={contactSeller}

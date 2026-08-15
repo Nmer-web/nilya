@@ -7,12 +7,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
 import { ListingImage, formatPrice } from '@/components/listing-card';
+import { OfferCard } from '@/components/offer-card';
 import { FadeIn, Skeleton } from '@/components/skeleton';
 import { Avatar, Button, EmptyState, PressableScale, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { useConversation } from '@/hooks/use-conversation';
-import { markConversationRead, sendMessage } from '@/lib/mutations';
-import { coverUrl, fetchConversation, type ConversationRow } from '@/lib/queries';
+import { createOffer, markConversationRead, sendMessage } from '@/lib/mutations';
+import { coverUrl, fetchConversation, fetchOffers, type ConversationRow } from '@/lib/queries';
 import { useAuth } from '@/store/auth-store';
 import { color as C, radius, space } from '@/theme/tokens';
 
@@ -38,6 +39,18 @@ export default function Conversation() {
   const [sendError, setSendError] = useState<string | null>(null);
   const scroller = useRef<ScrollView>(null);
 
+  /*
+   * Offers live in their own table, not in the transcript. `offers` is in the
+   * realtime publication, but the app subscribes only to `messages` for this
+   * screen — an offer changes state on a deliberate tap by one of two people,
+   * so refetching after that tap is both sufficient and easier to reason about
+   * than a second socket.
+   */
+  const offers = useAsync(() => fetchOffers(id), `offers:${id}`);
+  const [offerDraft, setOfferDraft] = useState('');
+  const [offering, setOffering] = useState(false);
+  const [offerError, setOfferError] = useState<string | null>(null);
+
   const conversation = thread.data;
   const me = user?.id ?? null;
   /* The other participant is whichever of the two is not the signed-in user. */
@@ -59,6 +72,31 @@ export default function Conversation() {
   }, [messages.length]);
 
   const canSend = draft.trim().length > 0 && !sending;
+
+  /** €12.50 → 1250. Empty or nonsense yields null and the button stays off. */
+  const offerCents = (() => {
+    const n = Number(offerDraft.replace(',', '.').trim());
+    return offerDraft.trim() && Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
+  })();
+
+  const submitOffer = async () => {
+    if (offerCents === null || offering) return;
+    setOffering(true);
+    setOfferError(null);
+    try {
+      await createOffer(id, offerCents);
+      setOfferDraft('');
+      offers.refetch();
+    } catch (e) {
+      setOfferError(e instanceof Error ? e.message : 'Could not send the offer');
+    } finally {
+      setOffering(false);
+    }
+  };
+
+  /* Only one offer can be live at a time; a second would leave both parties
+     guessing which one an "Accept" answers. */
+  const liveOffer = (offers.data ?? []).find((o) => o.state === 'open' || o.state === 'countered');
 
   const send = async () => {
     const text = draft.trim();
@@ -148,6 +186,25 @@ export default function Conversation() {
         keyboardDismissMode="interactive"
         contentContainerStyle={{ padding: space.gutter, paddingBottom: 8 }}
       >
+        {/*
+          Offers sit above the transcript rather than inside it. The schema has
+          no message row for an offer, so threading one in would mean inventing
+          a message that does not exist in the database.
+        */}
+        {(offers.data ?? []).length > 0 && (
+          <View style={{ gap: 8, paddingBottom: space.lg }}>
+            {(offers.data ?? []).map((offer) => (
+              <OfferCard
+                key={offer.id}
+                offer={offer}
+                me={me}
+                currency={conversation.listing?.currency ?? 'EUR'}
+                onChanged={offers.refetch}
+              />
+            ))}
+          </View>
+        )}
+
         {loading ? (
           <View style={{ gap: 10 }}>
             <Skeleton width="58%" height={44} round={18} />
@@ -220,6 +277,66 @@ export default function Conversation() {
       {!!sendError && (
         <T size={12} color={C.error} style={{ textAlign: 'center', paddingBottom: 6 }}>
           {sendError}
+        </T>
+      )}
+
+      {/*
+        The offer composer, shown only while the item is still for sale and no
+        offer is already awaiting an answer. Either party may open one —
+        `offers_insert_participant` allows both, which is how a seller counters.
+      */}
+      {conversation.listing?.status === 'active' && !liveOffer && (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingHorizontal: 12,
+            paddingBottom: 8,
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              height: 40,
+              borderRadius: radius.pill,
+              borderWidth: 1,
+              borderColor: C.border,
+              backgroundColor: C.surface,
+              paddingHorizontal: 14,
+            }}
+          >
+            <T w={600} size={14}>
+              €
+            </T>
+            <TextInput
+              value={offerDraft}
+              onChangeText={(v) => setOfferDraft(v.replace(/[^0-9.,]/g, ''))}
+              placeholder="Make an offer"
+              placeholderTextColor={C.textSecondary}
+              keyboardType="decimal-pad"
+              editable={!offering}
+              style={{ flex: 1, minWidth: 0, fontSize: 14, color: C.text, padding: 0 }}
+            />
+          </View>
+
+          <Button
+            label={offering ? 'Sending…' : 'Send offer'}
+            height={40}
+            size={13.5}
+            disabled={offerCents === null || offering}
+            onPress={submitOffer}
+            style={{ paddingHorizontal: 16, borderRadius: radius.pill }}
+          />
+        </View>
+      )}
+
+      {!!offerError && (
+        <T size={12} color={C.error} style={{ textAlign: 'center', paddingBottom: 6 }}>
+          {offerError}
         </T>
       )}
 

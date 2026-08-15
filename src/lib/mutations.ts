@@ -353,3 +353,173 @@ export async function markConversationRead(conversationId: string): Promise<void
 
   if (error) throw error;
 }
+
+/* ─────────────────────────── offers ─────────────────────────── */
+
+/**
+ * Opens an offer inside an existing conversation.
+ *
+ * Unlike orders, offers are genuinely client-writable: `offers_insert_participant`
+ * lets either party insert as long as they are one of the two, the two differ,
+ * and they belong to the conversation. Everything below is therefore checked by
+ * the database as well — the guards here are for a clear message, not for
+ * safety.
+ *
+ * `buyer_id` and `seller_id` come from the conversation row rather than from the
+ * caller, so an offer cannot be attributed to someone else.
+ */
+export async function createOffer(conversationId: string, amountCents: number): Promise<void> {
+  const me = await requireUserId();
+
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new Error('Enter an amount above zero');
+  }
+
+  const { data: conversation, error: conversationError } = await supabase
+    .from('conversations')
+    .select('id, listing_id, buyer_id, seller_id, listing:listings ( status )')
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  if (conversationError) throw conversationError;
+  if (!conversation) throw new Error('That conversation no longer exists');
+
+  const row = conversation as unknown as {
+    listing_id: string;
+    buyer_id: string;
+    seller_id: string;
+    listing: { status: string } | null;
+  };
+
+  if (row.listing?.status !== 'active') throw new Error('That listing is no longer available');
+  if (me !== row.buyer_id && me !== row.seller_id) throw new Error('This is not your conversation');
+
+  const { error } = await supabase.from('offers').insert({
+    conversation_id: conversationId,
+    listing_id: row.listing_id,
+    buyer_id: row.buyer_id,
+    seller_id: row.seller_id,
+    amount_cents: amountCents,
+  });
+
+  if (error) throw error;
+}
+
+/**
+ * Moves an offer through its state machine.
+ *
+ * `grant update (state, responded_at)` is the entire writable surface — an
+ * amount cannot be edited after the fact, which is why countering means
+ * inserting a new offer rather than rewriting the old one.
+ *
+ * Who may do what is enforced above this: the counterparty accepts or declines,
+ * and the author withdraws. Passing the actor's role in would be a claim; both
+ * are re-derived here from the row.
+ */
+export async function respondToOffer(
+  offerId: string,
+  action: 'accepted' | 'declined' | 'withdrawn'
+): Promise<void> {
+  const me = await requireUserId();
+
+  const { data, error: readError } = await supabase
+    .from('offers')
+    .select('id, buyer_id, seller_id, state')
+    .eq('id', offerId)
+    .maybeSingle();
+
+  if (readError) throw readError;
+  if (!data) throw new Error('That offer no longer exists');
+
+  const offer = data as { buyer_id: string; seller_id: string; state: string };
+  if (offer.state !== 'open' && offer.state !== 'countered') {
+    throw new Error('That offer has already been answered');
+  }
+
+  const isAuthor = me === offer.buyer_id;
+  if (action === 'withdrawn' && !isAuthor) throw new Error('Only the sender can withdraw an offer');
+  if (action !== 'withdrawn' && isAuthor) throw new Error('Only the seller can answer this offer');
+
+  const { error } = await supabase
+    .from('offers')
+    .update({ state: action, responded_at: new Date().toISOString() })
+    .eq('id', offerId);
+
+  if (error) throw error;
+}
+
+/* ─────────────────────────── checkout ─────────────────────────── */
+
+export type CheckoutResult = {
+  orderId: string;
+  checkoutUrl: string;
+  itemPriceCents: number;
+  shippingCents: number;
+  protectionFeeCents: number;
+  totalCents: number;
+  currency: string;
+};
+
+/**
+ * Starts a purchase.
+ *
+ * Everything that decides what is charged — price, delivery cost, protection
+ * fee, whether the item is still for sale — is resolved by the `create-checkout`
+ * Edge Function against the database. This call carries which listing, which
+ * delivery option and which offer, and nothing else: no amount, no seller, no
+ * total. The client has no INSERT grant on `orders`, so it could not write one
+ * even if it tried.
+ *
+ * The returned URL is Stripe's hosted, test-mode checkout. Payment is confirmed
+ * by the webhook; nothing here may mark an order paid.
+ */
+export async function startCheckout(input: {
+  listingId: string;
+  deliveryKey: string;
+  offerId?: string | null;
+}): Promise<CheckoutResult> {
+  const { data, error } = await supabase.functions.invoke<CheckoutResult>('create-checkout', {
+    body: {
+      listingId: input.listingId,
+      deliveryKey: input.deliveryKey,
+      offerId: input.offerId ?? undefined,
+    },
+  });
+
+  if (error) {
+    /*
+     * FunctionsHttpError carries the response, and the function puts a
+     * human-readable reason in `error` — "Someone else is already buying this
+     * item" is worth showing, and losing it to a generic failure is not.
+     */
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === 'function') {
+      try {
+        const body = (await context.json()) as { error?: string };
+        if (body?.error) throw new Error(body.error);
+      } catch (parsed) {
+        if (parsed instanceof Error && parsed.message) throw parsed;
+      }
+    }
+    throw error;
+  }
+
+  if (!data) throw new Error('Checkout did not start');
+  return data;
+}
+
+/**
+ * Marks one notification read.
+ *
+ * `read_at` is the only column the client may write here — inserts come from
+ * triggers and functions, so an app cannot manufacture a notification.
+ */
+export async function markNotificationRead(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('read_at', null);
+
+  if (error) throw error;
+}

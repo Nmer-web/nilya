@@ -8,92 +8,17 @@ import React, {
   useState,
 } from 'react';
 
-import { type Product } from '@/data/catalog';
 
-/* ─────────────────────────── formatting ─────────────────────────── */
-
-/** €45 for whole euros, €45.99 otherwise — matches the prototype's `euro()`. */
-export const euro = (n: number) => '€' + (Math.round(n * 100) % 100 === 0 ? n : n.toFixed(2));
-
-/** Indicative SDG conversion used on the Sudan-local checkout. */
-export const sdg = (n: number) => (n * 875).toLocaleString('en-US') + ' SDG';
-
-/* ─────────────────────────── delivery ─────────────────────────── */
-
-export type DeliveryOption = {
-  k: string;
-  n: string;
-  sub: string;
-  price: number;
-  eta: string;
-};
-
-export type DeliveryLadder = {
-  kind: 'local' | 'dom' | 'intl';
-  opts: DeliveryOption[];
-};
-
-/** Which delivery options a listing offers, decided by the seller's country. */
-export function deliveryFor(p: Product): DeliveryLadder {
-  if (p.cc === 'SD') {
-    return {
-      kind: 'local',
-      opts: [
-        {
-          k: 'point',
-          n: 'Local pickup',
-          sub: 'Al Riyadh Pickup Point, Khartoum',
-          price: 0,
-          eta: 'Ready to collect in 1–2 days',
-        },
-        {
-          k: 'moto',
-          n: 'Khartoum delivery',
-          sub: 'Motorbike courier to your address',
-          price: 3,
-          eta: 'Same day if ordered before 15:00',
-        },
-      ],
-    };
-  }
-  if (p.cc === 'FR') {
-    return {
-      kind: 'dom',
-      opts: [
-        {
-          k: 'point',
-          n: 'Pickup point',
-          sub: 'Épicerie du Canal · 400 m away',
-          price: 4.99,
-          eta: '2–4 days',
-        },
-        { k: 'home', n: 'Home delivery', sub: 'Colissimo to 75011 Paris', price: 7.99, eta: '2–4 days' },
-      ],
-    };
-  }
-  return {
-    kind: 'intl',
-    opts: [
-      {
-        k: 'point',
-        n: 'International pickup point',
-        sub: 'DHL ServicePoint · 700 m away',
-        price: 9.99,
-        eta: '7–14 days',
-      },
-      {
-        k: 'home',
-        n: 'International home delivery',
-        sub: 'DHL Express, tracked',
-        price: 14.99,
-        eta: '7–14 days',
-      },
-    ],
-  };
-}
-
-/** Buyer-protection fee, waived on cash-at-handover pickups. */
-export const PROTECTION_FEE = 2.5;
+/*
+ * The prototype's money helpers and delivery ladder are gone.
+ *
+ * `euro()` and `sdg()` formatted numbers the app no longer holds — prices are
+ * cents from the database, formatted by `formatPrice`. `deliveryFor()` returned
+ * a hard-coded ladder per country; the real one is `delivery_options`, seeded
+ * with the same shape and read by checkout. `PROTECTION_FEE` was €2.50 as a
+ * constant, which is `platform_settings.protection_fee_cents` — the server
+ * reads it there so the client cannot disagree with what is charged.
+ */
 
 /* ─────────────────────────── state ─────────────────────────── */
 
@@ -128,8 +53,6 @@ export const EMPTY_FILTERS: Filters = {
   condition: null,
   countryCode: null,
 };
-export type OfferState = 'open' | 'countered' | 'accepted' | 'declined';
-
 /*
  * The prototype conversation is gone from here. `msgs`, `typing` and the
  * `sendMessage` that appended a canned reply after 1.4s were the whole of the
@@ -138,14 +61,12 @@ export type OfferState = 'open' | 'countered' | 'accepted' | 'declined';
  * current over Realtime, so there is nothing left for the store to hold.
  */
 
-export type Sheet =
-  | { kind: 'offer'; mode: 'buyer' | 'counter'; productId: number; amount: number }
-  | { kind: 'filters' }
-  | { kind: 'sort' }
-  | { kind: 'share'; productId: number }
-  | { kind: 'report'; productId: number }
-  | { kind: 'done'; doneKind: 'placed' | 'paid' }
-  | null;
+/*
+ * Two sheets. The offer sheet became rows in `offers`, answered inside the
+ * conversation; share, report and the order-placed confirmation were built on
+ * a numeric catalog id and had no real entity to name.
+ */
+export type Sheet = { kind: 'filters' } | { kind: 'sort' } | null;
 
 type AppState = {
   favs: Record<number, true>;
@@ -161,18 +82,12 @@ type AppState = {
    * state is local to the screen and its result is a row rather than a flag.
    */
 
-  /* Inbox */
-  offerState: OfferState;
-
   /*
    * Discovery filters, in the shape the query takes them. Prices are cents and
    * `condition` is a `listing_condition` value, so nothing has to be translated
    * between the sheet and the database.
    */
   filters: Filters;
-
-  /* Checkout */
-  delKey: string | null;
 
   notifRead: boolean;
   sheet: Sheet;
@@ -185,9 +100,7 @@ const INITIAL: AppState = {
   q: '',
   recent: [],
   sort: 'recent',
-  offerState: 'open',
   filters: EMPTY_FILTERS,
-  delKey: null,
   notifRead: false,
   sheet: null,
   toast: null,
@@ -202,17 +115,13 @@ type AppActions = {
   submitSearch: (q: string) => void;
 
 
-  setOfferState: (s: OfferState) => void;
-
   setFilters: (f: Filters) => void;
   resetFilters: () => void;
 
-  setDelKey: (k: string) => void;
   markNotifsRead: () => void;
 
   openSheet: (s: NonNullable<Sheet>) => void;
   closeSheet: () => void;
-  setOfferAmount: (n: number) => void;
 
   flash: (msg: string) => void;
   dismissToast: () => void;
@@ -268,12 +177,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }));
       },
 
-      setOfferState: (offerState) => patch({ offerState }),
-
       setFilters: (filters) => patch({ filters }),
       resetFilters: () => patch({ filters: EMPTY_FILTERS }),
 
-      setDelKey: (delKey) => patch({ delKey }),
       markNotifsRead: () => {
         patch({ notifRead: true });
         flash('All caught up');
@@ -281,11 +187,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       openSheet: (sheet) => patch({ sheet }),
       closeSheet: () => patch({ sheet: null }),
-      setOfferAmount: (amount) =>
-        patch((s) =>
-          s.sheet?.kind === 'offer' ? { sheet: { ...s.sheet, amount: Math.max(1, amount) } } : {}
-        ),
-
       flash,
       dismissToast: () => patch({ toast: null }),
     }),

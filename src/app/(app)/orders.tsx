@@ -1,114 +1,127 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import React from 'react';
+import { RefreshControl, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavClearance } from '@/components/bottom-nav';
-import { Icon } from '@/components/icon';
-import { ListingThumb } from '@/components/product-card';
-import { ScreenHeader } from '@/components/screen-header';
-import { Card, EmptyState, Segmented, T, Tap } from '@/components/ui';
-import { color as C } from '@/theme/tokens';
+import { ListingImage, formatPrice } from '@/components/listing-card';
+import { OrderStatusPill } from '@/components/order-status';
+import { TabTitle } from '@/components/screen-header';
+import { Skeleton } from '@/components/skeleton';
+import { Button, Card, EmptyState, T, Tap } from '@/components/ui';
+import { useAsync } from '@/hooks/use-async';
+import { coverUrl, fetchOrders, type OrderRow } from '@/lib/queries';
+import { useAuth } from '@/store/auth-store';
+import { color as C, radius, space } from '@/theme/tokens';
 
-type Tab = 'Active' | 'Past';
-
-const ACTIVE = [
-  {
-    id: 'SS28491',
-    title: 'Nike Air Max 270',
-    price: '€45',
-    meta: '#SS28491 · from Yousif Adam',
-    statusColor: C.accent,
-    status: 'Shipped',
-    statusNote: '· arriving Thu 14 Aug',
-  },
-  {
-    id: 'SS28502',
-    title: 'Jebena Coffee Set',
-    price: '35,000 SDG',
-    meta: '#SS28502 · local pickup, Khartoum',
-    statusColor: C.success,
-    status: 'Ready to collect',
-    statusNote: '· Al Riyadh point',
-  },
-];
-
+/**
+ * Orders, bought and sold.
+ *
+ * Every row here is the result of a Stripe event the webhook verified — there
+ * is no client write path to `orders`, so nothing on this screen can exist
+ * because the app decided it should.
+ */
 export default function Orders() {
-  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const navClearance = useNavClearance();
-  const [tab, setTab] = useState<Tab>('Active');
+  const router = useRouter();
+  const { status, user } = useAuth();
+  const signedIn = status === 'signedIn';
+
+  const orders = useAsync(async () => (signedIn ? fetchOrders() : []), `orders:${signedIn}`);
+  const list = orders.data ?? [];
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <ScreenHeader title="Orders" />
-
-      <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-        <Segmented<Tab>
-          value={tab}
-          onChange={setTab}
-          options={[
-            { key: 'Active', label: 'Active' },
-            { key: 'Past', label: 'Past' },
-          ]}
-        />
+      <View style={{ paddingTop: insets.top, paddingHorizontal: space.gutter }}>
+        <View style={{ paddingTop: 2, paddingBottom: 14 }}>
+          <TabTitle>Orders</TabTitle>
+        </View>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 16, paddingBottom: navClearance }}
+        contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: navClearance, gap: 10 }}
+        refreshControl={
+          <RefreshControl refreshing={orders.refreshing} onRefresh={orders.refresh} tintColor={C.textMuted} />
+        }
       >
-        {tab === 'Active' ? (
-          ACTIVE.map((o, i) => (
-            <Tap key={o.id} onPress={() => router.push({ pathname: '/order/[id]', params: { id: o.id } })} accessibilityRole="button">
-              <Card style={{ padding: 14, marginBottom: i === ACTIVE.length - 1 ? 0 : 10 }}>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <ListingThumb />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <T w={500} size={14.5} numberOfLines={1}>
-                      {o.title}
-                    </T>
-                    <T w={700} size={16} style={{ marginTop: 2 }}>
-                      {o.price}
-                    </T>
-                    <T size={12} color={C.textMuted} style={{ marginTop: 3 }}>
-                      {o.meta}
-                    </T>
-                  </View>
-                  <View style={{ marginTop: 24 }}>
-                    <Icon name="chevronRight" size={16} color={C.borderStrong} />
-                  </View>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 7,
-                    marginTop: 12,
-                    paddingTop: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: C.surfaceSecondary,
-                  }}
-                >
-                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: o.statusColor }} />
-                  <T w={600} size={13}>
-                    {o.status}
-                  </T>
-                  <T size={12.5} color={C.textSecondary}>
-                    {o.statusNote}
-                  </T>
-                </View>
-              </Card>
-            </Tap>
-          ))
-        ) : (
+        {!signedIn ? (
+          <EmptyState
+            icon="person"
+            title="Sign in to see your orders"
+            body="Purchases and sales are kept to your account."
+            style={{ paddingVertical: 60 }}
+            action={<Button label="Sign in" height={48} onPress={() => router.push('/sign-in')} style={{ marginTop: 20 }} />}
+          />
+        ) : orders.loading ? (
+          <View style={{ gap: 10 }}>
+            {[0, 1].map((i) => (
+              <Skeleton key={i} width="100%" height={96} round={radius.lg} />
+            ))}
+          </View>
+        ) : orders.error ? (
+          <EmptyState
+            icon="close"
+            title="Could not load your orders"
+            body={orders.error.message}
+            style={{ paddingVertical: 44 }}
+            action={<Button label="Try again" height={44} size={14} onPress={orders.refetch} style={{ marginTop: 18 }} />}
+          />
+        ) : list.length === 0 ? (
           <EmptyState
             icon="package"
-            title="No past orders"
-            body="Completed orders move here after delivery is confirmed."
-            style={{ paddingVertical: 56, paddingHorizontal: 28 }}
+            title="No orders yet"
+            body="Items you buy and sell will appear here."
+            style={{ paddingVertical: 60 }}
+            action={
+              <Button label="Browse listings" height={48} onPress={() => router.dismissTo('/')} style={{ marginTop: 20 }} />
+            }
           />
+        ) : (
+          list.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              me={user?.id ?? null}
+              onPress={() => router.push({ pathname: '/order/[id]', params: { id: order.id } })}
+            />
+          ))
         )}
       </ScrollView>
     </View>
+  );
+}
+
+function OrderCard({ order, me, onPress }: { order: OrderRow; me: string | null; onPress: () => void }) {
+  const sold = me === order.seller_id;
+  const counterparty = sold ? order.buyer : order.seller;
+
+  return (
+    <Tap onPress={onPress} accessibilityRole="button" accessibilityLabel={`Order for ${order.listing?.title ?? 'an item'}`}>
+      <Card style={{ flexDirection: 'row', gap: 12, padding: 14 }}>
+        <View style={{ width: 54 }}>
+          <ListingImage url={coverUrl(order.listing?.images ?? null)} width={54} round={radius.sm} />
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <T w={500} size={14.5} numberOfLines={1} style={{ flex: 1 }}>
+              {order.listing?.title ?? 'Listing unavailable'}
+            </T>
+            <OrderStatusPill status={order.status} />
+          </View>
+
+          <T w={700} size={16} style={{ marginTop: 3 }}>
+            {formatPrice(order.total_cents, order.currency)}
+          </T>
+
+          <T size={12.5} color={C.textSecondary} style={{ marginTop: 2 }} numberOfLines={1}>
+            {sold ? 'Sold to' : 'From'} {counterparty?.display_name ?? 'a member'} ·{' '}
+            {new Date(order.placed_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+          </T>
+        </View>
+      </Card>
+    </Tap>
   );
 }

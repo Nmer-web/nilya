@@ -375,3 +375,190 @@ export function coverUrl(images: { storage_path: string; position: number }[] | 
   const cover = [...images].sort((a, b) => a.position - b.position)[0];
   return imageUrl(cover.storage_path);
 }
+
+/* ─────────────────────────── offers ─────────────────────────── */
+
+/**
+ * `offer_state` in the database. There are six, and the UI must not invent a
+ * seventh: `expired` is set by whatever sweeps `expires_at`, and the other five
+ * are reachable from the app.
+ */
+export type OfferRow = {
+  id: string;
+  conversation_id: string;
+  listing_id: string;
+  buyer_id: string;
+  seller_id: string;
+  amount_cents: number;
+  state: 'open' | 'countered' | 'accepted' | 'declined' | 'withdrawn' | 'expired';
+  counter_of: string | null;
+  expires_at: string | null;
+  responded_at: string | null;
+  created_at: string;
+};
+
+const OFFER_SELECT =
+  'id, conversation_id, listing_id, buyer_id, seller_id, amount_cents, state, counter_of, expires_at, responded_at, created_at';
+
+/** Every offer in a thread, newest first. RLS limits this to the two parties. */
+export async function fetchOffers(conversationId: string): Promise<OfferRow[]> {
+  const { data, error } = await supabase
+    .from('offers')
+    .select(OFFER_SELECT)
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) throw error;
+  return (data ?? []) as OfferRow[];
+}
+
+/**
+ * The buyer's accepted offer on a listing, if there is one.
+ *
+ * Checkout uses it to know whether a negotiated price applies. The server
+ * re-reads and re-checks the same row before charging anything — this is for
+ * showing the right number, not for deciding it.
+ */
+export async function fetchAcceptedOffer(listingId: string): Promise<OfferRow | null> {
+  const { data: auth } = await supabase.auth.getUser();
+  const me = auth.user?.id;
+  if (!me) return null;
+
+  const { data, error } = await supabase
+    .from('offers')
+    .select(OFFER_SELECT)
+    .eq('listing_id', listingId)
+    .eq('buyer_id', me)
+    .eq('state', 'accepted')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as OfferRow) ?? null;
+}
+
+/* ─────────────────────────── orders ─────────────────────────── */
+
+export type OrderRow = {
+  id: string;
+  listing_id: string;
+  buyer_id: string;
+  seller_id: string;
+  offer_id: string | null;
+  item_price_cents: number;
+  shipping_cents: number;
+  protection_fee_cents: number;
+  /** Generated column: the three above, summed by Postgres. */
+  total_cents: number;
+  currency: string;
+  delivery_kind: string;
+  delivery_key: string;
+  status:
+    | 'pending_payment'
+    | 'paid'
+    | 'shipped'
+    | 'delivered'
+    | 'completed'
+    | 'cancelled'
+    | 'refunded'
+    | 'disputed';
+  placed_at: string;
+  paid_at: string | null;
+  listing: { id: string; title: string; images: ListingImageRow[] } | null;
+  buyer: ProfileSummary | null;
+  seller: ProfileSummary | null;
+  payment: {
+    status:
+      | 'requires_payment_method'
+      | 'processing'
+      | 'succeeded'
+      | 'failed'
+      | 'refunded'
+      | 'partially_refunded';
+    amount_cents: number;
+    amount_refunded_cents: number;
+    last_error: string | null;
+  } | null;
+};
+
+const ORDER_SELECT = `
+  id, listing_id, buyer_id, seller_id, offer_id,
+  item_price_cents, shipping_cents, protection_fee_cents, total_cents, currency,
+  delivery_kind, delivery_key, status, placed_at, paid_at,
+  listing:listings ( id, title, images:listing_images ( storage_path, position ) ),
+  buyer:profiles!orders_buyer_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales ),
+  seller:profiles!orders_seller_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales ),
+  payment:payments ( status, amount_cents, amount_refunded_cents, last_error )
+`;
+
+/**
+ * The caller's orders, as buyer or seller.
+ *
+ * `orders_read_party` scopes this; there is no client write path to orders at
+ * all, so everything here is the result of a verified Stripe event.
+ */
+export async function fetchOrders(): Promise<OrderRow[]> {
+  const { data, error } = await supabase
+    .from('orders')
+    .select(ORDER_SELECT)
+    .order('placed_at', { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+  return (data ?? []) as unknown as OrderRow[];
+}
+
+/** One order, or null when it is not the caller's. */
+export async function fetchOrder(id: string): Promise<OrderRow | null> {
+  const { data, error } = await supabase
+    .from('orders')
+    .select(ORDER_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as unknown as OrderRow) ?? null;
+}
+
+/** The single-row platform configuration. Readable, never guessed at. */
+export async function fetchPlatformSettings(): Promise<{
+  protection_fee_cents: number;
+  base_currency: string;
+}> {
+  const { data, error } = await supabase
+    .from('platform_settings')
+    .select('protection_fee_cents, base_currency')
+    .eq('id', true)
+    .single();
+
+  if (error) throw error;
+  return data as { protection_fee_cents: number; base_currency: string };
+}
+
+/* ─────────────────────────── notifications ─────────────────────────── */
+
+export type NotificationRow = {
+  id: string;
+  user_id: string;
+  /** Free text on the table: offer_received | message | order_placed | shipped | … */
+  kind: string;
+  title: string;
+  body: string | null;
+  data: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+};
+
+/** The caller's own notifications. `notifications_read_own` scopes this. */
+export async function fetchNotifications(): Promise<NotificationRow[]> {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('id, user_id, kind, title, body, data, read_at, created_at')
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+  return (data ?? []) as NotificationRow[];
+}

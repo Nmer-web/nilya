@@ -100,14 +100,11 @@ export const alpha = {
  * Seller avatar backgrounds. Muted on purpose: six saturated circles in a feed
  * would spend the colour budget the accent needs.
  */
-export const avatarColor = {
-  yousif: '#6B4A3A',
-  ahmed: '#33414F',
-  nour: '#5A5068',
-  amal: '#3F5148',
-  sara: '#4A5560',
-  huda: '#6B4F45',
-} as const;
+/*
+ * The `avatarColor` palette is gone. It was keyed by prototype personas
+ * (yousif, amal, nour…) and had no consumers left: profiles carry their own
+ * `avatar_color` column, which is what the avatar falls back to now.
+ */
 
 /** 4pt rhythm. `gutter` is the screen inset every full-bleed row aligns to. */
 export const space = {
