@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { toError } from '@/lib/errors';
 import { fetchListings, type FeedFilters } from '@/lib/queries';
 import type { ListingRow } from '@/lib/database.types';
 
@@ -59,7 +60,7 @@ export function useListingFeed(filters: FeedFilters, key: string): FeedState {
         setError(null);
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof Error ? e : new Error(String(e)));
+        setError(toError(e));
         setListings([]);
         setHasMore(false);
       } finally {
@@ -98,7 +99,7 @@ export function useListingFeed(filters: FeedFilters, key: string): FeedState {
         });
         setHasMore(more);
       } catch (e) {
-        setError(e instanceof Error ? e : new Error(String(e)));
+        setError(toError(e));
       } finally {
         setLoadingMore(false);
         inFlight.current = false;

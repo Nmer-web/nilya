@@ -6,13 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '@/components/icon';
 import { ListingFeedGrid } from '@/components/listing-feed-grid';
 import { FadeIn } from '@/components/skeleton';
-import { SectionLabel, T, Tap } from '@/components/ui';
+import { PressableScale, SectionLabel, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { useDebounced } from '@/hooks/use-debounced';
 import { useFavorites } from '@/hooks/use-favorites';
 import { useListingFeed } from '@/hooks/use-listing-feed';
 import { fetchCategories } from '@/lib/queries';
-import { useApp } from '@/store/app-store';
+import { filtersActive, SORTS, useApp } from '@/store/app-store';
 import { color as C, radius, space } from '@/theme/tokens';
 
 /**
@@ -30,7 +30,7 @@ import { color as C, radius, space } from '@/theme/tokens';
 export default function Search() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { recent, submitSearch, setCat, sort, filters } = useApp();
+  const { recent, submitSearch, setCat, sort, filters, openSheet } = useApp();
   const favorites = useFavorites();
 
   const [draft, setDraft] = useState('');
@@ -56,6 +56,9 @@ export default function Search() {
     },
     `search:${query}:${filters.categorySlug}:${filters.minCents}:${filters.maxCents}:${filters.condition}:${filters.countryCode}:${sort}`
   );
+
+  const hasFilters = filtersActive(filters);
+  const sortLabel = SORTS.find((s) => s.key === sort)?.label ?? 'Newest first';
 
   /** Records the term and browses its results in place. */
   const go = (term: string) => {
@@ -138,28 +141,80 @@ export default function Search() {
       {searching ? (
         <>
           {/*
-            Reported only once the query has settled and returned, so the count
-            never describes a different search than the one on screen.
+            Sort and filters narrow the same query the field does — each writes
+            a field `fetchListings` turns into a clause, so the row never
+            changes appearance without changing results.
           */}
-          {!feed.loading && !feed.error && (
-            <T size={13} color={C.textSecondary} style={{ paddingHorizontal: space.gutter, paddingBottom: space.sm }}>
-              {feed.listings.length === 0
-                ? `No matches for “${query}”`
-                : `${feed.listings.length}${feed.hasMore ? '+' : ''} result${
-                    feed.listings.length === 1 && !feed.hasMore ? '' : 's'
-                  } for “${query}”`}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: space.md,
+              paddingHorizontal: space.gutter,
+              paddingBottom: space.md,
+            }}
+          >
+            {/* Counted only once the query has settled and returned, so the
+                number never describes a different search than the one shown. */}
+            <T size={13} color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
+              {feed.loading
+                ? 'Searching…'
+                : feed.error
+                  ? ''
+                  : `${feed.listings.length}${feed.hasMore ? '+' : ''} result${
+                      feed.listings.length === 1 && !feed.hasMore ? '' : 's'
+                    }`}
             </T>
-          )}
+
+            <Tap
+              onPress={() => openSheet({ kind: 'sort' })}
+              accessibilityRole="button"
+              accessibilityLabel={`Sort by ${sortLabel}. Tap to change.`}
+              hitSlop={10}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 44 }}
+            >
+              <T w={500} size={13}>
+                {sortLabel}
+              </T>
+              <Icon name="chevronDown" size={13} color={C.text} />
+            </Tap>
+
+            <PressableScale
+              onPress={() => openSheet({ kind: 'filters' })}
+              accessibilityRole="button"
+              accessibilityLabel="Filters"
+              style={{
+                height: 36,
+                paddingHorizontal: 13,
+                borderRadius: radius.pill,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: hasFilters ? C.text : C.background,
+                borderWidth: 1,
+                borderColor: hasFilters ? C.text : C.border,
+              }}
+            >
+              <Icon name="sliders" size={15} color={hasFilters ? C.primaryText : C.text} />
+              <T w={500} size={13} color={hasFilters ? C.primaryText : C.text}>
+                Filters
+              </T>
+            </PressableScale>
+          </View>
 
           <ListingFeedGrid
             feed={feed}
             savedIds={favorites.saved}
             onToggleSave={favorites.toggle}
             contentPaddingBottom={insets.bottom + space['3xl']}
+            onRefresh={() => {
+              feed.refresh();
+              favorites.refresh();
+            }}
             empty={{
               icon: 'search',
-              title: 'No matches',
-              body: 'Try fewer words, or a different spelling.',
+              title: 'No results found',
+              body: 'Try another search or adjust your filters.',
             }}
           />
         </>

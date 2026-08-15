@@ -1,5 +1,12 @@
 import { supabase } from '@/lib/supabase';
-import type { CategoryRow, ListingDetailRow, ListingRow } from '@/lib/database.types';
+import type {
+  CategoryRow,
+  ListingDetailRow,
+  ListingImageRow,
+  ListingRow,
+  ListingStatus,
+  ProfileSummary,
+} from '@/lib/database.types';
 
 /**
  * Every read the app performs, in one place.
@@ -116,34 +123,43 @@ export async function fetchCategories(scope: 'home' | 'explore'): Promise<Catego
   return (data ?? []) as CategoryRow[];
 }
 
-/* ─────────────────────────── sellers ─────────────────────────── */
+/* ─────────────────────────── profiles ─────────────────────────── */
 
-export type SellerProfile = {
+export type Profile = {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  /** Seeded per account; backs the initials disc when there is no photo. */
+  avatar_color: string | null;
   bio: string | null;
   city: string | null;
   country_code: string | null;
   is_verified: boolean;
   lifetime_sales: number;
+  /** `numeric(2,1)`, null until the profile has been rated at all. */
   rating_avg: number | null;
   rating_count: number;
   created_at: string;
 };
 
-/** A seller's public profile, or null when the id does not resolve. */
-export async function fetchSellerProfile(id: string): Promise<SellerProfile | null> {
+/**
+ * One profile by id, or null when the id does not resolve.
+ *
+ * The same function serves a seller's public page and the signed-in user's own
+ * account screen — they are the same row read through the same policy, and a
+ * second "my profile" query would only be a second thing to keep in step.
+ */
+export async function fetchProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
     .select(
-      'id, display_name, avatar_url, bio, city, country_code, is_verified, lifetime_sales, rating_avg, rating_count, created_at'
+      'id, display_name, avatar_url, avatar_color, bio, city, country_code, is_verified, lifetime_sales, rating_avg, rating_count, created_at'
     )
     .eq('id', id)
     .maybeSingle();
 
   if (error) throw error;
-  return (data as SellerProfile) ?? null;
+  return (data as Profile) ?? null;
 }
 
 /*
@@ -170,6 +186,132 @@ export async function fetchListingCountries(): Promise<string[]> {
   if (error) throw error;
   const set = new Set((data ?? []).map((r) => (r as { country_code: string }).country_code));
   return [...set].sort();
+}
+
+/* ─────────────────────────── conversations ─────────────────────────── */
+
+/**
+ * A thread is identified by `(listing_id, buyer_id)`, which the schema declares
+ * unique — there is no second conversation about the same item between the same
+ * two people, and none of this needs a client-invented conversation id.
+ */
+export type ConversationRow = {
+  id: string;
+  listing_id: string;
+  buyer_id: string;
+  seller_id: string;
+  last_message_at: string | null;
+  created_at: string;
+  listing: {
+    id: string;
+    title: string;
+    price_cents: number;
+    currency: string;
+    status: ListingStatus;
+    images: ListingImageRow[];
+  } | null;
+  buyer: ProfileSummary | null;
+  seller: ProfileSummary | null;
+};
+
+export type MessageRow = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+};
+
+const CONVERSATION_SELECT = `
+  id, listing_id, buyer_id, seller_id, last_message_at, created_at,
+  listing:listings ( id, title, price_cents, currency, status, images:listing_images ( storage_path, position ) ),
+  buyer:profiles!conversations_buyer_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales ),
+  seller:profiles!conversations_seller_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales )
+`;
+
+/**
+ * Every thread the signed-in user is part of.
+ *
+ * No `buyer_id = me or seller_id = me` filter: `conversations_read_participant`
+ * already restricts this to threads the caller belongs to, and repeating the
+ * rule in the query would let the two drift apart.
+ */
+export async function fetchConversations(): Promise<ConversationRow[]> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select(CONVERSATION_SELECT)
+    .order('last_message_at', { ascending: false, nullsFirst: false })
+    .limit(100);
+
+  if (error) throw error;
+  return (data ?? []) as unknown as ConversationRow[];
+}
+
+/** One thread, or null when it does not exist or is not the caller's. */
+export async function fetchConversation(id: string): Promise<ConversationRow | null> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select(CONVERSATION_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as unknown as ConversationRow) ?? null;
+}
+
+/**
+ * A thread's messages, oldest first — the order they are read in.
+ *
+ * The index is on `(conversation_id, created_at desc)`, which serves an
+ * ascending scan equally well; Postgres reads a b-tree backwards at the same
+ * cost.
+ */
+export async function fetchMessages(conversationId: string): Promise<MessageRow[]> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, conversation_id, sender_id, body, read_at, created_at')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+    .limit(200);
+
+  if (error) throw error;
+  return (data ?? []) as MessageRow[];
+}
+
+/**
+ * The most recent message in each of the caller's threads, plus what is unread.
+ *
+ * PostgREST cannot do "latest row per group", so rather than one query per
+ * conversation this reads a bounded slice of the caller's messages newest-first
+ * and reduces it. RLS means only the caller's own threads come back.
+ */
+export async function fetchConversationSummaries(): Promise<
+  Map<string, { last: MessageRow; unread: number }>
+> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, conversation_id, sender_id, body, read_at, created_at')
+    .order('created_at', { ascending: false })
+    .limit(400);
+
+  if (error) throw error;
+
+  const rows = (data ?? []) as MessageRow[];
+  const { data: auth } = await supabase.auth.getUser();
+  const me = auth.user?.id;
+
+  const summaries = new Map<string, { last: MessageRow; unread: number }>();
+  for (const row of rows) {
+    const entry = summaries.get(row.conversation_id);
+    /* Newest first, so the first row seen for a conversation is its latest. */
+    if (!entry) {
+      summaries.set(row.conversation_id, { last: row, unread: 0 });
+    }
+    const current = summaries.get(row.conversation_id)!;
+    if (row.read_at === null && row.sender_id !== me) current.unread += 1;
+  }
+  return summaries;
 }
 
 /* ─────────────────────────── favourites ─────────────────────────── */

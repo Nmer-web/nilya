@@ -6,8 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FrostedBar } from '@/components/frosted-bar';
 import { Icon, type IconName } from '@/components/icon';
 import { PressableScale, T } from '@/components/ui';
-
-import { useApp } from '@/store/app-store';
 import { color as C, shadow } from '@/theme/tokens';
 
 /** Routes that keep the nav visible, mirroring the design's `showNav`. */
@@ -49,7 +47,6 @@ const TABS: { href: string; icon: IconName; label: string }[] = [
 export function BottomNav({ pathname }: { pathname: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { offerState } = useApp();
 
   /**
    * Nothing is "current" on Sell (its pill has no selected state) or on a
@@ -89,31 +86,14 @@ export function BottomNav({ pathname }: { pathname: string }) {
         accessibilityLabel={label}
         style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 2 }}
       >
-        <View>
-          <Icon name={icon} size={22} color={tint} strokeWidth={active ? 2.1 : 1.7} />
-          {href === '/inbox' && (
-            <View
-              style={{
-                position: 'absolute',
-                top: -6,
-                right: -12,
-                minWidth: 16,
-                height: 16,
-                paddingHorizontal: 4,
-                borderRadius: 8,
-                backgroundColor: C.accent,
-                borderWidth: 1.5,
-                borderColor: C.background,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <T w={700} size={10} color={C.primaryText}>
-                {offerState === 'open' ? '3' : '2'}
-              </T>
-            </View>
-          )}
-        </View>
+        {/*
+          No badge on Inbox. The one here printed "3" or "2" depending on a
+          prototype offer flag — a count of nothing. Unread is a real fact now
+          (messages the other party sent with no `read_at`), but reading it
+          costs a query on every screen the nav is mounted on, so it belongs
+          with a shared subscription rather than a number invented here.
+        */}
+        <Icon name={icon} size={22} color={tint} strokeWidth={active ? 2.1 : 1.7} />
         {/* Weight, not just colour, carries the selected state — see §23. */}
         <T w={active ? 600 : 500} size={10.5} color={tint}>
           {label}
@@ -148,9 +128,8 @@ export function BottomNav({ pathname }: { pathname: string }) {
         and the only one that is not a word — which is what makes it read as
         the action rather than a fifth destination.
 
-        Black rather than accent, because the accent budget is spent on the
-        unread badge two tabs along and two highlights in one bar would leave
-        neither reading as primary.
+        Black rather than accent: the bar carries one emphasis, and spending it
+        on the primary action is what keeps that action primary.
       */}
       <PressableScale
         scale={0.94}

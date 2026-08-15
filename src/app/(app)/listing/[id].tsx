@@ -14,8 +14,9 @@ import { useAnimatedValue, NATIVE_DRIVER } from '@/hooks/use-animated-value';
 import { useFavorites } from '@/hooks/use-favorites';
 import { CONDITION_LABEL } from '@/lib/database.types';
 import { tapLight } from '@/lib/haptics';
-import { fetchDeliveryOptions } from '@/lib/mutations';
+import { fetchDeliveryOptions, findOrCreateConversation } from '@/lib/mutations';
 import { fetchListing, imageUrl } from '@/lib/queries';
+import { useAuth } from '@/store/auth-store';
 import { alpha, color as C, motion, radius, space } from '@/theme/tokens';
 
 /** Gallery height relative to width. */
@@ -29,8 +30,11 @@ export default function ListingDetail() {
 
   const listing = useAsync(() => fetchListing(id), `listing:${id}`);
   const favorites = useFavorites();
+  const { user } = useAuth();
 
   const [page, setPage] = useState(0);
+  const [opening, setOpening] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
   const galleryHeight = width * GALLERY_RATIO;
 
   const heart = useAnimatedValue(1);
@@ -88,6 +92,28 @@ export default function ListingDetail() {
   const images = [...row.images].sort((a, b) => a.position - b.position);
   const saved = favorites.saved.has(row.id);
   const place = [row.city, row.country_code].filter(Boolean).join(', ');
+
+  /*
+   * Messaging is offered only where it can actually work: signed in, and not
+   * on your own listing. `conversations_insert_as_buyer` refuses a self-thread
+   * anyway, so hiding the button matches the policy rather than guessing at it.
+   */
+  const isMine = !!user && user.id === row.seller_id;
+  const canMessage = !!user && !isMine;
+
+  const contactSeller = async () => {
+    if (opening) return;
+    setOpening(true);
+    setContactError(null);
+    try {
+      const conversationId = await findOrCreateConversation(row.id, row.seller_id);
+      router.push({ pathname: '/chat/[id]', params: { id: conversationId } });
+    } catch (e) {
+      setContactError(e instanceof Error ? e.message : 'Could not open a conversation');
+    } finally {
+      setOpening(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
@@ -245,6 +271,33 @@ export default function ListingDetail() {
 
         {/* ── seller ── */}
         {row.seller && <SellerBlock seller={row.seller} />}
+
+        {/*
+          Message the seller — the one action on this screen that is fully
+          built. There is still no Buy or Offer button, because neither has an
+          implementation behind it.
+        */}
+        {canMessage && (
+          <View style={{ paddingHorizontal: space.gutter, paddingTop: space.lg }}>
+            <Button
+              label={opening ? 'Opening…' : 'Message seller'}
+              height={50}
+              disabled={opening}
+              onPress={contactSeller}
+            />
+            {!!contactError && (
+              <T size={12.5} color={C.error} style={{ textAlign: 'center', paddingTop: 8 }}>
+                {contactError}
+              </T>
+            )}
+          </View>
+        )}
+
+        {isMine && (
+          <T size={12.5} color={C.textMuted} style={{ textAlign: 'center', paddingTop: space.lg }}>
+            This is your listing.
+          </T>
+        )}
 
         {/* ── delivery ── */}
         <DeliveryBlock countryCode={row.country_code} />

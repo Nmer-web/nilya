@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { toError } from '@/lib/errors';
+
 export type AsyncState<T> = {
   data: T | null;
   /** True on the first load only, so a refetch does not blank the screen. */
@@ -59,7 +61,7 @@ export function useAsync<T>(fn: () => Promise<T>, key: string): AsyncState<T> {
         setError(null);
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof Error ? e : new Error(String(e)));
+        setError(toError(e));
       } finally {
         if (!cancelled) {
           setLoading(false);

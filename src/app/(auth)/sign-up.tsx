@@ -87,7 +87,7 @@ export default function SignUp() {
             if (errors.name) setErrors((e) => ({ ...e, name: null }));
           }}
           error={errors.name}
-          placeholder="Ahmed Ibrahim"
+          placeholder="Your name"
           autoCapitalize="words"
           autoComplete="name"
           textContentType="name"

@@ -1,18 +1,17 @@
-import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Icon } from '@/components/icon';
 import { ListingFeedGrid } from '@/components/listing-feed-grid';
+import { ProfileBio, ProfileIdentity } from '@/components/profile-identity';
 import { ScreenHeader } from '@/components/screen-header';
-import { ProductGridSkeleton } from '@/components/skeleton';
-import { Avatar, EmptyState, T } from '@/components/ui';
+import { ProductGridSkeleton, Skeleton } from '@/components/skeleton';
+import { Button, EmptyState } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { useFavorites } from '@/hooks/use-favorites';
 import { useListingFeed } from '@/hooks/use-listing-feed';
-import { fetchSellerProfile } from '@/lib/queries';
+import { fetchProfile } from '@/lib/queries';
 import { color as C, space } from '@/theme/tokens';
 
 /**
@@ -27,21 +26,38 @@ export default function SellerProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
 
-  const profile = useAsync(() => fetchSellerProfile(id), `seller:${id}`);
+  const profile = useAsync(() => fetchProfile(id), `seller:${id}`);
   const favorites = useFavorites();
   const feed = useListingFeed({ sellerId: id }, `seller-listings:${id}`);
 
   const seller = profile.data;
 
+  /* The skeleton mirrors this screen's own layout — an identity block over a
+     two-column grid — rather than the three-up profile one, so nothing shifts
+     or is promised that does not arrive. */
   if (profile.loading) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
         <ScreenHeader />
-        <ProductGridSkeleton />
+        <View
+          accessibilityRole="progressbar"
+          accessibilityLabel="Loading seller"
+          style={{ flexDirection: 'row', gap: 14, padding: space.gutter, paddingTop: 20 }}
+        >
+          <Skeleton width={66} height={66} round={33} />
+          <View style={{ flex: 1, paddingTop: 6 }}>
+            <Skeleton width="56%" height={20} />
+            <Skeleton width="70%" height={12} style={{ marginTop: 10 }} />
+            <Skeleton width="40%" height={11} style={{ marginTop: 8 }} />
+          </View>
+        </View>
+        <ProductGridSkeleton count={4} />
       </View>
     );
   }
 
+  /* A failed request and a missing profile are different facts and are worded
+     differently; only the failure offers a retry. */
   if (profile.error || !seller) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
@@ -51,71 +67,30 @@ export default function SellerProfile() {
           title={profile.error ? 'Could not load this seller' : 'Seller not found'}
           body={profile.error ? profile.error.message : 'This profile may have been removed.'}
           style={{ paddingVertical: 44 }}
+          action={
+            profile.error ? (
+              <Button
+                label="Try again"
+                height={44}
+                size={14}
+                onPress={profile.refetch}
+                style={{ marginTop: 18 }}
+              />
+            ) : undefined
+          }
         />
       </View>
     );
   }
 
-  const initials = seller.display_name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-
-  const place = [seller.city, seller.country_code].filter(Boolean).join(', ');
-  const joined = new Date(seller.created_at).getFullYear();
-
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader title={seller.display_name} titleSize={15.5} />
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: space.gutter, paddingTop: 20 }}>
-        {seller.avatar_url ? (
-          <Image
-            source={{ uri: seller.avatar_url }}
-            style={{ width: 66, height: 66, borderRadius: 33 }}
-            contentFit="cover"
-            transition={200}
-          />
-        ) : (
-          <Avatar initials={initials} bg={C.text} size={66} fontSize={22} />
-        )}
-
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <T w={600} size={19} tracking={-0.3} numberOfLines={1} style={{ flexShrink: 1 }}>
-              {seller.display_name}
-            </T>
-            {seller.is_verified && <Icon name="badgeCheck" size={16} color={C.success} />}
-          </View>
-
-          {/*
-            Every figure here is a column on the profile. A seller with no
-            reviews shows no rating rather than a placeholder five stars, and
-            nothing claims a response time the app does not measure.
-          */}
-          <T size={13} color={C.textSecondary} style={{ marginTop: 3 }}>
-            {seller.rating_count > 0 && seller.rating_avg != null
-              ? `★ ${seller.rating_avg.toFixed(1)} (${seller.rating_count}) · `
-              : ''}
-            {seller.lifetime_sales === 1 ? '1 sale' : `${seller.lifetime_sales} sales`}
-            {` · Joined ${joined}`}
-          </T>
-
-          {!!place && (
-            <T size={13} color={C.textSecondary} style={{ marginTop: 1 }}>
-              {place}
-            </T>
-          )}
-        </View>
+      <View style={{ padding: space.gutter, paddingTop: 20 }}>
+        <ProfileIdentity profile={seller} />
+        <ProfileBio bio={seller.bio} />
       </View>
-
-      {!!seller.bio && (
-        <T size={13.5} color={C.textSecondary} lh={20} style={{ paddingHorizontal: space.gutter, paddingBottom: 4 }}>
-          {seller.bio}
-        </T>
-      )}
 
       {/*
         No Message or Follow button. Neither is built — there is no thread to
@@ -145,8 +120,8 @@ export default function SellerProfile() {
         }}
         empty={{
           icon: 'bag',
-          title: 'Nothing listed right now',
-          body: `${seller.display_name} has no active listings.`,
+          title: 'No listings yet',
+          body: "This seller hasn't listed anything yet.",
         }}
       />
     </View>

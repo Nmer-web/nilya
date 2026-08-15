@@ -129,7 +129,14 @@ export const EMPTY_FILTERS: Filters = {
   countryCode: null,
 };
 export type OfferState = 'open' | 'countered' | 'accepted' | 'declined';
-export type Message = { me: boolean; t: string };
+
+/*
+ * The prototype conversation is gone from here. `msgs`, `typing` and the
+ * `sendMessage` that appended a canned reply after 1.4s were the whole of the
+ * old chat: four hard-coded lines and an imaginary correspondent. Messaging is
+ * now `messages` in Postgres, read and written through the query layer and kept
+ * current over Realtime, so there is nothing left for the store to hold.
+ */
 
 export type Sheet =
   | { kind: 'offer'; mode: 'buyer' | 'counter'; productId: number; amount: number }
@@ -156,8 +163,6 @@ type AppState = {
 
   /* Inbox */
   offerState: OfferState;
-  msgs: Message[];
-  typing: boolean;
 
   /*
    * Discovery filters, in the shape the query takes them. Prices are cents and
@@ -181,13 +186,6 @@ const INITIAL: AppState = {
   recent: [],
   sort: 'recent',
   offerState: 'open',
-  msgs: [
-    { me: true, t: 'Is this still available?' },
-    { me: false, t: 'Yes 👍' },
-    { me: true, t: 'Can you ship to Paris?' },
-    { me: false, t: 'Yes, no problem. I can post it tomorrow.' },
-  ],
-  typing: false,
   filters: EMPTY_FILTERS,
   delKey: null,
   notifRead: false,
@@ -205,7 +203,6 @@ type AppActions = {
 
 
   setOfferState: (s: OfferState) => void;
-  sendMessage: (text: string) => void;
 
   setFilters: (f: Filters) => void;
   resetFilters: () => void;
@@ -230,15 +227,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     latest.current = state;
   }, [state]);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const later = useCallback((fn: () => void, ms: number) => {
-    const id = setTimeout(fn, ms);
-    timers.current.push(id);
-    return id;
-  }, []);
-
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  /*
+   * The deferred-callback helper that lived here is gone with the scripted
+   * chat reply it existed for. The toast timer below owns its own handle.
+   */
 
   const patch = useCallback((p: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => {
     setState((s) => ({ ...s, ...(typeof p === 'function' ? p(s) : p) }));
@@ -277,19 +269,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       },
 
       setOfferState: (offerState) => patch({ offerState }),
-      sendMessage: (text) => {
-        const t = text.trim();
-        if (!t) return;
-        patch((s) => ({ msgs: [...s.msgs, { me: true, t }], typing: true }));
-        later(
-          () =>
-            patch((s) => ({
-              typing: false,
-              msgs: [...s.msgs, { me: false, t: 'Sure — I can hold it for you until tomorrow.' }],
-            })),
-          1400
-        );
-      },
 
       setFilters: (filters) => patch({ filters }),
       resetFilters: () => patch({ filters: EMPTY_FILTERS }),
@@ -310,7 +289,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       flash,
       dismissToast: () => patch({ toast: null }),
     }),
-    [patch, later, flash]
+    [patch, flash]
   );
 
   const value = useMemo(() => ({ ...state, ...actions }), [state, actions]);

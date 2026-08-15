@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { ListingCondition } from '@/lib/database.types';
+import type { MessageRow } from '@/lib/queries';
 
 /**
  * Writes. Every one of these runs under the publishable key and therefore
@@ -221,4 +222,134 @@ export async function fetchDeliveryOptions(countryCode: string): Promise<Deliver
      '**' fallback is not part of its offer. */
   const specific = rows.filter((r) => r.country_code === countryCode);
   return specific.length > 0 ? specific : rows;
+}
+
+/* ─────────────────────────── messaging ─────────────────────────── */
+
+/**
+ * The signed-in user's id, or a refusal.
+ *
+ * Read from the session rather than accepted as an argument. `sender_id` and
+ * `buyer_id` are NOT NULL with no default, so the row must carry them — but
+ * every policy below re-derives the same value from `auth.uid()` and rejects
+ * the insert if the two disagree. Passing them in from a caller would be a
+ * claim the database checks, not one it trusts.
+ */
+async function requireUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  const id = data.user?.id;
+  if (!id) throw new Error('Sign in to send messages');
+  return id;
+}
+
+/**
+ * Finds the thread for a listing, or opens it.
+ *
+ * `conversations` is unique on `(listing_id, buyer_id)`, so a buyer has exactly
+ * one thread per item and reopening a chat is a lookup rather than a new row.
+ * The select comes first because it is the common case; the insert races only
+ * on a genuine first message, and a 23505 there means someone else won the race
+ * — the second read returns their row rather than surfacing an error.
+ *
+ * `conversations_insert_as_buyer` also enforces what is deliberately not
+ * re-checked here: the opener must be the buyer, must not be the seller, and
+ * the listing must be visible.
+ */
+export async function findOrCreateConversation(
+  listingId: string,
+  sellerId: string
+): Promise<string> {
+  const me = await requireUserId();
+  if (me === sellerId) throw new Error('This is your own listing');
+
+  const existing = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('listing_id', listingId)
+    .eq('buyer_id', me)
+    .maybeSingle();
+
+  if (existing.error) throw existing.error;
+  if (existing.data) return (existing.data as { id: string }).id;
+
+  const created = await supabase
+    .from('conversations')
+    .insert({ listing_id: listingId, buyer_id: me, seller_id: sellerId })
+    .select('id')
+    .single();
+
+  if (created.error) {
+    if (created.error.code === '23505') {
+      const retry = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('listing_id', listingId)
+        .eq('buyer_id', me)
+        .single();
+      if (retry.error) throw retry.error;
+      return (retry.data as { id: string }).id;
+    }
+    throw created.error;
+  }
+
+  return (created.data as { id: string }).id;
+}
+
+/**
+ * Sends a message and stamps the thread.
+ *
+ * `last_message_at` is written from here because no trigger maintains it and
+ * the policy grants UPDATE on that column alone — it is the one field a
+ * participant may touch, which is what makes this safe to do from the client.
+ * A failure to stamp is swallowed: the message is already sent, and the list
+ * ordering recovering on the next send is better than reporting a failure for
+ * something that succeeded.
+ */
+export async function sendMessage(conversationId: string, body: string): Promise<MessageRow> {
+  const me = await requireUserId();
+  const text = body.trim();
+  if (!text) throw new Error('Write a message first');
+
+  /*
+   * The inserted row is read back and returned so the sender sees their own
+   * message immediately, rather than waiting for it to arrive back over the
+   * socket. The realtime echo of this same row is deduplicated by id, so a
+   * healthy connection changes nothing and a stalled one still shows the
+   * message that was actually written.
+   */
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({ conversation_id: conversationId, sender_id: me, body: text })
+    .select('id, conversation_id, sender_id, body, read_at, created_at')
+    .single();
+
+  if (error) throw error;
+
+  await supabase
+    .from('conversations')
+    .update({ last_message_at: new Date().toISOString() })
+    .eq('id', conversationId);
+
+  return data as MessageRow;
+}
+
+/**
+ * Marks the other party's messages as read.
+ *
+ * Scoped to messages the caller did not send, matching
+ * `messages_update_read_state` — a sender cannot mark their own message read,
+ * and `read_at` is the only column UPDATE is granted on.
+ */
+export async function markConversationRead(conversationId: string): Promise<void> {
+  const me = await requireUserId();
+
+  const { error } = await supabase
+    .from('messages')
+    .update({ read_at: new Date().toISOString() })
+    .eq('conversation_id', conversationId)
+    .neq('sender_id', me)
+    .is('read_at', null);
+
+  if (error) throw error;
 }

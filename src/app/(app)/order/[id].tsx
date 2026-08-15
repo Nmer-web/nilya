@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/components/icon';
 import { ListingThumb } from '@/components/product-card';
 import { ScreenHeader } from '@/components/screen-header';
-import { Button, Card, T, Tap } from '@/components/ui';
+import { Button, Card, T } from '@/components/ui';
 import { useApp } from '@/store/app-store';
 import { alpha, color as C } from '@/theme/tokens';
 
@@ -29,7 +29,6 @@ const STEPS: Step[] = [
 
 export default function OrderTracking() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { flash } = useApp();
 
@@ -41,22 +40,25 @@ export default function OrderTracking() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: 40 + insets.bottom }}
       >
-        <Tap onPress={() => router.push({ pathname: '/listing/[id]', params: { id: 1 } })} accessibilityRole="button">
-          <Card style={{ flexDirection: 'row', gap: 12, padding: 14 }}>
-            <ListingThumb />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <T w={500} size={15}>
-                Nike Air Max 270
-              </T>
-              <T w={700} size={18} style={{ marginTop: 3 }}>
-                €45
-              </T>
-              <T size={12.5} color={C.textSecondary} style={{ marginTop: 3 }}>
-                Very good · EU 42 · from Lyon
-              </T>
-            </View>
-          </Card>
-        </Tap>
+        {/*
+          Not tappable: this order line is prototype data, and its only id is
+          the catalog's `1`. `/listing/[id]` resolves a real UUID now, so the
+          link had nowhere to land. It returns with real orders.
+        */}
+        <Card style={{ flexDirection: 'row', gap: 12, padding: 14 }}>
+          <ListingThumb />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <T w={500} size={15}>
+              Nike Air Max 270
+            </T>
+            <T w={700} size={18} style={{ marginTop: 3 }}>
+              €45
+            </T>
+            <T size={12.5} color={C.textSecondary} style={{ marginTop: 3 }}>
+              Very good · EU 42 · from Lyon
+            </T>
+          </View>
+        </Card>
 
         <Card style={{ paddingVertical: 18, paddingHorizontal: 16, marginTop: 12 }}>
           {STEPS.map((s, i) => (
@@ -73,15 +75,12 @@ export default function OrderTracking() {
           </T>
         </Card>
 
+        {/*
+          No "Message seller" here. A thread is keyed by a real conversation
+          id, and this prototype order has no listing or counterparty behind it
+          to resolve one from. It returns with real orders.
+        */}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-          <Button
-            label="Message seller"
-            variant="outline"
-            height={46}
-            size={14}
-            onPress={() => router.push('/chat')}
-            style={{ flex: 1 }}
-          />
           <Button
             label="Report a problem"
             variant="outline"

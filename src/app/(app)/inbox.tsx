@@ -1,220 +1,271 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import React from 'react';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavClearance } from '@/components/bottom-nav';
-import { ListingThumb, THUMB } from '@/components/product-card';
+import { Icon } from '@/components/icon';
+import { ListingImage, formatPrice } from '@/components/listing-card';
 import { TabTitle } from '@/components/screen-header';
-import { Avatar, Badge, Button, Card, EmptyState, Segmented, T, Tap } from '@/components/ui';
-import { useApp } from '@/store/app-store';
-import { avatarColor, color as C } from '@/theme/tokens';
+import { Skeleton } from '@/components/skeleton';
+import { Avatar, Button, EmptyState, T, Tap } from '@/components/ui';
+import { useAsync } from '@/hooks/use-async';
+import {
+  coverUrl,
+  fetchConversationSummaries,
+  fetchConversations,
+  type ConversationRow,
+  type MessageRow,
+} from '@/lib/queries';
+import { useAuth } from '@/store/auth-store';
+import { color as C, radius, space } from '@/theme/tokens';
 
-type Tab = 'Messages' | 'Offers';
-
-const THREADS = [
-  {
-    id: 't1',
-    name: 'Yousif Adam',
-    initials: 'YA',
-    av: avatarColor.yousif,
-    when: '14:08',
-    preview: 'Yes, no problem. I can post it tomorrow.',
-    item: 'Nike Air Max 270 · €45',
-    thumb: 'Nike Air Max 270',
-    unread: true,
-  },
-  {
-    id: 't2',
-    name: 'Amal Mohamed',
-    initials: 'AM',
-    av: avatarColor.amal,
-    when: 'Yesterday',
-    preview: 'The jebena set can be collected in Al Riyadh.',
-    item: 'Jebena Coffee Set · €40',
-    thumb: 'Jebena Coffee Set',
-    unread: false,
-  },
-  {
-    id: 't3',
-    name: 'Leila M.',
-    initials: 'LM',
-    av: avatarColor.nour,
-    when: 'Mon',
-    preview: 'Thank you! Received the coat today 🤍',
-    item: 'Zara Wool Blend Coat · €28',
-    thumb: 'Zara Wool Blend Coat',
-    unread: false,
-  },
-];
-
+/**
+ * The conversation list.
+ *
+ * Threads come from `conversations`, which RLS already limits to the ones this
+ * user is part of. The preview line, the timestamp and the unread dot are all
+ * read from `messages` — an unread thread is one holding messages the other
+ * party sent that have no `read_at`, which is a fact in the database rather
+ * than a count kept in the app.
+ *
+ * There is no Offers tab. Offers are a real table but nothing in the app writes
+ * to them yet, and the tab it replaces showed a fabricated offer from a
+ * fabricated buyer.
+ */
 export default function Inbox() {
   const insets = useSafeAreaInsets();
   const navClearance = useNavClearance();
   const router = useRouter();
-  const { offerState, setOfferState, openSheet, flash } = useApp();
+  const { status, user } = useAuth();
+  const signedIn = status === 'signedIn';
 
-  /** Notifications deep-link straight to the Offers tab. */
-  const { tab: initialTab } = useLocalSearchParams<{ tab?: string }>();
-  const [tab, setTab] = useState<Tab>(initialTab === 'offers' ? 'Offers' : 'Messages');
+  const threads = useAsync(
+    async () => (signedIn ? fetchConversations() : []),
+    `conversations:${signedIn}`
+  );
+  const summaries = useAsync(
+    async () => (signedIn ? fetchConversationSummaries() : new Map()),
+    `conversation-summaries:${signedIn}`
+  );
 
-  const offerOpen = offerState === 'open' || offerState === 'countered';
+  const list = threads.data ?? [];
+
+  const refresh = () => {
+    threads.refresh();
+    summaries.refresh();
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <View style={{ paddingTop: insets.top, paddingHorizontal: 16 }}>
+      <View style={{ paddingTop: insets.top, paddingHorizontal: space.gutter }}>
         <View style={{ paddingTop: 2, paddingBottom: 14 }}>
           <TabTitle>Inbox</TabTitle>
         </View>
-        <Segmented<Tab>
-          value={tab}
-          onChange={setTab}
-          options={[
-            { key: 'Messages', label: 'Messages' },
-            {
-              key: 'Offers',
-              label: 'Offers',
-              /* The shared Badge, rather than a fourth hand-rolled count pill. */
-              badge: offerState === 'open' ? <Badge>1</Badge> : undefined,
-            },
-          ]}
-        />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 14, paddingBottom: navClearance }}
+        contentContainerStyle={{ paddingTop: 4, paddingBottom: navClearance }}
+        refreshControl={
+          <RefreshControl refreshing={threads.refreshing} onRefresh={refresh} tintColor={C.textMuted} />
+        }
       >
-        {tab === 'Messages' &&
-          THREADS.map((t, i) => (
-            <Tap
-              key={t.id}
-              onPress={() => router.push('/chat')}
-              accessibilityRole="button"
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-                paddingVertical: 12,
-                paddingHorizontal: 16,
-                backgroundColor: C.surface,
-                borderTopWidth: i === 0 ? 1 : 0,
-                borderBottomWidth: 1,
-                borderColor: C.border,
-              }}
-            >
-              <Avatar initials={t.initials} bg={t.av} size={44} fontSize={15} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                  <T w={600} size={14.5} numberOfLines={1} style={{ flex: 1 }}>
-                    {t.name}
-                  </T>
-                  <T size={11.5} color={C.textMuted}>
-                    {t.when}
-                  </T>
+        {!signedIn ? (
+          <EmptyState
+            icon="person"
+            title="Sign in to see your messages"
+            body="Conversations are kept to your account."
+            style={{ paddingVertical: 60 }}
+            action={
+              <Button label="Sign in" height={48} onPress={() => router.push('/sign-in')} style={{ marginTop: 20 }} />
+            }
+          />
+        ) : threads.loading ? (
+          <View>
+            {[0, 1, 2].map((i) => (
+              <View
+                key={i}
+                style={{
+                  flexDirection: 'row',
+                  gap: 12,
+                  paddingVertical: 14,
+                  paddingHorizontal: space.gutter,
+                }}
+              >
+                <Skeleton width={44} height={44} round={22} />
+                <View style={{ flex: 1, paddingTop: 3 }}>
+                  <Skeleton width="42%" height={13} />
+                  <Skeleton width="76%" height={12} style={{ marginTop: 8 }} />
                 </View>
-                <T
-                  w={t.unread ? 500 : 400}
-                  size={13}
-                  color={t.unread ? C.text : C.textSecondary}
-                  numberOfLines={1}
-                  style={{ marginTop: 2 }}
-                >
-                  {t.preview}
-                </T>
-                <T size={12} color={C.textMuted} style={{ marginTop: 2 }}>
-                  {t.item}
-                </T>
+                <Skeleton width={40} height={53} round={radius.sm} />
               </View>
-              <ListingThumb width={THUMB.sm} />
-              {/*
-                The unread dot sits at the trailing edge and is reserved a slot
-                whether or not it shows, so a read row's thumbnail lines up with
-                an unread one's instead of shifting 14pt across.
-              */}
-              <View style={{ width: 8, alignItems: 'center' }}>
-                {t.unread && (
-                  <View
-                    accessibilityLabel="Unread"
-                    style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent }}
-                  />
-                )}
-              </View>
-            </Tap>
-          ))}
-
-        {tab === 'Offers' &&
-          (offerOpen ? (
-            <View style={{ paddingHorizontal: 16 }}>
-              <Card padded>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <ListingThumb />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <T w={600} size={14.5} lh={18.9}>
-                      {offerState === 'countered' ? 'You countered at €27' : 'Leila M. offered €22'}
-                    </T>
-                    <T size={13} color={C.textSecondary} style={{ marginTop: 2 }}>
-                      for Levi&apos;s 501 Straight · listed €32
-                    </T>
-                    <T size={12} color={C.textMuted} style={{ marginTop: 5 }}>
-                      {offerState === 'countered' ? 'Waiting on Leila · 24 h left' : 'Expires in 22 h'}
-                    </T>
-                  </View>
-                </View>
-
-                {offerState === 'open' && (
-                  <View style={{ flexDirection: 'row', gap: 7, marginTop: 14 }}>
-                    <Button
-                      label="Accept"
-                      height={42}
-                      size={13.5}
-                      style={{ flex: 1, borderRadius: 11 }}
-                      onPress={() => {
-                        setOfferState('accepted');
-                        flash('Offer accepted — Leila can now pay €22');
-                      }}
-                    />
-                    <Button
-                      label="Counter"
-                      variant="strong"
-                      height={42}
-                      size={13.5}
-                      style={{ flex: 1, borderRadius: 11, borderWidth: 1 }}
-                      onPress={() => openSheet({ kind: 'offer', mode: 'counter', productId: 5, amount: 27 })}
-                    />
-                    <Tap
-                      onPress={() => {
-                        setOfferState('declined');
-                        flash('Offer declined');
-                      }}
-                      accessibilityRole="button"
-                      style={{
-                        width: 78,
-                        height: 42,
-                        borderRadius: 11,
-                        borderWidth: 1,
-                        borderColor: C.border,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <T w={500} size={13.5} color={C.textSecondary}>
-                        Decline
-                      </T>
-                    </Tap>
-                  </View>
-                )}
-              </Card>
-            </View>
-          ) : (
-            <EmptyState
-              icon="offerTicket"
-              title="No open offers"
-              body="When a buyer offers on one of your listings, it lands here."
-              style={{ paddingVertical: 60 }}
+            ))}
+          </View>
+        ) : threads.error ? (
+          <EmptyState
+            icon="close"
+            title="Could not load your messages"
+            body={threads.error.message}
+            style={{ paddingVertical: 44 }}
+            action={
+              <Button label="Try again" height={44} size={14} onPress={threads.refetch} style={{ marginTop: 18 }} />
+            }
+          />
+        ) : list.length === 0 ? (
+          <EmptyState
+            icon="chat"
+            title="No messages yet"
+            body="Your conversations with buyers and sellers will appear here."
+            style={{ paddingVertical: 60 }}
+            action={
+              <Button
+                label="Browse listings"
+                height={48}
+                onPress={() => router.dismissTo('/')}
+                style={{ marginTop: 20 }}
+              />
+            }
+          />
+        ) : (
+          list.map((thread, i) => (
+            <ThreadRow
+              key={thread.id}
+              thread={thread}
+              me={user?.id ?? null}
+              summary={summaries.data?.get(thread.id)}
+              first={i === 0}
+              onPress={() => router.push({ pathname: '/chat/[id]', params: { id: thread.id } })}
             />
-          ))}
+          ))
+        )}
       </ScrollView>
     </View>
+  );
+}
+
+/** 14:08 today, "Yesterday", a weekday this week, otherwise a short date. */
+function whenLabel(iso: string): string {
+  const at = new Date(iso);
+  const now = new Date();
+  const sameDay = at.toDateString() === now.toDateString();
+  if (sameDay) {
+    return at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (at.toDateString() === yesterday.toDateString()) return 'Yesterday';
+
+  const days = (now.getTime() - at.getTime()) / 86_400_000;
+  if (days < 7) return at.toLocaleDateString(undefined, { weekday: 'short' });
+  return at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+function ThreadRow({
+  thread,
+  me,
+  summary,
+  first,
+  onPress,
+}: {
+  thread: ConversationRow;
+  me: string | null;
+  summary?: { last: MessageRow; unread: number };
+  first: boolean;
+  onPress: () => void;
+}) {
+  const other = me === thread.buyer_id ? thread.seller : thread.buyer;
+  const listing = thread.listing;
+  const unread = (summary?.unread ?? 0) > 0;
+
+  const initials = (other?.display_name ?? '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const stamp = summary?.last.created_at ?? thread.last_message_at ?? thread.created_at;
+
+  return (
+    <Tap
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Conversation with ${other?.display_name ?? 'a member'}${unread ? ', unread' : ''}`}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 12,
+        paddingHorizontal: space.gutter,
+        backgroundColor: C.surface,
+        borderTopWidth: first ? 1 : 0,
+        borderBottomWidth: 1,
+        borderColor: C.border,
+      }}
+    >
+      <Avatar initials={initials} bg={C.text} size={44} fontSize={15} />
+
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+          <T w={600} size={14.5} numberOfLines={1} style={{ flex: 1 }}>
+            {other?.display_name ?? 'Member unavailable'}
+          </T>
+          <T size={11.5} color={C.textMuted}>
+            {whenLabel(stamp)}
+          </T>
+        </View>
+
+        {/* No message yet is a real state: a thread exists from the moment it
+            is opened, and saying so beats inventing a preview. */}
+        <T
+          w={unread ? 500 : 400}
+          size={13}
+          color={unread ? C.text : C.textSecondary}
+          numberOfLines={1}
+          style={{ marginTop: 2 }}
+        >
+          {summary?.last.body ?? 'No messages yet'}
+        </T>
+
+        <T size={12} color={C.textMuted} numberOfLines={1} style={{ marginTop: 2 }}>
+          {listing
+            ? `${listing.title} · ${formatPrice(listing.price_cents, listing.currency)}`
+            : 'Listing unavailable'}
+        </T>
+      </View>
+
+      {listing ? (
+        <View style={{ width: 40 }}>
+          <ListingImage url={coverUrl(listing.images)} width={40} round={radius.sm} />
+        </View>
+      ) : (
+        <View
+          style={{
+            width: 40,
+            aspectRatio: 3 / 4,
+            borderRadius: radius.sm,
+            backgroundColor: C.surfaceSecondary,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Icon name="image" size={14} color={C.textMuted} strokeWidth={1.5} />
+        </View>
+      )}
+
+      {/* The dot keeps its slot whether or not it shows, so a read row's
+          thumbnail lines up with an unread one's. */}
+      <View style={{ width: 8, alignItems: 'center' }}>
+        {unread && (
+          <View
+            accessibilityLabel="Unread"
+            style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent }}
+          />
+        )}
+      </View>
+    </Tap>
   );
 }

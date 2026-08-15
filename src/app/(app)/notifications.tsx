@@ -19,7 +19,8 @@ type Notification = {
   when: string;
   /** Unread items carry a terracotta dot until "Mark all read" is pressed. */
   unread?: boolean;
-  href: Href;
+  /** Null where the prototype row has no real entity to open. */
+  href: Href | null;
   fill?: boolean;
 };
 
@@ -33,7 +34,12 @@ const TODAY: Notification[] = [
     body: '“Yes, no problem. I can post it tomorrow.”',
     when: '12 min',
     unread: true,
-    href: '/chat',
+    /*
+     * Was `/chat`, a route that no longer exists — real threads are addressed
+     * by conversation id, and this prototype notification has none to give.
+     * Left without a destination until notifications are real rows.
+     */
+    href: null,
   },
   {
     id: 'n2',
@@ -91,7 +97,7 @@ export default function Notifications() {
   const row = (n: Notification, first: boolean) => (
     <Tap
       key={n.id}
-      onPress={() => router.push(n.href)}
+      onPress={n.href ? () => router.push(n.href!) : undefined}
       accessibilityRole="button"
       style={{
         flexDirection: 'row',

@@ -61,7 +61,7 @@ export function Skeleton({
 /**
  * One product card, unloaded — image, title, price, metadata.
  *
- * Every measurement is taken from the real `ProductCard` so that nothing shifts
+ * Every measurement is taken from the real `ListingCard` so that nothing shifts
  * when content replaces it: the 3:4 well, the 8pt gap under it, and the same
  * four stacked lines. A skeleton whose geometry only approximates the card
  * produces a jump at the very moment the user starts reading.
@@ -77,7 +77,7 @@ export function ProductSkeleton({ width }: { width: number }) {
   );
 }
 
-/** Grid of product skeletons laid out on the same gutters as `ProductGrid`. */
+/** Grid of listing skeletons laid out on the same gutters as `ListingGrid`. */
 export function ProductGridSkeleton({ count = 6, columns = 2 }: { count?: number; columns?: number }) {
   const { width: screen } = useWindowDimensions();
   const width = (screen - space.gutter * 2 - 10 * (columns - 1)) / columns;
@@ -144,8 +144,9 @@ export function ListingSkeleton({ rows = 4 }: { rows?: number }) {
  * The profile header — avatar, name, rating line, stats — followed by the
  * three-up listing grid beneath it.
  *
- * The grid maths mirrors `PriceTileGrid` rather than restating it loosely, so
- * the tiles land on the same columns the real ones will.
+ * Currently unused: the seller profile carries a skeleton matching its own
+ * two-column layout, and the account profile has not been converted yet. Kept
+ * as the three-up shape for whichever surface adopts it.
  */
 export function ProfileSkeleton() {
   const { width: screen } = useWindowDimensions();

@@ -5,16 +5,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavClearance } from '@/components/bottom-nav';
 import { Icon } from '@/components/icon';
-import { PriceTileGrid } from '@/components/product-card';
-import { ReviewList } from '@/components/reviews';
-import { Badge, Button, Card, EmptyState, Row, T, Tap, UnderlineTabs } from '@/components/ui';
+import { ListingGrid } from '@/components/listing-card';
+import { ProfileBio, ProfileIdentity } from '@/components/profile-identity';
+import { ProductGridSkeleton, Skeleton } from '@/components/skeleton';
+import { Button, Card, EmptyState, Row, T, Tap, UnderlineTabs } from '@/components/ui';
+import { useAsync } from '@/hooks/use-async';
 import { useFavorites } from '@/hooks/use-favorites';
-import { myListings } from '@/data/catalog';
+import { fetchListings, fetchProfile } from '@/lib/queries';
 import { useApp } from '@/store/app-store';
 import { useAuth } from '@/store/auth-store';
-import { avatarColor, color as C } from '@/theme/tokens';
+import { color as C } from '@/theme/tokens';
 
-type Tab = 'Listings' | 'Sold' | 'Reviews';
+type Tab = 'Listings' | 'Sold';
 
 export default function Profile() {
   const insets = useSafeAreaInsets();
@@ -22,12 +24,26 @@ export default function Profile() {
   const router = useRouter();
   const { flash } = useApp();
   const { user, signOut } = useAuth();
-  /* The saved count is real; the rest of this screen is still the prototype's
-     and is converted by a later task. */
   const favorites = useFavorites();
   const [tab, setTab] = useState<Tab>('Listings');
   const [signingOut, setSigningOut] = useState(false);
-  const listings = myListings();
+
+  /*
+   * The signed-in user's own profile row, read through the same function a
+   * seller's public page uses — the account screen is not a second source of
+   * truth about the same person. The id comes from the session, never a
+   * constant.
+   */
+  const profile = useAsync(
+    async () => (user ? fetchProfile(user.id) : null),
+    `profile:${user?.id ?? 'none'}`
+  );
+
+  /** The user's own listings, read the same way a seller's are. */
+  const mine = useAsync(
+    async () => (user ? (await fetchListings({ sellerId: user.id })).rows : []),
+    `my-listings:${user?.id ?? 'none'}`
+  );
 
   return (
     <ScrollView
@@ -47,55 +63,51 @@ export default function Profile() {
         </Tap>
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingBottom: 16 }}>
-        <View
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 36,
-            backgroundColor: avatarColor.ahmed,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <T w={600} size={24} color={C.primaryText}>
-            AI
-          </T>
-          <View
-            style={{
-              position: 'absolute',
-              bottom: -1,
-              right: -1,
-              width: 22,
-              height: 22,
-              borderRadius: 11,
-              backgroundColor: C.success,
-              borderWidth: 2.5,
-              borderColor: C.background,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon name="check" size={11} color={C.primaryText} strokeWidth={3.2} />
+      {/*
+        Identity, from the `profiles` row this account owns. Nothing is
+        substituted when a field is empty: no stand-in name, no placeholder
+        rating, no invented city. While it loads the block is a skeleton rather
+        than a guess, and if the row cannot be read the screen says so.
+      */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+        {profile.loading ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Skeleton width={72} height={72} round={36} />
+            <View style={{ flex: 1 }}>
+              <Skeleton width="52%" height={20} />
+              <Skeleton width="68%" height={12} style={{ marginTop: 10 }} />
+            </View>
           </View>
-        </View>
-
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <T w={600} size={22} tracking={-0.4}>
-            Ahmed Ibrahim
-          </T>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <T w={600} size={12.5} color={C.text}>
-              ★ 4.9
-            </T>
-            <T size={12.5} color={C.textSecondary}>
-              · Paris, France
-            </T>
+        ) : profile.data ? (
+          <>
+            <ProfileIdentity profile={profile.data} size={72} nameSize={22} />
+            <ProfileBio bio={profile.data.bio} />
+          </>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <View
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 36,
+                backgroundColor: C.surfaceSecondary,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Icon name="person" size={28} color={C.textMuted} strokeWidth={1.6} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              {/* The address is the one thing the session itself can vouch for. */}
+              <T w={600} size={22} tracking={-0.4} numberOfLines={1}>
+                {user?.email?.split('@')[0] ?? 'Your account'}
+              </T>
+              <T size={12.5} color={C.textSecondary} style={{ marginTop: 3 }}>
+                {profile.error ? 'Profile could not be loaded' : 'Profile not set up yet'}
+              </T>
+            </View>
           </View>
-          <T size={12.5} color={C.textSecondary} style={{ marginTop: 2 }}>
-            24 sales · 18 listings · Joined 2023
-          </T>
-        </View>
+        )}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 }}>
@@ -124,12 +136,9 @@ export default function Profile() {
           value={`${favorites.saved.size} saved`}
           onPress={() => router.push('/favorites')}
         />
-        <Row
-          icon="package"
-          label="Orders & shipping"
-          right={<Badge>1</Badge>}
-          onPress={() => router.push('/orders')}
-        />
+        {/* No count badge: orders are not implemented, so any number here
+            would be one this app invented. */}
+        <Row icon="package" label="Orders & shipping" onPress={() => router.push('/orders')} />
         <Row icon="card" label="Payouts & verification" last onPress={() => router.push('/verify')} />
       </Card>
 
@@ -160,19 +169,58 @@ export default function Profile() {
         style={{ marginHorizontal: 16, marginTop: 12, borderRadius: 11 }}
       />
 
+      {/*
+        Reviews is not a tab here. The list it rendered was six fabricated
+        reviews from the prototype catalog, and there is no review data to put
+        in its place — an empty tab would be a promise the schema does not yet
+        keep.
+      */}
       <UnderlineTabs<Tab>
         value={tab}
         onChange={setTab}
         options={[
           { key: 'Listings', label: 'Listings' },
           { key: 'Sold', label: 'Sold' },
-          { key: 'Reviews', label: 'Reviews' },
         ]}
         style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 14 }}
       />
 
-      {tab === 'Listings' && <PriceTileGrid products={listings} />}
-      {tab === 'Reviews' && <ReviewList />}
+      {tab === 'Listings' &&
+        (mine.loading ? (
+          <ProductGridSkeleton count={4} />
+        ) : mine.error ? (
+          <EmptyState
+            icon="close"
+            title="Could not load your listings"
+            body={mine.error.message}
+            style={{ paddingVertical: 44 }}
+            action={
+              <Button label="Try again" height={44} size={14} onPress={mine.refetch} style={{ marginTop: 18 }} />
+            }
+          />
+        ) : (mine.data ?? []).length === 0 ? (
+          <EmptyState
+            icon="bag"
+            title="No listings yet"
+            body="Anything you list will appear here."
+            style={{ paddingVertical: 44 }}
+            action={
+              <Button
+                label="Sell an item"
+                height={42}
+                size={14}
+                onPress={() => router.replace('/sell')}
+                style={{ marginTop: 16, paddingHorizontal: 20, borderRadius: 11 }}
+              />
+            }
+          />
+        ) : (
+          <ListingGrid
+            listings={mine.data ?? []}
+            savedIds={favorites.saved}
+            onToggleSave={favorites.toggle}
+          />
+        ))}
       {tab === 'Sold' && (
         <EmptyState
           icon="bag"
