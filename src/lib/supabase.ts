@@ -43,7 +43,7 @@ export const supabase = createClient(url, publishableKey, {
     autoRefreshToken: true,
     /**
      * Native has no address bar for Supabase to read a session out of. The
-     * deep link that arrives at sawa://auth-callback is parsed by hand in
+     * deep link that arrives at nilya://auth-callback is parsed by hand in
      * src/lib/auth-link.ts. On web the fragment really is in the URL, so let
      * the library do it.
      */

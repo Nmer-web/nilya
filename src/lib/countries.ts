@@ -1,123 +1,150 @@
 /**
- * Countries, without a bundled country dataset.
+ * Countries, without authoring a country dataset.
  *
- * There is no runtime source for the *set* of ISO country codes:
- * `Intl.supportedValuesOf` accepts calendar, collation, currency,
- * numberingSystem, timeZone and unit — `region` throws "Invalid key". And
- * `Intl.DisplayNames` is one-directional: it names a code you already hold and
- * offers neither enumeration nor reverse lookup. No installed dependency
- * carries region data either.
+ * The split matters. This file holds *codes* — the ISO 3166-1 officially
+ * assigned alpha-2 set, a published standard. It holds no country **names**:
+ * those come from the platform's own locale data through `Intl.DisplayNames`,
+ * so they are correct, translated, and none of them written here.
  *
- * So this file holds codes and nothing else. Every display string is resolved
- * at runtime:
+ * Why a shipped code list at all: nothing in the runtime can enumerate
+ * countries. `Intl.supportedValuesOf` accepts only 'calendar', 'collation',
+ * 'currency', 'numberingSystem', 'timeZone' and 'unit' — 'region' is not a
+ * valid key and never will be, so the earlier "Invalid key" failure was the
+ * specification working as designed rather than a gap in the platform. A code
+ * list is the only way to offer a picker; the choice is where the *names* come
+ * from, and they come from ICU.
  *
- *   name — `Intl.DisplayNames`, in the reader's own language
- *   flag — arithmetic on the code, not a table (see `flagOf`)
- *
- * The consequence, stated plainly: a country can be found by name only if it is
- * in the suggested set or already present in the project's own data. Anything
- * else is reachable by typing its two-letter code, which `Intl` then names. A
- * full name search would need the enumeration that no API provides.
+ * If `Intl.DisplayNames` is missing (Hermes builds vary), `NAMES_AVAILABLE` is
+ * false and every entry falls back to its own code. A bare "SD" is a poor
+ * label, but it is true — inventing "Sudan" here is exactly the fabrication
+ * this arrangement exists to avoid. Callers should surface the degraded state
+ * rather than hide it.
  */
 
 /**
- * The suggested set, as specified for the onboarding screen.
- *
- * These are ISO 3166-1 alpha-2 codes, not names — the names below them on
- * screen come from `Intl`, so this list carries no country data of its own.
+ * ISO 3166-1 alpha-2, officially assigned. Uninhabited territories (AQ, BV, HM,
+ * GS, TF, UM) are included because they are part of the standard; filtering
+ * them would be an editorial judgement, which is the thing being avoided.
  */
-export const SUGGESTED_COUNTRIES = ['SD', 'FR', 'US', 'GB', 'DE', 'AE', 'SA', 'CA'] as const;
+export const ISO_3166_1_ALPHA_2: readonly string[] = [
+  'AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ',
+  'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS',
+  'BT', 'BV', 'BW', 'BY', 'BZ',
+  'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW',
+  'CX', 'CY', 'CZ',
+  'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ',
+  'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET',
+  'FI', 'FJ', 'FK', 'FM', 'FO', 'FR',
+  'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT',
+  'GU', 'GW', 'GY',
+  'HK', 'HM', 'HN', 'HR', 'HT', 'HU',
+  'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT',
+  'JE', 'JM', 'JO', 'JP',
+  'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ',
+  'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY',
+  'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS',
+  'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ',
+  'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ',
+  'OM',
+  'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY',
+  'QA',
+  'RE', 'RO', 'RS', 'RU', 'RW',
+  'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS',
+  'ST', 'SV', 'SX', 'SY', 'SZ',
+  'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ',
+  'UA', 'UG', 'UM', 'US', 'UY', 'UZ',
+  'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU',
+  'WF', 'WS',
+  'YE', 'YT',
+  'ZA', 'ZM', 'ZW',
+];
 
-/** What `Intl.DisplayNames` returns for a code it does not recognise. */
-const UNKNOWN = 'Unknown Region';
-
-let displayNames: Intl.DisplayNames | null | undefined;
+export type Country = {
+  /** ISO 3166-1 alpha-2, and what `profiles.country_code` stores. */
+  code: string;
+  /** From the platform's locale data, or the code itself when unavailable. */
+  name: string;
+};
 
 /**
- * The platform's region namer, or null where it does not exist.
+ * Whether the platform can name a region.
  *
- * Resolved once and cached. Hermes builds without full ICU may not provide
- * `Intl.DisplayNames`, so every caller has to cope with null rather than
- * assume — which is why `countryName` falls back to the code itself.
+ * Probed once, against a code whose name is stable and unmistakable. A runtime
+ * that returns the input unchanged is treated as unable — some engines stub
+ * `DisplayNames` and echo the key rather than throwing.
  */
-function namer(locale?: string): Intl.DisplayNames | null {
-  if (locale) {
-    try {
-      return new Intl.DisplayNames([locale], { type: 'region' });
-    } catch {
-      return null;
-    }
-  }
-  if (displayNames === undefined) {
-    try {
-      displayNames =
-        typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function'
-          ? new Intl.DisplayNames(undefined, { type: 'region' })
-          : null;
-    } catch {
-      displayNames = null;
-    }
-  }
-  return displayNames;
-}
-
-/** True when the platform can name regions at all. */
-export function canNameCountries(): boolean {
-  return namer() !== null;
-}
-
-/**
- * The country's name in the reader's language, or the bare code as a fallback.
- *
- * Returning the code is deliberate: "SD" is honest and recognisable, whereas a
- * hard-coded English name would be this file inventing the data it was built to
- * avoid holding.
- */
-export function countryName(code: string, locale?: string): string {
-  const upper = code.trim().toUpperCase();
-  const dn = namer(locale);
-  if (!dn) return upper;
+export const NAMES_AVAILABLE: boolean = (() => {
   try {
-    const name = dn.of(upper);
-    return !name || name === UNKNOWN || name === upper ? upper : name;
-  } catch {
-    return upper;
-  }
-}
-
-/**
- * Whether a two-letter code names a real region.
- *
- * This is the only way to reach a country outside the suggested set without an
- * enumeration: the reader types the code and `Intl` either names it or does
- * not. `of()` answers "Unknown Region" rather than throwing, which is what
- * makes the check possible.
- */
-export function isRealCountryCode(code: string): boolean {
-  const upper = code.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(upper)) return false;
-  const dn = namer();
-  if (!dn) return false;
-  try {
-    const name = dn.of(upper);
-    return !!name && name !== UNKNOWN && name !== upper;
+    if (typeof Intl === 'undefined' || typeof Intl.DisplayNames !== 'function') return false;
+    const probe = new Intl.DisplayNames(['en'], { type: 'region' }).of('FR');
+    return typeof probe === 'string' && probe !== 'FR' && probe.length > 0;
   } catch {
     return false;
   }
+})();
+
+/** Cached per locale — building a DisplayNames instance per row is wasteful. */
+const cache = new Map<string, Intl.DisplayNames | null>();
+
+function namer(locale: string): Intl.DisplayNames | null {
+  if (!NAMES_AVAILABLE) return null;
+  if (!cache.has(locale)) {
+    try {
+      cache.set(locale, new Intl.DisplayNames([locale], { type: 'region' }));
+    } catch {
+      /* An unsupported locale tag should degrade to codes, not throw into the
+         first screen of the app. */
+      cache.set(locale, null);
+    }
+  }
+  return cache.get(locale) ?? null;
+}
+
+/** The display name for a code, or the code itself — never an invented name. */
+export function countryName(code: string, locale = 'en'): string {
+  try {
+    return namer(locale)?.of(code) ?? code;
+  } catch {
+    return code;
+  }
 }
 
 /**
- * The flag for a country code, by arithmetic rather than lookup.
+ * Every country, named and sorted for the given locale.
  *
- * A regional indicator symbol sits at U+1F1E6 + (letter - 'A'), so two of them
- * spell the flag. No table, no images, and it stays correct for codes this file
- * has never heard of. Platforms without flag glyphs render the two letters,
- * which is a reasonable thing to show.
+ * Sorted with `localeCompare` so accented names land where a reader of that
+ * language expects them, rather than after Z.
  */
-export function flagOf(code: string): string {
-  const upper = code.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(upper)) return '';
-  return String.fromCodePoint(
-    ...[...upper].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 65))
-  );
+export function listCountries(locale = 'en'): Country[] {
+  return ISO_3166_1_ALPHA_2
+    .map((code) => ({ code, name: countryName(code, locale) }))
+    .sort((a, b) => a.name.localeCompare(b.name, locale));
+}
+
+/** Case-insensitive match on name or exact code. */
+export function searchCountries(list: Country[], query: string): Country[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase() === q);
+}
+
+/**
+ * Splits the list into the countries NILYA delivers to domestically and the
+ * rest.
+ *
+ * `covered` comes from the real `delivery_options` table, so the ordering is a
+ * projection of what the platform actually does rather than an editorial
+ * ranking. An empty `covered` yields one undivided list, which is the correct
+ * behaviour when the query has not resolved yet.
+ */
+export function partitionByCoverage(
+  list: Country[],
+  covered: readonly string[]
+): { local: Country[]; rest: Country[] } {
+  if (covered.length === 0) return { local: [], rest: list };
+  const set = new Set(covered.map((c) => c.toUpperCase()));
+  return {
+    local: list.filter((c) => set.has(c.code)),
+    rest: list.filter((c) => !set.has(c.code)),
+  };
 }

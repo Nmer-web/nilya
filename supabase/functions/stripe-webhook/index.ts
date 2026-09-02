@@ -1,5 +1,5 @@
 /**
- * Stripe webhook → SAWA order and payment state.
+ * Stripe webhook → NILYA order and payment state.
  *
  * Three things that break this function if you change them carelessly:
  *

@@ -1,56 +1,46 @@
-# Welcome to your Expo app 👋
+# NILYA
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+NILYA is a premium marketplace for NEW products only. The app is built with Expo SDK 57,
+React Native, Expo Router, Supabase, and Stripe.
 
-## Get started
+## Development
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+Install dependencies and start the development server:
 
 ```bash
-npm run reset-project
+npm install
+npm start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Quality gates:
 
-### Other setup steps
+```bash
+npm run typecheck
+npm run lint
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## NILYA Development on Supabase
 
-## Learn more
+The existing Supabase project is the NILYA Development environment. Its project reference,
+endpoint URLs, keys, schema, migrations, RLS policies, Realtime setup, Storage objects, and real
+data remain unchanged by the consumer-brand rename.
 
-To learn more about developing your project with Expo, look at the following resources:
+Local CLI configuration intentionally retains the historical `project_id = "sawa"` value so
+existing local development data is not recreated under a second identifier.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Native confirmation and password-recovery links now use `nilya://auth-callback`. Add that exact
+URL under **Supabase Dashboard → Authentication → URL Configuration → Redirect URLs**. Keep
+`sawa://auth-callback` during the installed-app transition; remove it only after all old builds and
+previously sent auth emails no longer need it.
 
-## Join the community
+Copy `.env.example` to `.env` for local credentials. Never commit `.env`, service-role keys,
+Stripe secrets, webhook secrets, passwords, tokens, or payment credentials.
 
-Join our community of developers creating universal apps.
+## Architecture rules
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+The repository constitution is in `.specify/memory/constitution.md`. In particular:
+
+- every listing read and write is restricted to NEW products;
+- real Supabase/authenticated data is used instead of fabricated marketplace content;
+- Auth, Supabase, Realtime, and Stripe contracts are not redesigned in passing;
+- typecheck and lint must pass before completion is claimed.

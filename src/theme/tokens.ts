@@ -1,212 +1,204 @@
 /**
- * The SAWA design system.
+ * The single canonical NILYA design and motion foundation.
  *
- * The palette is deliberately monochrome: white canvas, near-black ink, one
- * warm accent held in reserve. The intended balance is roughly 90% white and
- * neutral, 8% black, 2% accent — so `accent` belongs on unread badges, counts
- * and the occasional editorial tag, and nowhere else. Anything that wants to
- * "stand out" should reach for `text` on `background` first; contrast, not
- * colour, is what carries hierarchy here.
- *
- * Nothing outside this file should contain a colour literal. Translucent
- * values are as much a part of the system as opaque ones, so the `alpha` group
- * exists to stop `rgba(…)` being retyped into screens — that is exactly how
- * the previous palette's cream and terracotta survived a full reskin.
+ * Keep semantic values here and component structure in shared components.
+ * Screens may compose these roles, but they must not create a second palette,
+ * type ramp, spacing ladder, elevation, or motion preset.
  */
+
+import palette from './palette.json';
 
 export const color = {
-  /* ── canvas ── */
-  background: '#FFFFFF',
-  /** Cards, inputs, raised rows. */
-  surface: '#F7F7F5',
-  /** Image wells, skeletons, segmented tracks. */
-  surfaceSecondary: '#F2F2EF',
-
-  /* ── ink ── */
-  text: '#111111',
-  textSecondary: '#717171',
-  textMuted: '#8A8A8A',
-
-  border: '#E5E5E5',
-  borderStrong: '#D8D8D5',
-
-  /* ── actions ── */
-  primary: '#111111',
-  primaryText: '#FFFFFF',
-
-  /* ── status ── */
-  success: '#16835B',
-  successBg: '#E8F4EF',
-  successBorder: '#CDE7DC',
-  error: '#D64545',
-  errorBg: '#FBECEC',
-  errorBorder: '#F0D2D2',
-  /** Declared by the system; nothing warrants it yet. */
-  warning: '#C58A20',
-
-  /**
-   * Warm orange, rationed. Dark enough to clear 4.5:1 against white text,
-   * which unread badges depend on.
-   */
-  accent: '#B84E1C',
-  accentDark: '#8F3B14',
-  accentBg: '#FCF1EA',
-  accentBorder: '#F0DACB',
-
-  /**
-   * Favourite heart. One colour, both states: saved and unsaved differ by fill
-   * alone. A greyed-out unsaved heart would encode state in hue, which fails
-   * for anyone who cannot separate the two — and on a white card the outline
-   * reads as the stronger affordance anyway.
-   */
-  favourite: '#111111',
-
-  /** Chat bubbles. */
-  bubbleIn: '#F2F2F0',
-  bubbleOut: '#111111',
-
-  /** The face of the saved payment card on checkout. */
-  cardFace: '#33414F',
-
+  background: palette.background,
+  primary: palette.primary,
+  primaryDark: palette.primaryDark,
+  primarySoft: palette.primarySoft,
+  accent: palette.accent,
+  textPrimary: palette.textPrimary,
+  textInverse: palette.background,
+  textSecondary: palette.textSecondary,
+  /** Decoration and non-essential disabled treatment only; never readable copy. */
+  textMuted: palette.textSecondary,
+  surface: palette.surface,
+  surfaceSecondary: palette.primarySoft,
+  /** Search bars, inactive chips, category discs — the quiet warm grey. */
+  bgMuted: palette.bgMuted,
+  /** Placeholders and struck-through prices; never the only copy on a row. */
+  inkFaint: palette.inkFaint,
+  /** The two ends of the Home hero wash. */
+  heroFrom: palette.heroFrom,
+  heroTo: palette.heroTo,
+  skeletonBase: palette.border,
+  skeletonHighlight: palette.surface,
+  border: palette.border,
+  borderStrong: palette.border,
+  success: palette.success,
+  error: palette.error,
+  errorText: palette.errorText,
+  warning: palette.warning,
+  warningText: palette.warningText,
+  overlay: `${palette.primaryDark}52`,
+  floatingSurface: `${palette.background}F0`,
+  successSurface: palette.successSurface,
+  errorSurface: palette.background,
+  warningSurface: palette.warningSurface,
 } as const;
 
 /**
- * Translucent values.
- *
- * Every one of these is a tint of a colour above; they are spelled out rather
- * than computed so the module stays a plain lookup table with no runtime.
+ * New profile colors use restrained NILYA brand roles. Existing stored avatar colors remain real
+ * profile data and are displayed unchanged; this palette only controls future
+ * local selection before that value is persisted.
  */
-export const alpha = {
-  /** Sheet backdrop — the spec's 20–30% black. */
-  scrim: 'rgba(17,17,17,0.28)',
-  /** Ink chips laid over photography: "Cover" tags, gallery page dots. */
-  inkStrong: 'rgba(17,17,17,0.80)',
-  inkMedium: 'rgba(17,17,17,0.75)',
-  inkFaint: 'rgba(17,17,17,0.28)',
-  /** Hairlines drawn over a surface, such as the delivery map grid. */
-  hairline: 'rgba(138,138,138,0.35)',
-  /** Halo around the active step of the order timeline. */
-  accentRing: 'rgba(184,78,28,0.16)',
-  /** Frosted bars: the blurred iOS tint and the near-opaque Android fallback. */
-  barBlur: 'rgba(255,255,255,0.72)',
-  barSolid: 'rgba(255,255,255,0.97)',
-  /** Floating controls over imagery — back and favourite on a gallery. */
-  floatingControl: 'rgba(255,255,255,0.92)',
-  /** The unfilled portion of a spinner ring on a dark fill. */
-  spinnerTrack: 'rgba(255,255,255,0.30)',
-} as const;
+export const avatarPalette = [color.primary, color.accent] as const;
 
-/**
- * Seller avatar backgrounds. Muted on purpose: six saturated circles in a feed
- * would spend the colour budget the accent needs.
- */
-/*
- * The `avatarColor` palette is gone. It was keyed by prototype personas
- * (yousif, amal, nour…) and had no consumers left: profiles carry their own
- * `avatar_color` column, which is what the avatar falls back to now.
- */
-
-/** 4pt rhythm. `gutter` is the screen inset every full-bleed row aligns to. */
 export const space = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  '2xl': 24,
-  '3xl': 32,
-  gutter: 16,
+  space4: 4,
+  space8: 8,
+  space12: 12,
+  space16: 16,
+  space20: 20,
+  space24: 24,
+  space32: 32,
+  space40: 40,
+  space48: 48,
+  gutterCompact: 20,
+  gutterRegular: 24,
 } as const;
 
-/**
- * Corner radii, restricted to five steps.
- *
- * Constraining the ladder is the point: it is what stops a card ending up at
- * 14 next to a field at 13. Product imagery and controls sit at `lg` (16) —
- * the top of what still reads as a crisp marketplace card. Going rounder makes
- * a grid look like a toy, so `xl` and above are reserved for sheets and other
- * large surfaces.
- */
+export function screenGutter(width: number): number {
+  return width < 390 ? space.gutterCompact : space.gutterRegular;
+}
+
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  '2xl': 24,
-  /** Semantic alias — bottom sheets pin to the top of the ladder. */
-  sheet: 24,
-  pill: 999,
+  radiusSmall: 8,
+  radiusMedium: 12,
+  radiusLarge: 16,
+  radiusXLarge: 20,
+  radiusSheet: 24,
+  /** The product sheet that climbs over the hero photograph. */
+  radiusHero: 28,
+  radiusPill: 999,
+} as const;
+
+/** `boxShadow` is supported by the New Architecture used by RN 0.86. */
+export const elevation = {
+  raised: { boxShadow: `0 1px 4px ${palette.primaryDark}14` },
+  floating: { boxShadow: `0 6px 18px ${palette.primaryDark}1F` },
+  sheet: { boxShadow: `0 -10px 32px ${palette.primaryDark}1F` },
+  /** Soft and low: the heart over a product photo, a badge, a card at rest. */
+  card: { boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)' },
+  /** The floating bottom navigation. */
+  nav: { boxShadow: '0 8px 24px rgba(0, 0, 0, 0.10)' },
+} as const;
+
+export const opacity = {
+  disabled: 0.44,
+  pressed: 0.82,
+  scrim: 0.28,
+  skeletonLow: 0.55,
+  skeletonHigh: 1,
+} as const;
+
+export const layer = {
+  base: 0,
+  contentOverlay: 2,
+  sticky: 10,
+  floating: 20,
+  overlay: 40,
+  modal: 50,
+  toast: 60,
+} as const;
+
+export const touch = {
+  minimum: 44,
+  standard: 48,
+  large: 56,
+} as const;
+
+/** Exact font faces specified by the Nilya wordmark and tagline lockup. */
+export const font = {
+  wordmark: 'Inter_500Medium',
+  tagline: 'Inter_400Regular',
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semibold: 'Inter_600SemiBold',
 } as const;
 
 /**
- * Three shadows, all of them quiet. A marketplace grid reads as clutter the
- * moment its cards start casting; elevation here is for things that genuinely
- * float above content — the heart on an image, a sheet, a toast.
- */
-export const shadow = {
-  /** Heart button, toggle knob, floating gallery controls. */
-  raised: {
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
-  },
-  /** Toast. */
-  floating: {
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
-  },
-  /** Bottom sheet. */
-  sheet: {
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 32,
-    shadowOffset: { width: 0, height: -10 },
-    elevation: 24,
-  },
-} as const;
-
-/**
- * The type ramp. Sizes and weights are paired here so a "price" is the same
- * price everywhere; screens should reach for these rather than inventing a
- * size. Prices sit heavier than titles by design — in a marketplace the number
- * is the thing being scanned.
+ * The type ramp, set in Inter. Each role names the face for its weight as well
+ * as the weight itself, so the loaded font is used on every platform and a
+ * role never silently drops back to the system face. Anything 20px and up
+ * tightens its tracking.
  */
 export const type = {
-  screenTitle: { size: 29, weight: 700, tracking: -0.6 },
-  sectionTitle: { size: 21, weight: 700, tracking: -0.4 },
-  productTitle: { size: 15, weight: 500, tracking: -0.1 },
-  price: { size: 18, weight: 700, tracking: -0.4 },
-  body: { size: 14.5, weight: 400, tracking: 0 },
-  meta: { size: 12.5, weight: 400, tracking: 0 },
+  display: { fontFamily: font.semibold, fontSize: 28, lineHeight: 34, fontWeight: '600', letterSpacing: -0.4 },
+  screenTitle: { fontFamily: font.semibold, fontSize: 29, lineHeight: 35, fontWeight: '600', letterSpacing: -0.4 },
+  productTitle: { fontFamily: font.semibold, fontSize: 24, lineHeight: 30, fontWeight: '600', letterSpacing: -0.4 },
+  sectionTitle: { fontFamily: font.semibold, fontSize: 20, lineHeight: 26, fontWeight: '600', letterSpacing: -0.4 },
+  cardTitle: { fontFamily: font.semibold, fontSize: 15, lineHeight: 20, fontWeight: '600', letterSpacing: -0.1 },
+  body: { fontFamily: font.regular, fontSize: 15, lineHeight: 22, fontWeight: '400', letterSpacing: 0 },
+  bodyMedium: { fontFamily: font.semibold, fontSize: 15, lineHeight: 22, fontWeight: '600', letterSpacing: 0 },
+  metadata: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, fontWeight: '400', letterSpacing: 0 },
+  metadataMedium: { fontFamily: font.medium, fontSize: 13, lineHeight: 18, fontWeight: '500', letterSpacing: 0 },
+  price: { fontFamily: font.semibold, fontSize: 18, lineHeight: 23, fontWeight: '600', letterSpacing: -0.3 },
+  detailPrice: { fontFamily: font.semibold, fontSize: 20, lineHeight: 26, fontWeight: '600', letterSpacing: -0.4 },
+  button: { fontFamily: font.semibold, fontSize: 15, lineHeight: 20, fontWeight: '600', letterSpacing: 0 },
+  caption: { fontFamily: font.regular, fontSize: 12, lineHeight: 16, fontWeight: '400', letterSpacing: 0 },
 } as const;
 
-/**
- * Instrument Serif is kept for the SAWA wordmark only — it is the one place
- * the brand speaks in its own voice. Everything else runs on the platform's
- * own sans (SF Pro on iOS, Roboto on Android), which `T` selects by leaving
- * `fontFamily` unset and setting a real `fontWeight`.
- */
-export const font = {
-  sans: 'InstrumentSans_400Regular',
-  medium: 'InstrumentSans_500Medium',
-  semibold: 'InstrumentSans_600SemiBold',
-  bold: 'InstrumentSans_700Bold',
-  serif: 'InstrumentSerif_400Regular',
+export const icon = {
+  metadata: { size: 16, strokeWidth: 1.75 },
+  inline: { size: 20, strokeWidth: 1.75 },
+  navigation: { size: 24, strokeWidth: 2 },
+  action: { size: 24, strokeWidth: 2 },
+  hero: { size: 28, strokeWidth: 2.25 },
 } as const;
 
-/** Shared motion timings, so animations across the app stay in step. */
-export const motion = {
-  /** Presses, chips, taps. */
-  fast: 140,
-  /** Fades, cross-dissolves. */
-  base: 220,
-  /** Sheets and anything travelling a long distance. */
-  slow: 330,
-  /** The one spring used for favourite/press pops. */
-  spring: { tension: 320, friction: 12 },
+export const image = {
+  listing: { aspectRatio: 0.8, radius: radius.radiusMedium },
+  detail: {
+    aspectRatio: 393 / 430,
+    radius: 0,
+    portraitViewportRatio: 0.6,
+    landscapeViewportRatio: 0.72,
+    maxHeight: 560,
+  },
+  conversation: { aspectRatio: 3 / 4, radius: radius.radiusSmall },
+  category: { aspectRatio: 1, radius: radius.radiusMedium },
+  avatar: { aspectRatio: 1, radius: radius.radiusPill },
+  sell: { aspectRatio: 3 / 4, radius: radius.radiusMedium },
 } as const;
+
+export const duration = {
+  instant: 120,
+  fast: 180,
+  standard: 240,
+  slow: 340,
+} as const;
+
+export const easing = {
+  standard: [0.2, 0, 0, 1] as const,
+  exit: [0.4, 0, 1, 1] as const,
+} as const;
+
+const clamped = { overshootClamping: true } as const;
+
+export const spring = {
+  buttonPress: { mass: 0.7, stiffness: 420, damping: 30, ...clamped },
+  selection: { mass: 0.8, stiffness: 360, damping: 28, ...clamped },
+  cardPress: { mass: 0.8, stiffness: 320, damping: 28, ...clamped },
+  favorite: { mass: 0.65, stiffness: 500, damping: 24, ...clamped },
+  sheet: { mass: 1, stiffness: 320, damping: 32, ...clamped },
+  modal: { mass: 0.9, stiffness: 300, damping: 30, ...clamped },
+} as const;
+
+export const scale = {
+  buttonPressed: 0.97,
+  cardPressed: 0.98,
+  favoritePeak: 1.15,
+  tabSelected: 1.05,
+} as const;
+
+export type ColorRole = keyof typeof color;
+export type TypographyRole = keyof typeof type;
+export type IconRole = keyof typeof icon;

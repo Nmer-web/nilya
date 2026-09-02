@@ -7,11 +7,11 @@ import { ListingImage, formatPrice } from '@/components/listing-card';
 import { OrderStatusPill, PaymentStatusLine } from '@/components/order-status';
 import { ScreenHeader } from '@/components/screen-header';
 import { Skeleton } from '@/components/skeleton';
-import { Button, Card, EmptyState, T } from '@/components/ui';
+import { Button, Card, EmptyState, RefreshNotice, ScreenError, T } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { coverUrl, fetchOrder } from '@/lib/queries';
 import { useAuth } from '@/store/auth-store';
-import { color as C, radius, space } from '@/theme/tokens';
+import { color as C, radius, space, touch } from '@/theme/tokens';
 
 /**
  * One order.
@@ -34,31 +34,29 @@ export default function OrderDetail() {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
         <ScreenHeader title="Order" />
-        <View style={{ padding: space.gutter, gap: 12 }}>
-          <Skeleton width="100%" height={96} round={radius.lg} />
-          <Skeleton width="100%" height={120} round={radius.lg} />
+        <View style={{ padding: space.gutterCompact, gap: space.space12 }}>
+          <Skeleton width="100%" height={96} round={radius.radiusLarge} />
+          <Skeleton width="100%" height={120} round={radius.radiusLarge} />
         </View>
       </View>
     );
   }
 
-  if (order.error || !row) {
+  if (!row) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
         <ScreenHeader title="Order" />
-        <EmptyState
-          icon="package"
-          title={order.error ? 'Could not load this order' : 'Order not found'}
-          body={order.error ? order.error.message : 'It may not belong to this account.'}
-          style={{ paddingVertical: 44 }}
-          action={
-            order.error ? (
-              <Button label="Try again" height={44} size={14} onPress={order.refetch} style={{ marginTop: 18 }} />
-            ) : (
-              <Button label="Back to orders" height={44} size={14} onPress={() => router.dismissTo('/orders')} style={{ marginTop: 18 }} />
-            )
-          }
-        />
+        {order.error ? (
+          <ScreenError error={order.error} title="Could not load this order" onRetry={order.refetch} />
+        ) : (
+          <EmptyState
+            icon="package"
+            title="Order not found"
+            body="It may not belong to this account."
+            style={{ paddingVertical: touch.minimum }}
+            action={<Button label="Back to orders" onPress={() => router.dismissTo('/orders')} style={{ marginTop: space.space20 }} />}
+          />
+        )}
       </View>
     );
   }
@@ -73,14 +71,16 @@ export default function OrderDetail() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: space.gutter, paddingBottom: 40 + insets.bottom, gap: 12 }}
+        contentContainerStyle={{ padding: space.gutterCompact, paddingBottom: space.space40 + insets.bottom, gap: space.space12 }}
         refreshControl={
-          <RefreshControl refreshing={order.refreshing} onRefresh={order.refresh} tintColor={C.textMuted} />
+          <RefreshControl refreshing={order.refreshing} onRefresh={order.refresh} tintColor={C.textSecondary} />
         }
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        {order.error ? <RefreshNotice onRetry={order.refresh} /> : null}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.space12 }}>
           <OrderStatusPill status={row.status} />
-          <T size={12} color={C.textMuted}>
+          <T variant="caption" color={C.textSecondary}>
             {new Date(row.placed_at).toLocaleDateString(undefined, {
               day: 'numeric',
               month: 'short',
@@ -89,21 +89,21 @@ export default function OrderDetail() {
           </T>
         </View>
 
-        <Card style={{ flexDirection: 'row', gap: 12, padding: 14 }}>
+        <Card style={{ flexDirection: 'row', gap: space.space12, padding: space.space16 }}>
           <View style={{ width: 54 }}>
-            <ListingImage url={coverUrl(row.listing?.images ?? null)} width={54} round={radius.sm} />
+            <ListingImage url={coverUrl(row.listing?.images ?? null)} width={54} round={radius.radiusSmall} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <T w={500} size={15} numberOfLines={2}>
+            <T variant="cardTitle" numberOfLines={2}>
               {row.listing?.title ?? 'Listing unavailable'}
             </T>
-            <T size={12.5} color={C.textSecondary} style={{ marginTop: 3 }}>
+            <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space4 }}>
               {sold ? 'Bought by' : 'Sold by'} {counterparty?.display_name ?? 'a member'}
             </T>
           </View>
         </Card>
 
-        <Card style={{ padding: 14, gap: 8 }}>
+        <Card style={{ padding: space.space16, gap: space.space8 }}>
           <Line label="Item" value={formatPrice(row.item_price_cents, row.currency)} />
           <Line
             label="Delivery"
@@ -117,35 +117,35 @@ export default function OrderDetail() {
                 : formatPrice(row.protection_fee_cents, row.currency)
             }
           />
-          <View style={{ height: 1, backgroundColor: C.border, marginVertical: 4 }} />
+          <View style={{ height: 1, backgroundColor: C.border, marginVertical: space.space4 }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <T w={700} size={15}>
+            <T variant="price">
               Total
             </T>
-            <T w={700} size={15}>
+            <T variant="price">
               {formatPrice(row.total_cents, row.currency)}
             </T>
           </View>
           {!!row.offer_id && (
-            <T size={12} color={C.textMuted} style={{ marginTop: 2 }}>
+            <T variant="caption" color={C.textSecondary} style={{ marginTop: space.space4 }}>
               Price agreed through an accepted offer.
             </T>
           )}
         </Card>
 
-        <Card style={{ padding: 14, gap: 6 }}>
-          <T w={600} size={14}>
+        <Card style={{ padding: space.space16, gap: space.space8 }}>
+          <T variant="cardTitle">
             Payment
           </T>
           <PaymentStatusLine payment={row.payment} />
           {row.status === 'pending_payment' && (
-            <T size={12} color={C.textMuted} lh={17} style={{ marginTop: 2 }}>
+            <T variant="caption" color={C.textSecondary} style={{ marginTop: space.space4 }}>
               This order is confirmed only when Stripe verifies the payment. If you completed
               checkout a moment ago, pull down to refresh.
             </T>
           )}
           {!!row.payment && row.payment.amount_refunded_cents > 0 && (
-            <T size={12.5} color={C.textSecondary}>
+            <T variant="metadata" color={C.textSecondary}>
               Refunded {formatPrice(row.payment.amount_refunded_cents, row.currency)}
             </T>
           )}
@@ -162,11 +162,11 @@ export default function OrderDetail() {
 
 function Line({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-      <T size={13.5} color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.space12 }}>
+      <T variant="metadata" color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
         {label}
       </T>
-      <T size={13.5}>{value}</T>
+      <T variant="metadata">{value}</T>
     </View>
   );
 }

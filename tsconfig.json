@@ -15,12 +15,15 @@
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "expo-env.d.ts",
+    "nativewind-env.d.ts"
   ],
   "exclude": [
     "node_modules",
     // Deno, not React Native: npm:/jsr: specifiers and the Deno global are
     // resolved by the Supabase Edge runtime and its own toolchain.
-    "supabase"
+    "supabase",
+    // The Next.js admin workspace owns its own tsconfig and path aliases.
+    "admin"
   ]
 }

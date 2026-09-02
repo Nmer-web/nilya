@@ -1,184 +1,251 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import React, { useCallback } from 'react';
+import { FlatList, RefreshControl, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavClearance } from '@/components/bottom-nav';
+import { CategoryArtwork, artworkFor } from '@/components/category-artwork';
 import { Icon } from '@/components/icon';
-import { ListingFeedGrid } from '@/components/listing-feed-grid';
-import { TabTitle } from '@/components/screen-header';
-import { Button, Chip, PressableScale, T, Tap } from '@/components/ui';
+import { FadeIn, Skeleton } from '@/components/skeleton';
+import { Button, EmptyState, PressableScale, T } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { useFavorites } from '@/hooks/use-favorites';
-import { useListingFeed } from '@/hooks/use-listing-feed';
+import type { CategoryRow } from '@/lib/database.types';
+import { haptic } from '@/lib/haptics';
 import { fetchCategories } from '@/lib/queries';
-import { filtersActive, SORTS, useApp } from '@/store/app-store';
-import { color as C, radius, space } from '@/theme/tokens';
+import { EMPTY_FILTERS, useApp } from '@/store/app-store';
+import {
+  color as C,
+  duration,
+  radius,
+  scale,
+  space,
+  touch,
+} from '@/theme/tokens';
 
+/**
+ * Category-first discovery.
+ *
+ * `categories.slug` is the table's primary key and the same value stored on
+ * `listings.category_slug`, so a card can hand the existing Search feed an
+ * exact database filter without translating or inventing an identifier.
+ * Categories have no image column; the artwork below is static decorative UI,
+ * mapped by slug only when a known category has a NILYA-owned illustration.
+ */
 export default function Explore() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const navClearance = useNavClearance();
-  const router = useRouter();
-  const { cat, setCat, sort, filters, openSheet } = useApp();
-
-  const [headerH, setHeaderH] = useState(0);
-
-  const favorites = useFavorites();
+  const { width } = useWindowDimensions();
+  const { setCat, setFilters, setQuery } = useApp();
   const categories = useAsync(() => fetchCategories('explore'), 'categories:explore');
 
-  /**
-   * The category chip and the filter sheet both narrow the same query. The chip
-   * wins where they disagree, because it is the control on screen — a sheet set
-   * days ago should not silently override what the user just tapped.
-   */
-  const category = cat === 'All' ? filters.categorySlug : cat;
+  const gutter = width < 390 ? space.space16 : space.space20;
+  const cardWidth = Math.max(0, (width - gutter * 2 - space.space12) / 2);
+  const cardHeight = cardWidth * 0.7;
 
-  const feed = useListingFeed(
-    {
-      category,
-      minPriceCents: filters.minCents,
-      maxPriceCents: filters.maxCents,
-      countryCode: filters.countryCode,
-      sort,
+  const openSearch = useCallback(() => {
+    setCat('All');
+    setQuery('');
+    setFilters(EMPTY_FILTERS);
+    router.push('/search');
+  }, [router, setCat, setFilters, setQuery]);
+
+  const browseCategory = useCallback(
+    (category: CategoryRow) => {
+      haptic('selection-committed');
+      router.push({ pathname: '/category/[slug]', params: { slug: category.slug } });
     },
-    `explore:${category}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${sort}`
+    [router]
   );
 
-  const active = filtersActive(filters);
-  const sortLabel = SORTS.find((s) => s.key === sort)?.label ?? 'Newest first';
+  const renderCategory = useCallback(
+    ({ item }: { item: CategoryRow }) => (
+      <CategoryCard
+        category={item}
+        width={cardWidth}
+        height={cardHeight}
+        onPress={() => browseCategory(item)}
+      />
+    ),
+    [browseCategory, cardHeight, cardWidth]
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <ListingFeedGrid
-        feed={feed}
-        savedIds={favorites.saved}
-        onToggleSave={favorites.toggle}
-        contentPaddingTop={headerH + space.lg}
-        contentPaddingBottom={navClearance}
-        refreshOffset={headerH}
-        onRefresh={() => {
-          feed.refresh();
-          favorites.refresh();
-        }}
-        empty={{
-          icon: 'bag',
-          title: active || category ? 'Nothing matches those filters' : 'Nothing here yet',
-          body:
-            active || category
-              ? 'Try widening your price range, or clearing a filter.'
-              : 'New listings will appear here.',
-          action:
-            active || category ? (
-              <Button
-                label="Adjust filters"
-                height={46}
-                size={14}
-                variant="outline"
-                onPress={() => openSheet({ kind: 'filters' })}
-                style={{ marginTop: 18 }}
+      <FadeIn y={space.space8} duration={duration.standard} style={{ flex: 1 }}>
+        <FlatList
+          data={categories.data ?? []}
+          keyExtractor={(category) => category.slug}
+          renderItem={renderCategory}
+          numColumns={2}
+          contentInsetAdjustmentBehavior="never"
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingTop: insets.top + space.space16,
+            paddingHorizontal: gutter,
+            paddingBottom: navClearance,
+          }}
+          columnWrapperStyle={{ gap: space.space12 }}
+          ItemSeparatorComponent={() => <View style={{ height: space.space12 }} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={categories.refreshing}
+              onRefresh={categories.refresh}
+              progressViewOffset={insets.top}
+              tintColor={C.textSecondary}
+            />
+          }
+          ListHeaderComponent={
+            <PressableScale
+              onPress={openSearch}
+              scale={scale.buttonPressed}
+              accessibilityRole="search"
+              accessibilityLabel="Search for items or members"
+              style={{
+                height: touch.large,
+                borderRadius: radius.radiusMedium,
+                borderCurve: 'continuous',
+                backgroundColor: C.surface,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: space.space12,
+                paddingHorizontal: space.space16,
+                marginBottom: space.space20,
+              }}
+            >
+              <Icon name="search" role="inline" color={C.textSecondary} decorative />
+              <T variant="body" color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
+                Search for items or members
+              </T>
+            </PressableScale>
+          }
+          ListEmptyComponent={
+            categories.loading ? (
+              <BrowseCategorySkeleton cardWidth={cardWidth} cardHeight={cardHeight} />
+            ) : categories.error ? (
+              <EmptyState
+                icon="close"
+                title="Could not load categories."
+                body="Check your connection and try again."
+                style={{ paddingVertical: space.space48 }}
+                action={
+                  <Button
+                    label="Try again"
+                    variant="secondary"
+                    onPress={categories.refetch}
+                    style={{ marginTop: space.space20 }}
+                  />
+                }
               />
-            ) : undefined,
-        }}
-      />
+            ) : (
+              <EmptyState
+                icon="bag"
+                title="Browse"
+                body="No categories available yet."
+                style={{ paddingVertical: space.space48 }}
+              />
+            )
+          }
+        />
+      </FadeIn>
+    </View>
+  );
+}
+function CategoryCard({
+  category,
+  width,
+  height,
+  onPress,
+}: {
+  category: CategoryRow;
+  width: number;
+  height: number;
+  onPress: () => void;
+}) {
+  const artwork = artworkFor(category.slug);
+  const artworkSize = width * 0.5;
+  const titleSize = width < 160 ? 22 : 24;
 
-      <View
-        onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+  return (
+    <PressableScale
+      onPress={onPress}
+      scale={0.985}
+      motionRole="cardPress"
+      accessibilityRole="button"
+      accessibilityLabel={`Browse ${category.label}`}
+      style={{
+        width,
+        height,
+        borderRadius: radius.radiusMedium,
+        borderCurve: 'continuous',
+        backgroundColor: C.surface,
+        padding: space.space16,
+        overflow: 'hidden',
+      }}
+    >
+      <T
+        numberOfLines={2}
         style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: 0,
-          paddingTop: insets.top,
-          backgroundColor: C.background,
+          maxWidth: width * 0.72,
+          fontSize: titleSize,
+          lineHeight: titleSize + 4,
+          fontWeight: '700',
+          letterSpacing: 0,
+          color: C.textPrimary,
         }}
       >
-        <View style={{ paddingHorizontal: space.gutter, paddingTop: 2, paddingBottom: space.md }}>
-          <TabTitle>Explore</TabTitle>
-        </View>
+        {category.label}
+      </T>
 
-        <View style={{ flexDirection: 'row', gap: space.sm, paddingHorizontal: space.gutter }}>
-          <Tap
-            onPress={() => router.push('/search')}
-            accessibilityRole="search"
-            accessibilityLabel="Search listings"
+      <View
+        accessible={false}
+        style={{
+          position: 'absolute',
+          right: space.space12,
+          bottom: space.space8,
+          width: artworkSize,
+          height: artworkSize,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {artwork ? (
+          <CategoryArtwork kind={artwork} size={artworkSize} />
+        ) : (
+          <View
             style={{
-              flex: 1,
-              height: 46,
-              borderRadius: radius.lg,
-              backgroundColor: C.surface,
-              borderWidth: 1,
-              borderColor: C.border,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 9,
-              paddingHorizontal: 14,
-            }}
-          >
-            <Icon name="search" size={17} color={C.textSecondary} />
-            <T size={14.5} color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
-              What are you looking for?
-            </T>
-          </Tap>
-
-          <PressableScale
-            onPress={() => openSheet({ kind: 'filters' })}
-            accessibilityRole="button"
-            accessibilityLabel="Filters"
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: radius.lg,
+              width: artworkSize * 0.58,
+              height: artworkSize * 0.58,
+              borderRadius: radius.radiusMedium,
+              borderCurve: 'continuous',
+              backgroundColor: C.background,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: active ? C.text : C.surface,
-              borderWidth: 1,
-              borderColor: active ? C.text : C.border,
             }}
           >
-            <Icon name="sliders" size={19} color={active ? C.primaryText : C.text} />
-          </PressableScale>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 7, paddingHorizontal: space.gutter, paddingVertical: space.md }}
-        >
-          <Chip label="All" active={cat === 'All'} onPress={() => setCat('All')} />
-          {(categories.data ?? []).map((c) => (
-            <Chip key={c.slug} label={c.label} active={cat === c.slug} onPress={() => setCat(c.slug)} />
-          ))}
-        </ScrollView>
-
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: space.gutter,
-            paddingBottom: space.md,
-          }}
-        >
-          <T size={13} color={C.textSecondary}>
-            {feed.loading
-              ? 'Loading…'
-              : `${feed.listings.length}${feed.hasMore ? '+' : ''} item${feed.listings.length === 1 && !feed.hasMore ? '' : 's'}`}
-          </T>
-
-          <Tap
-            onPress={() => openSheet({ kind: 'sort' })}
-            accessibilityRole="button"
-            accessibilityLabel={`Sort by ${sortLabel}. Tap to change.`}
-            hitSlop={8}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-          >
-            <T w={500} size={13}>
-              {sortLabel}
-            </T>
-            <Icon name="chevronDown" size={13} color={C.text} />
-          </Tap>
-        </View>
+            <Icon name="bag" role="navigation" color={C.textSecondary} decorative />
+          </View>
+        )}
       </View>
+    </PressableScale>
+  );
+}
+
+function BrowseCategorySkeleton({ cardWidth, cardHeight }: { cardWidth: number; cardHeight: number }) {
+  return (
+    <View
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading categories"
+      style={{ gap: space.space12 }}
+    >
+      {Array.from({ length: 3 }, (_, row) => (
+        <View key={row} style={{ flexDirection: 'row', gap: space.space12 }}>
+          <Skeleton width={cardWidth} height={cardHeight} round={radius.radiusMedium} />
+          <Skeleton width={cardWidth} height={cardHeight} round={radius.radiusMedium} />
+        </View>
+      ))}
     </View>
   );
 }

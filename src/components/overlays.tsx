@@ -1,14 +1,21 @@
 import React, { useCallback, useState } from 'react';
+import { usePathname } from 'expo-router';
 import { ScrollView, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CategoryTreePicker } from '@/components/category-tree-picker';
 import { Icon, type IconName } from '@/components/icon';
 import { Scrim, Sheet, SheetClose, SheetGrabber, Toast } from '@/components/sheet';
-import { Button, Chip, SectionLabel, T, Tap } from '@/components/ui';
+import { Button, Chip, InlineError, SectionLabel, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { fetchCategories, fetchListingCountries, fetchListings } from '@/lib/queries';
+import {
+  fetchCategoryTree,
+  fetchListingBrands,
+  fetchListingColors,
+  fetchListingCountries,
+  fetchListings,
+} from '@/lib/queries';
 import { EMPTY_FILTERS, SORTS, useApp, type Filters } from '@/store/app-store';
-import { color as C, radius } from '@/theme/tokens';
+import { color as C, radius, space, touch, type as typography } from '@/theme/tokens';
 
 /**
  * Dismissal, separated from the store action.
@@ -20,7 +27,7 @@ import { color as C, radius } from '@/theme/tokens';
  */
 const DismissContext = React.createContext<() => void>(() => {});
 
-export const useDismiss = () => React.useContext(DismissContext);
+export const useDismiss = () => React.use(DismissContext);
 
 /**
  * Every screen-level overlay lives here, above the nav — the design renders
@@ -79,8 +86,8 @@ type Phase = { closing: boolean; onExited: () => void };
  */
 function SheetHeader({ title, onClose }: { title: string; onClose: () => void }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-      <T w={600} size={19} tracking={-0.3} style={{ flex: 1 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.space12 }}>
+      <T variant="sectionTitle" accessibilityRole="header" style={{ flex: 1 }}>
         {title}
       </T>
       <SheetClose onPress={onClose} />
@@ -120,24 +127,25 @@ function SheetRow({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 13,
-        paddingVertical: 15,
+        minHeight: touch.minimum,
+        gap: space.space12,
+        paddingVertical: space.space12,
         borderBottomWidth: last ? 0 : 1,
         borderBottomColor: C.border,
       }}
     >
-      {!!icon && <Icon name={icon} size={19} color={destructive ? C.error : C.text} strokeWidth={1.8} />}
+      {!!icon && <Icon name={icon} role="inline" color={destructive ? C.error : C.textPrimary} />}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <T w={selected ? 600 : 500} size={15} color={destructive ? C.error : C.text}>
+        <T variant="bodyMedium" color={destructive ? C.errorText : C.textPrimary}>
           {label}
         </T>
         {!!sub && (
-          <T size={12.5} color={C.textSecondary} style={{ marginTop: 2 }}>
+          <T variant="caption" color={C.textSecondary} style={{ marginTop: space.space4 }}>
             {sub}
           </T>
         )}
       </View>
-      {selected && <Icon name="check" size={18} color={C.text} strokeWidth={2.6} />}
+      {selected && <Icon name="check" role="inline" color={C.textPrimary} />}
     </Tap>
   );
 }
@@ -154,15 +162,13 @@ function SheetRow({
 function SortSheet(phase: Phase) {
   const { sort, setSort } = useApp();
   const dismiss = useDismiss();
-  const insets = useSafeAreaInsets();
-
   return (
-    <Sheet {...phase} style={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: insets.bottom + 12 }}>
-      <SheetGrabber style={{ marginBottom: 16 }} />
+    <Sheet {...phase} accessibilityLabel="Sort listings" style={{ paddingTop: space.space12, paddingHorizontal: space.space24, paddingBottom: space.space16 }}>
+      <SheetGrabber style={{ marginBottom: space.space16 }} />
       <SheetHeader title="Sort by" onClose={dismiss} />
 
       {/* Each key maps to an ORDER BY in `fetchListings`, not a client sort. */}
-      <View style={{ marginTop: 6 }}>
+      <View style={{ marginTop: space.space8 }}>
         {SORTS.map((s, i) => (
           <SheetRow
             key={s.key}
@@ -183,9 +189,9 @@ function SortSheet(phase: Phase) {
 /* ─────────────────────────── filters ─────────────────────────── */
 
 /*
- * No condition filter. Every SAWA listing is new — `fetchListings` pins
- * `condition = 'new'` on every read — so a control offering "Very good" and
- * "Good" would filter a marketplace that does not exist and return nothing.
+ * No condition filter. Every NILYA listing is new — `fetchListings` pins
+ * `condition = 'new'` on every read — so a control offering any other enum
+ * value would filter a marketplace that does not exist and return nothing.
  */
 
 /** €12.50 → 1250, and '' → null so an empty field clears the bound. */
@@ -200,36 +206,44 @@ const fromCents = (cents: number | null) => (cents == null ? '' : String(cents /
  * Filters, applied to the database.
  *
  * Every control here writes a field that `fetchListings` turns into a `where`
- * clause — the category into `category_slug`, the bounds into `price_cents`,
- * the place into `country_code`. The sheet
+ * clause — the category through the shared descendant resolver, the bounds
+ * into `price_cents`, the place into `country_code`. The sheet
  * holds a working copy and commits it on apply, so a half-set price range never
  * re-queries mid-typing.
  */
 function FiltersSheet(phase: Phase) {
-  const { filters, setFilters, resetFilters } = useApp();
+  const { filters, q, setFilters, resetFilters } = useApp();
+  const pathname = usePathname();
   const dismiss = useDismiss();
-  const insets = useSafeAreaInsets();
-
   const [draft, setDraft] = useState<Filters>(filters);
   const [minText, setMinText] = useState(fromCents(filters.minCents));
   const [maxText, setMaxText] = useState(fromCents(filters.maxCents));
+  const draftMinCents = toCents(minText);
+  const draftMaxCents = toCents(maxText);
+  const previewQuery = pathname === '/search' ? q : '';
+  const categoryScoped = pathname.startsWith('/category/');
 
-  const categories = useAsync(() => fetchCategories('explore'), 'categories:explore');
+  const categories = useAsync(fetchCategoryTree, 'categories:tree');
   const countries = useAsync(fetchListingCountries, 'listing-countries');
+  const brands = useAsync(fetchListingBrands, 'listing-brands');
+  const colors = useAsync(fetchListingColors, 'listing-colors');
 
   /** Counts what the current draft would return, so the CTA is not a guess. */
   const preview = useAsync(
     () =>
       fetchListings(
         {
+          query: previewQuery,
           category: draft.categorySlug,
-          minPriceCents: draft.minCents,
-          maxPriceCents: draft.maxCents,
+          minPriceCents: draftMinCents,
+          maxPriceCents: draftMaxCents,
           countryCode: draft.countryCode,
+          brand: draft.brand,
+          color: draft.color,
         },
         0
       ),
-    `filter-preview:${JSON.stringify(draft)}`
+    `filter-preview:${previewQuery}:${draft.categorySlug}:${draftMinCents}:${draftMaxCents}:${draft.countryCode}:${draft.brand}:${draft.color}`
   );
 
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setDraft((d) => ({ ...d, [k]: v }));
@@ -239,37 +253,42 @@ function FiltersSheet(phase: Phase) {
     dismiss();
   };
 
-  const count = preview.data?.rows.length ?? 0;
-  const more = preview.data?.hasMore ?? false;
+  const count = preview.data?.total;
 
   return (
-    <Sheet {...phase} top={78} style={{ overflow: 'hidden' }}>
+    <Sheet {...phase} top={78} accessibilityLabel="Filter listings" style={{ overflow: 'hidden' }}>
       <View
         style={{
-          paddingHorizontal: 20,
-          paddingTop: 12,
-          paddingBottom: 12,
+          paddingHorizontal: space.space24,
+          paddingTop: space.space12,
+          paddingBottom: space.space12,
           borderBottomWidth: 1,
           borderBottomColor: C.border,
         }}
       >
-        <SheetGrabber style={{ marginBottom: 14 }} />
+        <SheetGrabber style={{ marginBottom: space.space12 }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Tap
             onPress={() => {
-              resetFilters();
-              setDraft(EMPTY_FILTERS);
+              if (categoryScoped) {
+                const scopedEmpty = { ...EMPTY_FILTERS, categorySlug: filters.categorySlug };
+                setFilters(scopedEmpty);
+                setDraft(scopedEmpty);
+              } else {
+                resetFilters();
+                setDraft(EMPTY_FILTERS);
+              }
               setMinText('');
               setMaxText('');
             }}
             accessibilityRole="button"
             hitSlop={8}
           >
-            <T w={500} size={13.5} color={C.textSecondary}>
+            <T variant="button" color={C.textSecondary}>
               Clear
             </T>
           </Tap>
-          <T w={600} size={16.5}>
+          <T variant="sectionTitle">
             Filters
           </T>
           <SheetClose onPress={dismiss} />
@@ -277,58 +296,64 @@ function FiltersSheet(phase: Phase) {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: 20 }}
+        contentContainerStyle={{ paddingHorizontal: space.space24, paddingTop: space.space8, paddingBottom: space.space20 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <SectionLabel style={{ paddingTop: 16, paddingBottom: 10 }}>Category</SectionLabel>
-        {categories.loading ? (
-          <T size={13} color={C.textSecondary}>
-            Loading categories…
-          </T>
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-            <Chip
-              label="Any"
-              active={draft.categorySlug === null}
-              height={36}
-              round={radius.md}
-              onPress={() => set('categorySlug', null)}
-            />
-            {(categories.data ?? []).map((c) => (
-              <Chip
-                key={c.slug}
-                label={c.label}
-                active={draft.categorySlug === c.slug}
-                height={36}
-                round={radius.md}
-                onPress={() => set('categorySlug', c.slug)}
+        {!categoryScoped ? (
+          <>
+            <SectionLabel style={{ paddingTop: space.space16, paddingBottom: space.space12 }}>
+              Category
+            </SectionLabel>
+            {categories.loading ? (
+              <T variant="metadata" color={C.textSecondary}>
+                Loading categories…
+              </T>
+            ) : categories.error ? (
+              <InlineError
+                message="Categories could not be loaded."
+                actionLabel="Retry"
+                onAction={categories.refetch}
               />
-            ))}
-          </View>
-        )}
+            ) : (
+              <View>
+                <Chip
+                  label="Any"
+                  active={draft.categorySlug === null}
+                  onPress={() => set('categorySlug', null)}
+                />
+                <View style={{ marginTop: space.space8 }}>
+                  <CategoryTreePicker
+                    categories={categories.data ?? []}
+                    selectedSlug={draft.categorySlug}
+                    allowParentSelection
+                    onSelect={(category) => set('categorySlug', category.slug)}
+                  />
+                </View>
+              </View>
+            )}
+          </>
+        ) : null}
 
-        <SectionLabel style={{ paddingTop: 22, paddingBottom: 10 }}>Price range</SectionLabel>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Price range</SectionLabel>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.space12 }}>
           <PriceInput label="Minimum" value={minText} onChange={setMinText} />
           <View style={{ width: 12, height: 1, backgroundColor: C.borderStrong }} />
           <PriceInput label="Maximum" value={maxText} onChange={setMaxText} />
         </View>
 
-        <SectionLabel style={{ paddingTop: 22, paddingBottom: 10 }}>Location</SectionLabel>
+        <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Location</SectionLabel>
         {(countries.data ?? []).length === 0 ? (
-          <T size={13} color={C.textSecondary} lh={19}>
+          <T variant="metadata" color={C.textSecondary}>
             {countries.loading
               ? 'Loading locations…'
               : 'Locations appear here once there are listings to filter.'}
           </T>
         ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.space8 }}>
             <Chip
               label="Anywhere"
               active={draft.countryCode === null}
-              height={36}
-              round={radius.md}
               onPress={() => set('countryCode', null)}
             />
             {(countries.data ?? []).map((cc) => (
@@ -336,9 +361,57 @@ function FiltersSheet(phase: Phase) {
                 key={cc}
                 label={cc}
                 active={draft.countryCode === cc}
-                height={36}
-                round={radius.md}
                 onPress={() => set('countryCode', cc)}
+              />
+            ))}
+          </View>
+        )}
+
+        <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Brand</SectionLabel>
+        {(brands.data ?? []).length === 0 ? (
+          <T variant="metadata" color={C.textSecondary}>
+            {brands.loading
+              ? 'Loading brands...'
+              : 'Brands appear here once active listings include them.'}
+          </T>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.space8 }}>
+            <Chip
+              label="Any"
+              active={draft.brand === null}
+              onPress={() => set('brand', null)}
+            />
+            {(brands.data ?? []).map((brand) => (
+              <Chip
+                key={brand}
+                label={brand}
+                active={draft.brand === brand}
+                onPress={() => set('brand', brand)}
+              />
+            ))}
+          </View>
+        )}
+
+        <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Color</SectionLabel>
+        {(colors.data ?? []).length === 0 ? (
+          <T variant="metadata" color={C.textSecondary}>
+            {colors.loading
+              ? 'Loading colors...'
+              : 'Colors appear here once active listings include them.'}
+          </T>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.space8 }}>
+            <Chip
+              label="Any"
+              active={draft.color === null}
+              onPress={() => set('color', null)}
+            />
+            {(colors.data ?? []).map((color) => (
+              <Chip
+                key={color}
+                label={color}
+                active={draft.color === color}
+                onPress={() => set('color', color)}
               />
             ))}
           </View>
@@ -347,25 +420,24 @@ function FiltersSheet(phase: Phase) {
 
       <View
         style={{
-          paddingHorizontal: 20,
-          paddingTop: 11,
-          paddingBottom: insets.bottom + 16,
+          paddingHorizontal: space.space24,
+          paddingTop: space.space12,
+          paddingBottom: space.space16,
           borderTopWidth: 1,
           borderTopColor: C.border,
           backgroundColor: C.background,
         }}
       >
-        {/*
-          The count is a real query against the draft, capped at one page — so
-          it reads "20+" rather than claiming a total the query never asked for.
-        */}
+        {/* PostgREST returns the exact total alongside the first result page. */}
         <Button
           label={
             preview.loading
               ? 'Counting…'
               : preview.error
                 ? 'Show results'
-                : `Show ${more ? `${count}+` : count} result${count === 1 && !more ? '' : 's'}`
+                : count === null || count === undefined
+                  ? 'Show results'
+                  : `Show ${count} result${count === 1 ? '' : 's'}`
           }
           onPress={apply}
         />
@@ -387,29 +459,30 @@ function PriceInput({
     <View
       style={{
         flex: 1,
-        height: 56,
-        borderRadius: radius.lg,
+        minHeight: touch.large,
+        borderRadius: radius.radiusMedium,
         backgroundColor: C.surface,
         borderWidth: 1,
         borderColor: C.border,
         justifyContent: 'center',
-        paddingHorizontal: 14,
+        paddingHorizontal: space.space16,
       }}
     >
-      <T size={11} color={C.textMuted}>
+      <T variant="caption" color={C.textSecondary}>
         {label}
       </T>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-        <T w={600} size={14.5}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.space4 }}>
+        <T variant="bodyMedium">
           €
         </T>
         <TextInput
           value={value}
           onChangeText={(v) => onChange(v.replace(/[^0-9.,]/g, ''))}
           placeholder="Any"
-          placeholderTextColor={C.textMuted}
+          placeholderTextColor={C.textSecondary}
+          selectionColor={C.primary}
           keyboardType="decimal-pad"
-          style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: '600', color: C.text, padding: 0 }}
+          style={[typography.bodyMedium, { flex: 1, minWidth: 0, color: C.textPrimary, padding: 0 }]}
         />
       </View>
     </View>

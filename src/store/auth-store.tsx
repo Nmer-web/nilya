@@ -3,6 +3,10 @@ import * as Linking from 'expo-linking';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { consumeAuthUrl } from '@/lib/auth-link';
+import {
+  normalizeReferralCode,
+  referralCodeError,
+} from '@/lib/referrals';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -13,7 +17,7 @@ import { supabase } from '@/lib/supabase';
  * Custom schemes do not resolve inside Expo Go — this needs a development
  * build to test end to end.
  */
-export const AUTH_REDIRECT = 'sawa://auth-callback';
+export const AUTH_REDIRECT = 'nilya://auth-callback';
 
 export type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
 
@@ -39,7 +43,19 @@ type AuthValue = {
   /** Address awaiting confirmation, set when sign-up returns no session. */
   pendingEmail: string | null;
 
-  signUp: (email: string, password: string, displayName: string) => Promise<CredentialResult>;
+  /**
+   * `displayName` is optional. The sign-up screen collects one; onboarding does
+   * not, because it asks for a name on the profile step after confirmation.
+   * When it is omitted, `handle_new_user()` seeds `profiles.display_name` from
+   * the email's local part, which the profile step then pre-fills and the
+   * member can correct.
+   */
+  signUp: (
+    email: string,
+    password: string,
+    displayName?: string,
+    referralCode?: string
+  ) => Promise<CredentialResult>;
   signIn: (email: string, password: string) => Promise<CredentialResult>;
   signOut: () => Promise<void>;
   resendVerification: (email: string) => Promise<ActionResult>;
@@ -150,14 +166,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /* ── actions ── */
 
   const signUp = useCallback(
-    async (email: string, password: string, displayName: string): Promise<CredentialResult> => {
+    async (
+      email: string,
+      password: string,
+      displayName?: string,
+      referralCode?: string
+    ): Promise<CredentialResult> => {
+      const name = displayName?.trim();
+      const code = normalizeReferralCode(referralCode ?? '');
+      const codeError = referralCodeError(code);
+      if (codeError) return { error: codeError, needsConfirmation: false };
+
+      if (code) {
+        const { data: exists, error: referralError } = await supabase.rpc(
+          'referral_code_exists',
+          { p_code: code }
+        );
+        if (referralError) {
+          return {
+            error: 'The referral code could not be checked. Try again.',
+            needsConfirmation: false,
+          };
+        }
+        if (exists !== true) {
+          return { error: 'That referral code is not valid.', needsConfirmation: false };
+        }
+      }
+
+      const metadata = {
+        ...(name ? { display_name: name } : {}),
+        ...(code ? { referral_code: code } : {}),
+      };
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
           emailRedirectTo: AUTH_REDIRECT,
           // Read by the handle_new_user() trigger to seed profiles.display_name.
-          data: { display_name: displayName.trim() },
+          // Omitted entirely when there is no name to give, so the trigger falls
+          // back to the email's local part rather than being handed an empty
+          // string it would have to reject.
+          ...(Object.keys(metadata).length > 0 ? { data: metadata } : {}),
         },
       });
 

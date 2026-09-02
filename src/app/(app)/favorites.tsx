@@ -1,102 +1,68 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useNavClearance } from '@/components/bottom-nav';
-import { ListingGrid } from '@/components/listing-card';
+import { ListingFeedGrid } from '@/components/listing-feed-grid';
 import { ScreenHeader } from '@/components/screen-header';
-import { ProductGridSkeleton } from '@/components/skeleton';
-import { Button, EmptyState, T } from '@/components/ui';
-import { useAsync } from '@/hooks/use-async';
+import { Button, T } from '@/components/ui';
+import { useFavoriteListingsFeed } from '@/hooks/use-favorite-listings-feed';
 import { useFavorites } from '@/hooks/use-favorites';
-import { fetchFavoriteListings } from '@/lib/queries';
 import { useAuth } from '@/store/auth-store';
 import { color as C, space } from '@/theme/tokens';
 
 export default function Favorites() {
   const router = useRouter();
   const navClearance = useNavClearance();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const signedIn = status === 'signedIn';
 
   const favorites = useFavorites();
-  const saved = useAsync(
-    async () => (signedIn ? fetchFavoriteListings() : []),
-    `favorite-listings:${signedIn}`
-  );
+  const feed = useFavoriteListingsFeed(signedIn, `favorite-listings:${user?.id ?? 'signed-out'}`);
 
-  const items = saved.data ?? [];
+  const empty = signedIn
+    ? {
+        icon: 'heart' as const,
+        title: 'No favorites yet',
+        body: 'Save products you love and find them here later.',
+        action: <Button label="Start exploring" onPress={() => router.dismissTo('/')} style={{ marginTop: space.space20 }} />,
+      }
+    : {
+        icon: 'person' as const,
+        title: 'Sign in to see your favorites',
+        body: 'Saved items are kept to your account.',
+        action: <Button label="Sign in" onPress={() => router.push('/sign-in')} style={{ marginTop: space.space20 }} />,
+      };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
       <ScreenHeader
         title="Favorites"
-        right={
-          items.length > 0 ? (
-            <T size={13} color={C.textSecondary} style={{ paddingRight: 10 }}>
-              {items.length} saved
-            </T>
-          ) : undefined
-        }
+        right={feed.listings.length > 0 ? (
+          <T variant="metadata" color={C.textSecondary} style={{ paddingRight: space.space12 }}>
+            {feed.listings.length}{feed.hasMore ? '+' : ''} saved
+          </T>
+        ) : undefined}
       />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: space.lg, paddingBottom: navClearance }}
-        refreshControl={
-          <RefreshControl
-            refreshing={saved.refreshing}
-            onRefresh={() => {
-              saved.refresh();
-              favorites.refresh();
-            }}
-            tintColor={C.textMuted}
-          />
-        }
-      >
-        {!signedIn ? (
-          <EmptyState
-            icon="person"
-            title="Sign in to see your favorites"
-            body="Saved items are kept to your account."
-            action={
-              <Button label="Sign in" height={48} onPress={() => router.push('/sign-in')} style={{ marginTop: 20 }} />
-            }
-          />
-        ) : saved.loading ? (
-          <ProductGridSkeleton count={4} />
-        ) : saved.error ? (
-          <EmptyState
-            icon="close"
-            title="Could not load your favorites"
-            body={saved.error.message}
-            action={
-              <Button label="Try again" height={44} size={14} onPress={saved.refetch} style={{ marginTop: 18 }} />
-            }
-          />
-        ) : items.length === 0 ? (
-          <EmptyState
-            icon="heart"
-            title="No favorites yet"
-            body="Save items you love and find them here later."
-            action={
-              <Button
-                label="Start exploring"
-                height={48}
-                onPress={() => router.dismissTo('/')}
-                style={{ marginTop: 20 }}
-              />
-            }
-          />
-        ) : (
-          /*
-           * Unsaving here removes the heart but leaves the card until the next
-           * refresh — pulling a row out from under the thumb that just tapped
-           * it makes the list feel unstable, and the state is already correct.
-           */
-          <ListingGrid listings={items} savedIds={favorites.saved} onToggleSave={favorites.toggle} />
-        )}
-      </ScrollView>
+      <ListingFeedGrid
+        feed={feed}
+        savedIds={favorites.saved}
+        onToggleSave={favorites.toggle}
+        empty={{
+          icon: empty.icon,
+          title: empty.title,
+          body: empty.body,
+          action: empty.action,
+        }}
+        error={{ title: 'Could not load your favorites', body: 'Try again.' }}
+        contentPaddingTop={space.space16}
+        contentPaddingBottom={navClearance}
+        onRefresh={() => {
+          feed.refresh();
+          favorites.refresh();
+        }}
+      />
     </View>
   );
 }

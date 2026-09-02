@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur';
 import React from 'react';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { alpha, color as C } from '@/theme/tokens';
+import { color as C } from '@/theme/tokens';
 
 /**
  * Translucent bar with a hairline edge.
@@ -15,12 +15,15 @@ export function FrostedBar({
   children,
   edge = 'top',
   intensity = 24,
+  opaque = false,
   style,
 }: {
   children?: React.ReactNode;
   /** Which side gets the hairline separator. */
   edge?: 'top' | 'bottom' | 'none';
   intensity?: number;
+  /** Primary navigation is deliberately solid Warm Ivory; sticky task bars may blur. */
+  opaque?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const border: ViewStyle =
@@ -30,14 +33,14 @@ export function FrostedBar({
         ? { borderBottomWidth: 1, borderBottomColor: C.border }
         : {};
 
-  if (Platform.OS === 'ios') {
+  if (Platform.OS === 'ios' && !opaque) {
     return (
       <BlurView intensity={intensity} tint="light" style={[border, style]}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: alpha.barBlur }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: C.floatingSurface }]} />
         {children}
       </BlurView>
     );
   }
 
-  return <View style={[{ backgroundColor: alpha.barSolid }, border, style]}>{children}</View>;
+  return <View style={[{ backgroundColor: C.background }, border, style]}>{children}</View>;
 }

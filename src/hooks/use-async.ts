@@ -34,11 +34,15 @@ export type AsyncState<T> = {
  */
 export function useAsync<T>(fn: () => Promise<T>, key: string): AsyncState<T> {
   const [data, setData] = useState<T | null>(null);
+  const [settledKey, setSettledKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   /** Bumped by refetch/refresh to re-run the effect without changing `key`. */
   const [nonce, setNonce] = useState(0);
+  const nonceRef = useRef(0);
+  const previousKeyRef = useRef(key);
+  const refreshRequestRef = useRef<{ key: string; nonce: number } | null>(null);
 
   /**
    * The fetcher is read through a ref so an inline closure does not restart the
@@ -51,7 +55,16 @@ export function useAsync<T>(fn: () => Promise<T>, key: string): AsyncState<T> {
   });
 
   useEffect(() => {
+    if (previousKeyRef.current !== key) {
+      previousKeyRef.current = key;
+      refreshRequestRef.current = null;
+    }
+  }, [key]);
+
+  useEffect(() => {
     let cancelled = false;
+    const refreshRequest = refreshRequestRef.current;
+    const preserveExistingData = refreshRequest?.key === key && refreshRequest.nonce === nonce;
 
     void (async () => {
       try {
@@ -59,13 +72,19 @@ export function useAsync<T>(fn: () => Promise<T>, key: string): AsyncState<T> {
         if (cancelled) return;
         setData(result);
         setError(null);
+        setSettledKey(key);
       } catch (e) {
         if (cancelled) return;
+        if (!preserveExistingData) setData(null);
         setError(toError(e));
+        setSettledKey(key);
       } finally {
         if (!cancelled) {
           setLoading(false);
           setRefreshing(false);
+          if (refreshRequestRef.current?.key === key && refreshRequestRef.current.nonce === nonce) {
+            refreshRequestRef.current = null;
+          }
         }
       }
     })();
@@ -81,14 +100,34 @@ export function useAsync<T>(fn: () => Promise<T>, key: string): AsyncState<T> {
   }, [key, nonce]);
 
   const refetch = useCallback(() => {
+    const nextNonce = nonceRef.current + 1;
+    nonceRef.current = nextNonce;
+    refreshRequestRef.current = null;
     setLoading(true);
-    setNonce((n) => n + 1);
+    setNonce(nextNonce);
   }, []);
 
   const refresh = useCallback(() => {
+    const nextNonce = nonceRef.current + 1;
+    nonceRef.current = nextNonce;
+    refreshRequestRef.current = { key, nonce: nextNonce };
     setRefreshing(true);
-    setNonce((n) => n + 1);
-  }, []);
+    setNonce(nextNonce);
+  }, [key]);
 
-  return { data, loading, refreshing, error, refetch, refresh };
+  /*
+   * A request key is part of the value's identity. When the key changes, the
+   * previous response may still be real data, but it is not truthful data for
+   * the new query. Deriving the reset during render avoids a state-setting
+   * effect while ensuring country B never flashes country A's delivery rows.
+   */
+  const current = settledKey === key;
+  return {
+    data: current ? data : null,
+    loading: current ? loading : true,
+    refreshing: current ? refreshing : false,
+    error: current ? error : null,
+    refetch,
+    refresh,
+  };
 }

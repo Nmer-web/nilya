@@ -1,25 +1,59 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { Animated, useWindowDimensions, View } from 'react-native';
+import React, { useState } from 'react';
+import { FlatList, type RefreshControlProps, Text, useWindowDimensions, View } from 'react-native';
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+} from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
-import { PressableScale, T } from '@/components/ui';
-import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { CONDITION_LABEL, type ListingRow } from '@/lib/database.types';
-import { tapLight } from '@/lib/haptics';
+import { PressableScale } from '@/components/ui';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { NEW_CONDITION, type ListingRow } from '@/lib/database.types';
 import { coverUrl } from '@/lib/queries';
-import { color as C, motion, radius, shadow, space } from '@/theme/tokens';
+import {
+  color as C,
+  duration,
+  elevation,
+  image as imageToken,
+  radius,
+  scale as scaleToken,
+  space,
+  spring,
+  touch,
+  type,
+} from '@/theme/tokens';
 
-const COLUMN_GAP = 10;
-const ROW_GAP = 20;
-const IMAGE_RATIO = 3 / 4;
-const TOUCH = 44;
+const SIZED_CATEGORY_SLUGS = new Set(['women', 'men', 'kids', 'shoes']);
+
+/** Runs the favorite action immediately, then gives it one interruptible pulse. */
+export function useFavoriteFeedback(onActivate: () => void) {
+  const { allowScale } = useReducedMotion();
+  const value = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: value.value }] }));
+
+  const activate = () => {
+    onActivate();
+    cancelAnimation(value);
+    value.set(allowScale
+      ? withSequence(
+          withSpring(scaleToken.favoritePeak, spring.favorite),
+          withSpring(1, spring.favorite)
+        )
+      : 1);
+  };
+
+  return { activate, animatedStyle };
+}
 
 /** Card width for an n-column grid inset by the standard gutter. */
 function useCardWidth(columns = 2) {
   const { width } = useWindowDimensions();
-  return (width - space.gutter * 2 - COLUMN_GAP * (columns - 1)) / columns;
+  return (width - space.space16 * 2 - space.space12 * (columns - 1)) / columns;
 }
 
 /** €45 from 4500. Whole euros stay whole; anything else shows both decimals. */
@@ -39,34 +73,47 @@ export function formatPrice(cents: number, currency = 'EUR'): string {
 export function ListingImage({
   url,
   width,
-  round = radius.lg,
+  label,
+  round = imageToken.listing.radius,
+  aspectRatio = imageToken.listing.aspectRatio,
 }: {
   url: string | null;
   width: number;
+  label?: string;
   round?: number;
+  aspectRatio?: number;
 }) {
+  const [failed, setFailed] = useState(false);
+
   return (
     <View
+      accessibilityRole="image"
+      accessibilityLabel={label}
+      className="overflow-hidden bg-nilya-surface"
       style={{
         width,
-        aspectRatio: IMAGE_RATIO,
+        height: width / aspectRatio,
         borderRadius: round,
-        overflow: 'hidden',
-        backgroundColor: C.surfaceSecondary,
+        borderCurve: 'continuous',
+        backgroundColor: C.surface,
       }}
     >
-      {url ? (
+      {url && !failed ? (
         <Image
           source={{ uri: url }}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
-          transition={220}
+          transition={duration.standard}
           cachePolicy="memory-disk"
           accessible={false}
+          onError={() => setFailed(true)}
         />
       ) : (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="image" size={24} color={C.textMuted} strokeWidth={1.5} />
+        <View className="flex-1 items-center justify-center gap-2">
+          <Icon name="image" role="navigation" color={C.textSecondary} decorative />
+          <Text className="text-xs font-medium text-nilya-secondary">
+            Image unavailable
+          </Text>
         </View>
       )}
     </View>
@@ -83,51 +130,36 @@ export function ListingImage({
 export function FavouriteButton({
   saved,
   onToggle,
-  size = 32,
+  imageHeight,
+  topAligned = false,
 }: {
   saved: boolean;
   onToggle: () => void;
-  size?: number;
+  imageHeight: number;
+  topAligned?: boolean;
 }) {
-  const s = useAnimatedValue(1);
-
-  const press = () => {
-    tapLight();
-    onToggle();
-    Animated.sequence([
-      Animated.spring(s, { toValue: 1.15, useNativeDriver: NATIVE_DRIVER, tension: 420, friction: 6 }),
-      Animated.spring(s, { toValue: 1, useNativeDriver: NATIVE_DRIVER, ...motion.spring }),
-    ]).start();
-  };
+  const feedback = useFavoriteFeedback(onToggle);
 
   return (
-    <View style={{ position: 'absolute', top: 0, right: 0, zIndex: 2 }} pointerEvents="box-none">
+    <View
+      className="absolute right-3 z-10 h-11 w-11 rounded-full border border-nilya-border bg-nilya-background"
+      style={{ top: topAligned ? space.space12 : imageHeight - touch.minimum - space.space12 }}
+      pointerEvents="box-none"
+    >
       <PressableScale
         scale={1}
-        onPress={press}
+        onPress={feedback.activate}
         accessibilityRole="button"
         accessibilityState={{ selected: saved }}
-        accessibilityLabel={saved ? 'Remove from favourites' : 'Save to favourites'}
-        style={{ width: TOUCH, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}
+        accessibilityLabel={saved ? 'Remove from favorites' : 'Add to favorites'}
+        className="h-full w-full items-center justify-center rounded-full"
       >
-        <Animated.View
-          style={{
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            backgroundColor: C.background,
-            alignItems: 'center',
-            justifyContent: 'center',
-            transform: [{ scale: s }],
-            ...shadow.raised,
-          }}
-        >
+        <Animated.View style={feedback.animatedStyle}>
           <Icon
             name="heart"
-            size={17}
-            color={C.favourite}
-            fill={saved ? C.favourite : 'none'}
-            strokeWidth={1.9}
+            role="metadata"
+            color={C.primary}
+            fill={saved ? C.primary : 'none'}
           />
         </Animated.View>
       </PressableScale>
@@ -138,11 +170,258 @@ export function FavouriteButton({
 /**
  * The listing card, backed by a database row.
  *
- * Image-first and undecorated: no border, no shadow, no container. On a white
- * canvas the photography separates one card from the next, so anything drawn
- * around it competes with the thing being sold.
+ * The framed catalogue treatment is the default everywhere — one card shape
+ * across Home, search, seller, favorites, and utility screens. A screen can
+ * still opt out of the frame, but nothing needs to opt in anymore.
  */
 export const ListingCard = React.memo(function ListingCard({
+  listing,
+  width,
+  saved,
+  onToggleSave,
+  showAttributes = true,
+  showPhotoCount = true,
+  showSellerVerification = true,
+  showDiscountBadge = true,
+  framed = true,
+  imageAspectRatio = imageToken.listing.aspectRatio,
+}: {
+  listing: ListingRow;
+  width: number;
+  saved: boolean;
+  onToggleSave: (id: string) => void;
+  showAttributes?: boolean;
+  showPhotoCount?: boolean;
+  showSellerVerification?: boolean;
+  showDiscountBadge?: boolean;
+  framed?: boolean;
+  imageAspectRatio?: number;
+}) {
+  const router = useRouter();
+  const price = formatPrice(listing.price_cents, listing.currency);
+  const originalPrice = listing.original_price_cents == null
+    ? null
+    : formatPrice(listing.original_price_cents, listing.currency);
+  const title = listing.title.trim();
+  const candidateBrand = listing.brand?.trim() || null;
+  const brand = candidateBrand?.toLocaleLowerCase() === title.toLocaleLowerCase() ? null : candidateBrand;
+  const place = [listing.city, listing.country_code].filter(Boolean).join(', ');
+  const size = SIZED_CATEGORY_SLUGS.has(listing.category_slug) ? listing.size?.trim() : null;
+  const color = listing.color?.trim();
+  const attributes = [size, color, listing.condition === NEW_CONDITION ? 'NEW' : null].filter(
+    (value): value is string => Boolean(value)
+  );
+  const showAttributeRow = showAttributes && attributes.length > 0;
+  const photoCount = listing.images.length;
+  const verifiedSeller = showSellerVerification && listing.seller?.is_verified === true;
+  const discountPercent =
+    listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
+      ? Math.round((1 - listing.price_cents / listing.original_price_cents) * 100)
+      : null;
+  const imageHeight = width / imageAspectRatio;
+  const accessibilityDetails = [
+    brand,
+    listing.title,
+    price,
+    ...attributes,
+    place,
+    verifiedSeller ? 'Verified seller' : null,
+    photoCount > 1 ? `${photoCount} photos` : null,
+  ].filter(Boolean).join(', ');
+
+  return (
+    /**
+     * The heart is a sibling of the card's tap target, not a child of it.
+     * Nesting one pressable inside another renders a `<button>` inside a
+     * `<button>` on web, which is invalid and swallows the inner press.
+     */
+    <View
+      style={[
+        { width },
+        framed
+          ? {
+              overflow: 'hidden',
+              borderRadius: radius.radiusXLarge,
+              borderCurve: 'continuous',
+              borderWidth: 1,
+              borderColor: C.border,
+              backgroundColor: C.surface,
+              ...elevation.raised,
+            }
+          : null,
+      ]}
+    >
+      <PressableScale
+        scale={scaleToken.cardPressed}
+        motionRole="cardPress"
+        onPress={() => router.push({ pathname: '/listing/[id]', params: { id: listing.id } })}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityDetails}
+      >
+        <ListingImage
+          url={coverUrl(listing.images)}
+          width={width}
+          label={`${listing.title} product photo`}
+          round={framed ? 0 : imageToken.listing.radius}
+          aspectRatio={imageAspectRatio}
+        />
+
+        {/*
+          Discount and photo-count both live in the same top-left slot. A
+          discounted listing's savings matter more to a shopper than its photo
+          count, so the badge wins the slot when both would otherwise apply.
+        */}
+        {showDiscountBadge && discountPercent != null && discountPercent > 0 ? (
+          <View
+            accessible
+            accessibilityLabel={`${discountPercent} percent below the original price`}
+            style={{
+              position: 'absolute',
+              left: space.space12,
+              top: space.space12,
+              minHeight: 30,
+              justifyContent: 'center',
+              borderRadius: radius.radiusSmall,
+              backgroundColor: C.primary,
+              paddingHorizontal: space.space8,
+            }}
+          >
+            <Text style={{ color: C.textInverse, fontSize: 13, fontWeight: '600' }}>
+              -{discountPercent}%
+            </Text>
+          </View>
+        ) : showPhotoCount && photoCount > 1 ? (
+          <View
+            accessible={false}
+            className="absolute left-3 top-3 min-h-7 flex-row items-center gap-1 rounded-full bg-nilya-accent px-2"
+          >
+            <Icon name="image" role="metadata" color={C.textPrimary} decorative />
+            <Text className="text-xs font-medium text-nilya-text" style={{ fontVariant: ['tabular-nums'] }}>
+              {photoCount}
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          className="pt-2"
+          style={
+            framed
+              ? {
+                  minHeight: 112,
+                  paddingHorizontal: space.space12,
+                  paddingTop: space.space12,
+                  paddingBottom: space.space12,
+                }
+              : undefined
+          }
+        >
+          {brand && !framed ? (
+            <Text className="mb-1 text-sm text-nilya-secondary" numberOfLines={1}>
+              {brand}
+            </Text>
+          ) : null}
+          <Text className="text-base font-medium text-nilya-text" numberOfLines={framed ? 1 : 2}>
+            {listing.title}
+          </Text>
+          <View className="mt-2 flex-row flex-wrap items-baseline gap-2">
+            <Text className="text-lg font-bold text-nilya-text">{price}</Text>
+            {originalPrice ? (
+              <Text className="text-xs font-medium text-nilya-secondary line-through">
+                {originalPrice}
+              </Text>
+            ) : null}
+          </View>
+          {showAttributeRow ? (
+            <Text className="mt-1.5 text-sm text-nilya-secondary" numberOfLines={1}>
+              {attributes.join(' \u00b7 ')}
+            </Text>
+          ) : null}
+          {place ? (
+            <View
+              accessible
+              accessibilityLabel={`${place}${verifiedSeller ? ', verified seller' : ''}`}
+              className={`flex-row items-center gap-1 ${showAttributeRow ? 'mt-1' : 'mt-1.5'}`}
+            >
+              <Icon name="pin" role="metadata" color={framed ? C.primary : C.textSecondary} decorative />
+              <Text className="shrink text-[13px] text-nilya-secondary" numberOfLines={1}>
+                {place}
+              </Text>
+              {verifiedSeller ? <Icon name="badgeCheck" role="metadata" color={C.textSecondary} decorative /> : null}
+            </View>
+          ) : null}
+        </View>
+      </PressableScale>
+
+      <FavouriteButton
+        saved={saved}
+        onToggle={() => onToggleSave(listing.id)}
+        imageHeight={imageHeight}
+        topAligned={framed}
+      />
+    </View>
+  );
+});
+
+/** Two-column grid of listings. */
+export const ListingGrid = React.memo(function ListingGrid({
+  listings,
+  savedIds,
+  onToggleSave,
+  columns = 2,
+  listHeader,
+  listEmpty,
+  refreshControl,
+  contentPaddingTop = 0,
+  contentPaddingBottom = 0,
+}: {
+  listings: ListingRow[];
+  savedIds: Set<string>;
+  onToggleSave: (id: string) => void;
+  columns?: number;
+  listHeader?: React.ReactElement | null;
+  listEmpty?: React.ReactElement | null;
+  refreshControl?: React.ReactElement<RefreshControlProps>;
+  contentPaddingTop?: number;
+  contentPaddingBottom?: number;
+}) {
+  const width = useCardWidth(columns);
+  return (
+    <FlatList
+      data={listings}
+      keyExtractor={(listing) => listing.id}
+      numColumns={columns}
+      renderItem={({ item }) => (
+        <View className="px-1.5" style={{ flex: 1 / columns }}>
+          <ListingCard
+            listing={item}
+            width={width}
+            saved={savedIds.has(item.id)}
+            onToggleSave={onToggleSave}
+          />
+        </View>
+      )}
+      ListHeaderComponent={listHeader}
+      ListEmptyComponent={listEmpty}
+      refreshControl={refreshControl}
+      showsVerticalScrollIndicator={false}
+      columnWrapperClassName="px-2.5"
+      contentContainerClassName="gap-y-[18px]"
+      contentContainerStyle={{ paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom }}
+    />
+  );
+});
+
+/**
+ * The showcase card used by Home.
+ *
+ * A soft well holds the photograph, with the saving and the heart floating
+ * over it; beneath, the category leads, the title supports, and the price row
+ * closes with the seller's rating. Every figure on it is a column: the
+ * category label is the joined `categories` row, the saving is derived from
+ * two stored prices, and the rating is the seller's `rating_avg`, shown only
+ * once at least one real review exists.
+ */
+export const ShowcaseListingCard = React.memo(function ShowcaseListingCard({
   listing,
   width,
   saved,
@@ -155,81 +434,145 @@ export const ListingCard = React.memo(function ListingCard({
 }) {
   const router = useRouter();
   const price = formatPrice(listing.price_cents, listing.currency);
-  const place = [listing.city, listing.country_code].filter(Boolean).join(', ');
+  const originalPrice =
+    listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
+      ? formatPrice(listing.original_price_cents, listing.currency)
+      : null;
+  const discountPercent =
+    listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
+      ? Math.round((1 - listing.price_cents / listing.original_price_cents) * 100)
+      : null;
+  const title = listing.title.trim();
+  const categoryLabel = listing.category?.label?.trim() || null;
+  const candidateBrand = listing.brand?.trim() || null;
+  const brand = candidateBrand?.toLocaleLowerCase() === title.toLocaleLowerCase() ? null : candidateBrand;
+  /* Category leads when the join resolved; otherwise the title takes the lead
+     line and the brand, if any, supports it. Nothing is invented to fill a slot. */
+  const lead = categoryLabel ?? title;
+  const support = categoryLabel ? title : brand;
+  const rating =
+    listing.seller && listing.seller.rating_count > 0 && listing.seller.rating_avg != null
+      ? listing.seller.rating_avg
+      : null;
+  const inset = space.space12;
+  const imageWidth = width - inset * 2;
+  const imageHeight = imageWidth;
+  const accessibilityDetails = [
+    categoryLabel,
+    title,
+    brand,
+    price,
+    originalPrice ? `was ${originalPrice}` : null,
+    discountPercent != null && discountPercent > 0 ? `${discountPercent} percent off` : null,
+    rating != null ? `seller rated ${rating.toFixed(1)} out of 5` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
-  return (
-    /**
-     * The heart is a sibling of the card's tap target, not a child of it.
-     * Nesting one pressable inside another renders a `<button>` inside a
-     * `<button>` on web, which is invalid and swallows the inner press.
-     */
-    <View style={{ width }}>
-      <PressableScale
-        scale={0.98}
-        onPress={() => router.push({ pathname: '/listing/[id]', params: { id: listing.id } })}
-        accessibilityRole="button"
-        accessibilityLabel={`${listing.title}, ${price}, ${CONDITION_LABEL[listing.condition]}${place ? `, ${place}` : ''}`}
-      >
-        <ListingImage url={coverUrl(listing.images)} width={width} />
-
-        <View style={{ paddingTop: space.sm }}>
-          <T variant="productTitle" numberOfLines={1}>
-            {listing.title}
-          </T>
-          <T variant="price" style={{ marginTop: 2 }}>
-            {price}
-          </T>
-          <T variant="meta" color={C.textSecondary} style={{ marginTop: 5 }}>
-            {CONDITION_LABEL[listing.condition]}
-          </T>
-          {!!place && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
-              <Icon name="pin" size={11} color={C.textMuted} />
-              <T size={12} color={C.textMuted} numberOfLines={1}>
-                {place}
-              </T>
-            </View>
-          )}
-        </View>
-      </PressableScale>
-
-      <FavouriteButton saved={saved} onToggle={() => onToggleSave(listing.id)} />
-    </View>
-  );
-});
-
-/** Two-column grid of listings. */
-export const ListingGrid = React.memo(function ListingGrid({
-  listings,
-  savedIds,
-  onToggleSave,
-  columns = 2,
-}: {
-  listings: ListingRow[];
-  savedIds: Set<string>;
-  onToggleSave: (id: string) => void;
-  columns?: number;
-}) {
-  const width = useCardWidth(columns);
   return (
     <View
       style={{
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        rowGap: ROW_GAP,
-        columnGap: COLUMN_GAP,
-        paddingHorizontal: space.gutter,
+        width,
+        borderRadius: radius.radiusXLarge,
+        borderCurve: 'continuous',
+        backgroundColor: C.surface,
+        padding: inset,
       }}
     >
-      {listings.map((l) => (
-        <ListingCard
-          key={l.id}
-          listing={l}
-          width={width}
-          saved={savedIds.has(l.id)}
-          onToggleSave={onToggleSave}
+      <PressableScale
+        scale={scaleToken.cardPressed}
+        motionRole="cardPress"
+        onPress={() => router.push({ pathname: '/listing/[id]', params: { id: listing.id } })}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityDetails}
+      >
+        <ListingImage
+          url={coverUrl(listing.images)}
+          width={imageWidth}
+          label={`${title} product photo`}
+          round={radius.radiusLarge}
+          aspectRatio={imageWidth / imageHeight}
         />
-      ))}
+
+        {discountPercent != null && discountPercent > 0 ? (
+          <View
+            accessible
+            accessibilityLabel={`${discountPercent} percent below the original price`}
+            style={{
+              position: 'absolute',
+              left: space.space8,
+              top: space.space8,
+              minHeight: 28,
+              justifyContent: 'center',
+              borderRadius: radius.radiusPill,
+              borderCurve: 'continuous',
+              backgroundColor: C.surface,
+              paddingHorizontal: space.space12,
+              ...elevation.raised,
+            }}
+          >
+            <Text style={{ ...type.metadataMedium, fontWeight: '700', color: C.primary }}>
+              -{discountPercent}%
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={{ paddingTop: space.space12, gap: space.space4 }}>
+          <Text style={{ ...type.cardTitle, color: C.textPrimary }} numberOfLines={1}>
+            {lead}
+          </Text>
+          {support ? (
+            <Text style={{ ...type.metadata, color: C.textSecondary }} numberOfLines={1}>
+              {support}
+            </Text>
+          ) : null}
+
+          <View
+            style={{
+              marginTop: space.space4,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: space.space8,
+            }}
+          >
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: space.space8 }}>
+              <Text style={{ ...type.price, color: C.textPrimary }} numberOfLines={1}>
+                {price}
+              </Text>
+              {originalPrice ? (
+                <Text
+                  style={{ ...type.metadata, color: C.textSecondary, textDecorationLine: 'line-through' }}
+                  numberOfLines={1}
+                >
+                  {originalPrice}
+                </Text>
+              ) : null}
+            </View>
+
+            {rating != null ? (
+              <View
+                accessible
+                accessibilityLabel={`Seller rated ${rating.toFixed(1)} out of 5`}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: space.space4 }}
+              >
+                <Text
+                  style={{ ...type.metadataMedium, color: C.textPrimary, fontVariant: ['tabular-nums'] }}
+                >
+                  {rating.toFixed(1)}
+                </Text>
+                <Icon name="star" role="metadata" color={C.accent} decorative />
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </PressableScale>
+
+      <FavouriteButton
+        saved={saved}
+        onToggle={() => onToggleSave(listing.id)}
+        imageHeight={imageHeight}
+        topAligned
+      />
     </View>
   );
 });

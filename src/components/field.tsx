@@ -1,148 +1,168 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { TextInput, View, type TextInputProps } from 'react-native';
 
 import { T, Tap } from '@/components/ui';
-import { color as C, radius } from '@/theme/tokens';
-
-/**
- * Form primitives for the auth screens. The rest of the app has no real forms
- * — Explore and Chat use bare TextInputs — so these live here rather than in
- * ui.tsx, styled to the same tokens.
- */
+import { color as C, opacity, radius, space, touch, type as typography } from '@/theme/tokens';
 
 export type FieldProps = TextInputProps & {
   label: string;
-  /** Message shown under the field; also turns the border terracotta. */
   error?: string | null;
+  hint?: string;
 };
 
-export function Field({ label, error, style, ...rest }: FieldProps) {
+export function Field({ label, error, hint, style, editable = true, ...rest }: FieldProps) {
   const [focused, setFocused] = useState(false);
+  const fieldId = useId();
+  const labelId = `${fieldId}-label`;
 
   return (
-    <View style={{ marginBottom: 14 }}>
-      <T w={600} size={13} color={C.textSecondary} style={{ marginBottom: 7 }}>
+    <View style={{ marginBottom: space.space16 }}>
+      <T nativeID={labelId} variant="cardTitle" color={C.textSecondary} style={{ marginBottom: space.space8 }}>
         {label}
       </T>
       <View
         style={{
-          height: 50,
-          borderRadius: radius.lg,
-          backgroundColor: C.background,
-          borderColor: error ? C.error : focused ? C.text : C.border,
-          /* Focus is carried by weight as well as colour, per §23. */
-          borderWidth: focused || error ? 1.5 : 1,
-          paddingHorizontal: 14,
+          minHeight: touch.standard,
+          borderRadius: radius.radiusMedium,
+          borderCurve: 'continuous',
+          backgroundColor: editable ? C.surface : C.surfaceSecondary,
+          borderColor: error ? C.error : focused ? C.primary : C.border,
+          borderWidth: focused || error ? 2 : 1,
+          paddingHorizontal: space.space16,
           justifyContent: 'center',
+          opacity: editable ? 1 : opacity.disabled,
         }}
       >
         <TextInput
           {...rest}
-          onFocus={(e) => {
+          nativeID={rest.nativeID ?? fieldId}
+          editable={editable}
+          accessibilityLabel={rest.accessibilityLabel ?? label}
+          accessibilityLabelledBy={labelId}
+          accessibilityHint={error ?? hint ?? rest.accessibilityHint}
+          accessibilityState={{ ...rest.accessibilityState, disabled: !editable }}
+          onFocus={(event) => {
             setFocused(true);
-            rest.onFocus?.(e);
+            rest.onFocus?.(event);
           }}
-          onBlur={(e) => {
+          onBlur={(event) => {
             setFocused(false);
-            rest.onBlur?.(e);
+            rest.onBlur?.(event);
           }}
-          placeholderTextColor={C.textMuted}
-          style={[
-            { fontSize: 15.5, color: C.text, padding: 0 },
-            style,
-          ]}
+          placeholderTextColor={C.textSecondary}
+          selectionColor={C.primary}
+          style={[typography.body, { minHeight: touch.minimum, color: C.textPrimary, padding: 0 }, style]}
         />
       </View>
-      {!!error && (
-        <T size={12.5} color={C.error} lh={17} style={{ marginTop: 6 }}>
+      {error ? (
+        <T
+          variant="caption"
+          color={C.errorText}
+          accessibilityLiveRegion="polite"
+          style={{ marginTop: space.space4 }}
+        >
           {error}
         </T>
-      )}
+      ) : hint ? (
+        <T variant="caption" color={C.textSecondary} style={{ marginTop: space.space4 }}>
+          {hint}
+        </T>
+      ) : null}
     </View>
   );
 }
 
-/** Password entry with a text reveal toggle — the icon set has no eye glyph. */
-export function PasswordField({ label, error, ...rest }: FieldProps) {
+export function PasswordField({ label, error, hint, style, editable = true, ...rest }: FieldProps) {
   const [hidden, setHidden] = useState(true);
   const [focused, setFocused] = useState(false);
+  const fieldId = useId();
+  const labelId = `${fieldId}-label`;
 
   return (
-    <View style={{ marginBottom: 14 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 7 }}>
-        <T w={600} size={13} color={C.textSecondary} style={{ flex: 1 }}>
+    <View style={{ marginBottom: space.space16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.space4 }}>
+        <T nativeID={labelId} variant="cardTitle" color={C.textSecondary} style={{ flex: 1 }}>
           {label}
         </T>
-        <Tap onPress={() => setHidden((h) => !h)} accessibilityRole="button" hitSlop={8}>
-          <T w={600} size={12.5} color={C.textSecondary}>
+        <Tap
+          onPress={() => setHidden((value) => !value)}
+          accessibilityRole="button"
+          accessibilityLabel={hidden ? `Show ${label}` : `Hide ${label}`}
+          accessibilityState={{ expanded: !hidden }}
+          style={{ minWidth: touch.minimum, minHeight: touch.minimum, alignItems: 'flex-end', justifyContent: 'center' }}
+        >
+          <T variant="caption" color={C.textSecondary}>
             {hidden ? 'Show' : 'Hide'}
           </T>
         </Tap>
       </View>
       <View
         style={{
-          height: 50,
-          borderRadius: radius.lg,
-          backgroundColor: C.background,
-          borderColor: error ? C.error : focused ? C.text : C.border,
-          /* Focus is carried by weight as well as colour, per §23. */
-          borderWidth: focused || error ? 1.5 : 1,
-          paddingHorizontal: 14,
+          minHeight: touch.standard,
+          borderRadius: radius.radiusMedium,
+          borderCurve: 'continuous',
+          backgroundColor: editable ? C.surface : C.surfaceSecondary,
+          borderColor: error ? C.error : focused ? C.primary : C.border,
+          borderWidth: focused || error ? 2 : 1,
+          paddingHorizontal: space.space16,
           justifyContent: 'center',
         }}
       >
         <TextInput
           {...rest}
+          nativeID={rest.nativeID ?? fieldId}
+          editable={editable}
           secureTextEntry={hidden}
           autoCapitalize="none"
           autoCorrect={false}
-          onFocus={(e) => {
+          accessibilityLabel={rest.accessibilityLabel ?? label}
+          accessibilityLabelledBy={labelId}
+          accessibilityHint={error ?? hint ?? rest.accessibilityHint}
+          accessibilityState={{ ...rest.accessibilityState, disabled: !editable }}
+          onFocus={(event) => {
             setFocused(true);
-            rest.onFocus?.(e);
+            rest.onFocus?.(event);
           }}
-          onBlur={(e) => {
+          onBlur={(event) => {
             setFocused(false);
-            rest.onBlur?.(e);
+            rest.onBlur?.(event);
           }}
-          placeholderTextColor={C.textMuted}
-          style={{ fontSize: 15.5, color: C.text, padding: 0 }}
+          placeholderTextColor={C.textSecondary}
+          selectionColor={C.primary}
+          style={[typography.body, { minHeight: touch.minimum, color: C.textPrimary, padding: 0 }, style]}
         />
       </View>
-      {!!error && (
-        <T size={12.5} color={C.error} lh={17} style={{ marginTop: 6 }}>
+      {error ? (
+        <T variant="caption" color={C.errorText} accessibilityLiveRegion="polite" style={{ marginTop: space.space4 }}>
           {error}
         </T>
-      )}
+      ) : hint ? (
+        <T variant="caption" color={C.textSecondary} style={{ marginTop: space.space4 }}>
+          {hint}
+        </T>
+      ) : null}
     </View>
   );
 }
 
-/** Form-level failure — anything not attributable to one field. */
 export function FormError({ message }: { message?: string | null }) {
   if (!message) return null;
   return (
     <View
+      accessibilityRole="alert"
       style={{
-        backgroundColor: C.errorBg,
+        backgroundColor: C.errorSurface,
         borderWidth: 1,
-        borderColor: C.errorBorder,
-        borderRadius: radius.lg,
-        padding: 12,
-        marginBottom: 16,
+        borderColor: C.error,
+        borderRadius: radius.radiusMedium,
+        borderCurve: 'continuous',
+        padding: space.space12,
+        marginBottom: space.space16,
       }}
     >
-      <T size={13.5} color={C.error} lh={19}>
+      <T variant="metadata" color={C.errorText}>
         {message}
       </T>
     </View>
   );
 }
-
-/**
- * Ring shown inside a CTA while a request is in flight.
- *
- * The implementation moved to `ui.tsx` so that `Button` could own its own
- * loading state without importing from this module, which already imports it.
- * Kept as a named re-export because the five auth screens reach for it here.
- */
-export { Spinner as ButtonSpinner } from '@/components/ui';

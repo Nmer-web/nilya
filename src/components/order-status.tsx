@@ -3,7 +3,7 @@ import { View } from 'react-native';
 
 import { T } from '@/components/ui';
 import type { OrderRow } from '@/lib/queries';
-import { color as C, radius } from '@/theme/tokens';
+import { color as C, radius, space } from '@/theme/tokens';
 
 type OrderStatus = OrderRow['status'];
 type PaymentStatus = NonNullable<OrderRow['payment']>['status'];
@@ -49,11 +49,11 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
 function toneColors(tone: 'neutral' | 'progress' | 'good' | 'bad') {
   switch (tone) {
     case 'good':
-      return { fg: C.success, bg: C.successBg };
+      return { fg: C.success, bg: C.successSurface };
     case 'bad':
-      return { fg: C.error, bg: C.errorBg };
+      return { fg: C.error, bg: C.errorSurface };
     case 'progress':
-      return { fg: C.accent, bg: C.accentBg };
+      return { fg: C.primary, bg: C.surface };
     default:
       return { fg: C.textSecondary, bg: C.surface };
   }
@@ -63,16 +63,18 @@ export function OrderStatusPill({ status }: { status: OrderStatus }) {
   const { fg, bg } = toneColors(ORDER_TONE[status]);
   return (
     <View
+      accessible
+      accessibilityLabel={`Order status: ${ORDER_LABEL[status]}`}
       style={{
-        paddingHorizontal: 9,
-        paddingVertical: 4,
-        borderRadius: radius.pill,
+        paddingHorizontal: space.space8,
+        paddingVertical: space.space4,
+        borderRadius: radius.radiusPill,
         backgroundColor: bg,
         borderWidth: 1,
         borderColor: fg,
       }}
     >
-      <T w={600} size={11} color={fg}>
+      <T variant="caption" color={fg}>
         {ORDER_LABEL[status]}
       </T>
     </View>
@@ -89,20 +91,20 @@ export function OrderStatusPill({ status }: { status: OrderStatus }) {
 export function PaymentStatusLine({ payment }: { payment: OrderRow['payment'] }) {
   if (!payment) {
     return (
-      <T size={12.5} color={C.textSecondary}>
+      <T variant="metadata" color={C.textSecondary}>
         No payment recorded yet
       </T>
     );
   }
 
   return (
-    <View style={{ gap: 2 }}>
-      <T size={12.5} color={payment.status === 'failed' ? C.error : C.textSecondary}>
+    <View accessibilityLiveRegion="polite" style={{ gap: space.space4 }}>
+      <T variant="metadata" color={payment.status === 'failed' ? C.errorText : C.textSecondary}>
         {PAYMENT_LABEL[payment.status]}
       </T>
       {!!payment.last_error && payment.status === 'failed' && (
-        <T size={12} color={C.error}>
-          {payment.last_error}
+        <T variant="caption" color={C.errorText}>
+          Stripe could not confirm this payment. Refresh to check the latest status.
         </T>
       )}
     </View>

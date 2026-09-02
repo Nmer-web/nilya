@@ -1,9 +1,8 @@
-import React, { useEffect } from 'react';
+import React from "react";
+import { Image } from "expo-image";
 import {
-  Animated,
-  Easing,
+  ActivityIndicator,
   Pressable,
-  StyleSheet,
   Text as RNText,
   View,
   type PressableProps,
@@ -11,79 +10,95 @@ import {
   type TextProps,
   type TextStyle,
   type ViewStyle,
-} from 'react-native';
+} from "react-native";
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
-import { Icon, type IconName } from '@/components/icon';
-import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { tapLight } from '@/lib/haptics';
-import { alpha, color as C, font, motion, radius, shadow, type as type_ } from '@/theme/tokens';
-
-/* ─────────────────────────── type ─────────────────────────── */
-
-const WEIGHT = {
-  400: '400',
-  500: '500',
-  600: '600',
-  700: '700',
-} as const;
-
-type Weight = keyof typeof WEIGHT;
+import { Icon, type IconName } from "@/components/icon";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { retryableReadMessage } from "@/lib/errors";
+import {
+  color as C,
+  duration,
+  elevation,
+  icon as iconToken,
+  opacity,
+  radius,
+  scale as scaleToken,
+  space,
+  spring,
+  touch,
+  type as typography,
+  type ColorRole,
+  type TypographyRole,
+} from "@/theme/tokens";
 
 export type TProps = TextProps & {
-  /**
-   * A real `fontWeight`. The sans stack is the platform's own — SF Pro on iOS,
-   * Roboto on Android — which synthesises weights properly, so unlike a
-   * multi-file webfont this needs no per-weight family.
-   */
-  w?: Weight;
-  /** Instrument Serif, used only for the SAWA wordmark. */
-  serif?: boolean;
-  size?: number;
+  variant?: TypographyRole;
+  colorRole?: ColorRole;
   color?: string;
-  /** Shorthand for `letterSpacing`, which the design uses heavily. */
-  tracking?: number;
-  lh?: number;
-  /** Pulls size/weight/tracking from the ramp in one prop. */
-  variant?: keyof typeof type_;
+  align?: TextStyle["textAlign"];
 };
 
-/** The app's only text component — every string goes through it. */
-export function T({ w, serif, size, color, tracking, lh, variant, style, ...rest }: TProps) {
-  const ramp = variant ? type_[variant] : undefined;
-  const weight = w ?? (ramp?.weight as Weight | undefined) ?? 400;
-  const fontSize = size ?? ramp?.size;
-  const letter = tracking ?? ramp?.tracking;
-
+/** The only shared text primitive. Canonical roles stay coherent as one unit. */
+export function T({
+  variant = "body",
+  colorRole = "textPrimary",
+  color,
+  align,
+  style,
+  ...rest
+}: TProps) {
+  const role = typography[variant];
   return (
     <RNText
       {...rest}
       style={[
-        {
-          ...(serif ? { fontFamily: font.serif } : { fontWeight: WEIGHT[weight] }),
-          color: color ?? C.text,
-          ...(fontSize !== undefined && { fontSize }),
-          ...(letter !== undefined && { letterSpacing: letter }),
-          ...(lh !== undefined && { lineHeight: lh }),
-        },
+        role,
+        { color: color ?? C[colorRole] },
+        align ? { textAlign: align } : undefined,
         style,
       ]}
     />
   );
 }
 
-/* ─────────────────────────── press feedback ─────────────────────────── */
-
-/**
- * The prototype relies on hover/`:active` for affordance. On touch the
- * equivalent is a brief opacity dip, applied uniformly here.
- */
-export function Tap({ style, children, ...rest }: PressableProps) {
+export function Tap({
+  style,
+  children,
+  disabled,
+  onFocus,
+  onBlur,
+  ...rest
+}: PressableProps) {
+  const [focused, setFocused] = React.useState(false);
   return (
     <Pressable
       {...rest}
-      style={(s) => [
-        typeof style === 'function' ? style(s) : style,
-        s.pressed && !rest.disabled && { opacity: 0.6 },
+      disabled={disabled}
+      accessibilityState={{
+        ...rest.accessibilityState,
+        disabled: Boolean(disabled),
+      }}
+      onFocus={(event) => {
+        setFocused(true);
+        onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        setFocused(false);
+        onBlur?.(event);
+      }}
+      style={(state) => [
+        typeof style === "function" ? style(state) : style,
+        focused
+          ? { outlineColor: C.primary, outlineWidth: 2, outlineOffset: 2 }
+          : undefined,
+        state.pressed && !disabled ? { opacity: opacity.pressed } : undefined,
+        disabled ? { opacity: opacity.disabled } : undefined,
       ]}
     >
       {children}
@@ -91,194 +106,235 @@ export function Tap({ style, children, ...rest }: PressableProps) {
   );
 }
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-export type PressableScaleProps = Omit<PressableProps, 'style'> & {
-  /** How far to compress. 0.97 for buttons, 0.98 for the larger card targets. */
+export type PressableScaleProps = Omit<PressableProps, "style"> & {
+  /** Canonical pressed scale; use a token value when overriding the role default. */
   scale?: number;
-  /** Fires a light tick on press-in, before the action resolves. */
-  haptic?: boolean;
+  motionRole?: "buttonPress" | "selection" | "cardPress";
   style?: StyleProp<ViewStyle>;
 };
 
-/**
- * Press target that dips in scale and springs back.
- *
- * Scale rather than opacity: a product image fading under the thumb looks like
- * a loading state, whereas a slight compression reads as the surface being
- * pushed. The spring is shared from the motion tokens so every pressable in
- * the app returns at the same rate.
- */
+const NativeWindPressable = React.forwardRef<
+  React.ComponentRef<typeof Pressable>,
+  PressableProps
+>(function NativeWindPressable(props, ref) {
+  return <Pressable ref={ref} {...props} />;
+});
+const AnimatedPressable = Animated.createAnimatedComponent(NativeWindPressable);
+
+/** Shared, interruptible press surface. Actions remain owned by Pressable. */
 export function PressableScale({
-  scale = 0.97,
-  haptic,
+  scale = scaleToken.buttonPressed,
+  motionRole = "buttonPress",
   style,
   children,
+  disabled,
   onPressIn,
   onPressOut,
+  onResponderTerminate,
+  onFocus,
+  onBlur,
   ...rest
 }: PressableScaleProps) {
-  const v = useAnimatedValue(1);
+  const { allowScale } = useReducedMotion();
+  const [focused, setFocused] = React.useState(false);
+  const pressedScale = useSharedValue(1);
+  const pressedOpacity = useSharedValue(1);
 
-  const spring = (toValue: number) =>
-    Animated.spring(v, { toValue, useNativeDriver: NATIVE_DRIVER, ...motion.spring }).start();
+  const settle = (nextScale: number, nextOpacity: number) => {
+    cancelAnimation(pressedScale);
+    cancelAnimation(pressedOpacity);
+    pressedOpacity.value = nextOpacity;
+    pressedScale.value = allowScale
+      ? withSpring(nextScale, spring[motionRole])
+      : 1;
+  };
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: pressedOpacity.value,
+    transform: [{ scale: pressedScale.value }],
+  }));
 
   return (
     <AnimatedPressable
       {...rest}
-      onPressIn={(e) => {
-        if (!rest.disabled) {
-          spring(scale);
-          if (haptic) tapLight();
-        }
-        onPressIn?.(e);
+      disabled={disabled}
+      accessibilityState={{
+        ...rest.accessibilityState,
+        disabled: Boolean(disabled),
       }}
-      onPressOut={(e) => {
-        spring(1);
-        onPressOut?.(e);
+      onFocus={(event) => {
+        setFocused(true);
+        onFocus?.(event);
       }}
-      style={[style, { transform: [{ scale: v }] }, rest.disabled === true && { opacity: 0.45 }]}
+      onBlur={(event) => {
+        setFocused(false);
+        onBlur?.(event);
+      }}
+      onPressIn={(event) => {
+        if (!disabled) settle(scale, opacity.pressed);
+        onPressIn?.(event);
+      }}
+      onPressOut={(event) => {
+        settle(1, 1);
+        onPressOut?.(event);
+      }}
+      onResponderTerminate={(event) => {
+        settle(1, 1);
+        onResponderTerminate?.(event);
+      }}
+      style={[
+        style,
+        animatedStyle,
+        focused
+          ? { outlineColor: C.primary, outlineWidth: 2, outlineOffset: 2 }
+          : undefined,
+        disabled ? { opacity: opacity.disabled } : undefined,
+      ]}
     >
       {children}
     </AnimatedPressable>
   );
 }
 
-/* ─────────────────────────── buttons ─────────────────────────── */
-
-/**
- * Indeterminate ring. Lives here rather than alongside the form fields so that
- * `Button` can own its own loading state without importing from a module that
- * already imports this one.
- */
-export function Spinner({ size = 16, color = C.primaryText }: { size?: number; color?: string }) {
-  const spin = useAnimatedValue(0);
-
-  React.useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(spin, {
-        toValue: 1,
-        duration: 700,
-        easing: Easing.linear,
-        useNativeDriver: NATIVE_DRIVER,
-      })
+export function Spinner({
+  size = iconToken.metadata.size,
+  color = C.textInverse,
+}: {
+  size?: number;
+  color?: string;
+}) {
+  const { reduceMotion } = useReducedMotion();
+  if (reduceMotion) {
+    return (
+      <View
+        accessibilityRole="progressbar"
+        accessibilityLabel="Working"
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 2,
+          borderColor: color,
+        }}
+      />
     );
-    loop.start();
-    return () => loop.stop();
-  }, [spin]);
-
+  }
   return (
-    <Animated.View
+    <ActivityIndicator
       accessibilityRole="progressbar"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        borderWidth: 2,
-        borderColor: alpha.spinnerTrack,
-        borderTopColor: color,
-        transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
-      }}
+      accessibilityLabel="Working"
+      size={size <= 20 ? "small" : "large"}
+      color={color}
     />
   );
 }
 
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
+export type ButtonSize = "regular" | "compact";
+
 type ButtonProps = {
   label: string;
+  accessibilityLabel?: string;
+  className?: string;
   onPress?: () => void;
-  /** solid: black fill · outline: hairline border · strong: 1.5px black border */
-  variant?: 'solid' | 'outline' | 'strong';
-  height?: number;
-  size?: number;
+  variant?: ButtonVariant;
+  buttonSize?: ButtonSize;
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
-  /** Swaps the label for a spinner and blocks presses. */
   loading?: boolean;
   loadingLabel?: string;
-  /** Light tick on press-in. Off by default — only committing actions buzz. */
-  haptic?: boolean;
   children?: React.ReactNode;
 };
 
 export function Button({
   label,
+  accessibilityLabel,
+  className,
   onPress,
-  variant = 'solid',
-  height = 50,
-  size = 15,
+  variant = "primary",
+  buttonSize = "regular",
   style,
   disabled,
   loading,
   loadingLabel,
-  haptic,
   children,
 }: ButtonProps) {
-  const solid = variant === 'solid';
-  const ink = solid ? C.primaryText : C.text;
+  const unavailable = Boolean(disabled || loading || !onPress);
+  const primary = variant === "primary";
+  const secondary = variant === "secondary";
+  const destructive = variant === "destructive";
+  const foreground = primary || destructive ? C.textInverse : C.textPrimary;
+  const visualHeight =
+    buttonSize === "compact" ? touch.minimum : touch.standard;
+
   return (
     <PressableScale
       onPress={onPress}
-      disabled={disabled || loading}
-      haptic={haptic}
+      disabled={unavailable}
       accessibilityRole="button"
-      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
-      accessibilityLabel={loading ? (loadingLabel ?? 'Working') : label}
+      accessibilityLabel={
+        loading
+          ? (loadingLabel ?? accessibilityLabel ?? label)
+          : (accessibilityLabel ?? label)
+      }
+      accessibilityState={{ disabled: unavailable, busy: Boolean(loading) }}
+      className={className}
       style={[
         {
-          height,
-          borderRadius: radius.lg,
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'row',
-          gap: 9,
-          backgroundColor: solid ? C.text : C.background,
-          borderWidth: variant === 'strong' ? 1.5 : variant === 'outline' ? 1 : 0,
-          borderColor: variant === 'strong' ? C.text : C.borderStrong,
+          minHeight: visualHeight,
+          paddingVertical: space.space12,
+          paddingHorizontal: space.space24,
+          borderRadius: radius.radiusMedium,
+          borderCurve: "continuous",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "row",
+          gap: space.space8,
+          backgroundColor: primary ? C.primary : destructive ? C.error : C.surface,
+          borderWidth: secondary ? 1 : 0,
+          borderColor: secondary ? C.border : "transparent",
         },
+        unavailable ? { opacity: opacity.disabled } : undefined,
         style,
       ]}
     >
-      {loading ? (
-        <>
-          <Spinner color={ink} />
-          <T w={600} size={size} color={ink}>
-            {loadingLabel ?? 'Processing…'}
-          </T>
-        </>
-      ) : (
-        <>
-          {children}
-          <T w={600} size={size} color={ink}>
-            {label}
-          </T>
-        </>
-      )}
+      {loading ? <Spinner color={foreground} /> : children}
+      <T
+        variant="button"
+        color={unavailable && !primary && !destructive ? C.textSecondary : foreground}
+      >
+        {loading ? (loadingLabel ?? "Working…") : label}
+      </T>
     </PressableScale>
   );
 }
 
-/* ─────────────────────────── surfaces ─────────────────────────── */
-
-/** The neutral card used for every grouped block in the design. */
 export function Card({
   style,
   children,
   padded,
+  variant = "compact",
 }: {
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
   padded?: boolean;
+  variant?: "listing" | "editorial" | "compact" | "selection";
 }) {
+  const framed =
+    variant === "editorial" || variant === "selection" || variant === "compact";
   return (
     <View
       style={[
-        {
-          backgroundColor: C.surface,
-          borderWidth: 1,
-          borderColor: C.border,
-          borderRadius: radius.lg,
-        },
-        padded && { padding: 15 },
+        framed
+          ? {
+              backgroundColor: C.surface,
+              borderWidth: 1,
+              borderColor: C.border,
+              borderRadius: radius.radiusLarge,
+              borderCurve: "continuous",
+            }
+          : undefined,
+        padded ? { padding: space.space16 } : undefined,
         style,
       ]}
     >
@@ -287,39 +343,30 @@ export function Card({
   );
 }
 
-/**
- * A tinted callout.
- *
- * `neutral` is the default because most callouts are simply information, and
- * information does not warrant colour. Reach for a tint only when it carries
- * meaning: `accent` for genuinely promotional content, `green` for trust,
- * `error` for failure.
- */
 export function Note({
-  tone = 'neutral',
+  tone = "neutral",
   children,
   style,
 }: {
-  tone?: 'neutral' | 'accent' | 'green' | 'error';
+  tone?: "neutral" | "success" | "error" | "warning";
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
   const fill = {
-    neutral: { bg: C.surface, border: C.border },
-    accent: { bg: C.accentBg, border: C.accentBorder },
-    green: { bg: C.successBg, border: C.successBorder },
-    error: { bg: C.errorBg, border: C.errorBorder },
+    neutral: { backgroundColor: C.surface, borderColor: C.border },
+    success: { backgroundColor: C.successSurface, borderColor: C.success },
+    error: { backgroundColor: C.errorSurface, borderColor: C.error },
+    warning: { backgroundColor: C.warningSurface, borderColor: C.warning },
   }[tone];
-
   return (
     <View
       style={[
+        fill,
         {
-          backgroundColor: fill.bg,
           borderWidth: 1,
-          borderColor: fill.border,
-          borderRadius: radius.lg,
-          padding: 13,
+          borderRadius: radius.radiusLarge,
+          borderCurve: "continuous",
+          padding: space.space12,
         },
         style,
       ]}
@@ -328,96 +375,63 @@ export function Note({
     </View>
   );
 }
-
-/* ─────────────────────────── chips ─────────────────────────── */
 
 export function Chip({
   label,
   active,
   onPress,
-  height = 34,
-  round = 17,
+  disabled,
+  height = touch.minimum,
+  round = radius.radiusMedium,
   style,
 }: {
   label: string;
   active?: boolean;
   onPress?: () => void;
+  disabled?: boolean;
   height?: number;
   round?: number;
   style?: StyleProp<ViewStyle>;
 }) {
-  const p = useAnimatedValue(active ? 1 : 0);
-
-  useEffect(() => {
-    Animated.timing(p, {
-      toValue: active ? 1 : 0,
-      duration: motion.fast,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: NATIVE_DRIVER,
-    }).start();
-  }, [active, p]);
-
-  /**
-   * Selection cross-fades rather than switching.
-   *
-   * The fill is a separate layer whose opacity animates, and the label is drawn
-   * twice — dark and light — with complementary opacities. That is more markup
-   * than animating `backgroundColor` and `color` directly, but colour
-   * interpolation cannot run on the native driver, so the direct version would
-   * put every chip in the rail on the JS thread during a horizontal scroll.
-   * Fading a single ink-coloured label over a darkening fill is not an option
-   * either: it spends the first frames as dark text on a dark ground.
-   */
-  const out = p.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
-
-  const label_ = (color: string) => (
-    <T w={active ? 600 : 500} size={13.5} color={color} numberOfLines={1}>
-      {label}
-    </T>
-  );
-
   return (
     <PressableScale
-      scale={0.96}
       onPress={onPress}
+      disabled={disabled || !onPress}
+      motionRole="selection"
       accessibilityRole="button"
-      accessibilityState={{ selected: !!active }}
+      accessibilityState={{
+        selected: Boolean(active),
+        disabled: Boolean(disabled || !onPress),
+      }}
       style={[
         {
-          height,
-          paddingHorizontal: 15,
+          minHeight: Math.max(height, touch.minimum),
+          paddingVertical: space.space8,
+          paddingHorizontal: space.space16,
           borderRadius: round,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: C.background,
+          borderCurve: "continuous",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "row",
+          gap: space.space8,
+          backgroundColor: active ? C.primary : C.surface,
           borderWidth: 1,
-          borderColor: active ? C.text : C.border,
-          overflow: 'hidden',
+          borderColor: active ? C.primary : C.border,
         },
+        disabled ? { opacity: opacity.disabled } : undefined,
         style,
       ]}
     >
-      <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: C.text, opacity: p }]}
-        pointerEvents="none"
-      />
-      <Animated.View style={{ opacity: out }}>{label_(C.text)}</Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          { alignItems: 'center', justifyContent: 'center', opacity: p },
-        ]}
-      >
-        {label_(C.primaryText)}
-      </Animated.View>
+      {active ? (
+        <Icon name="check" role="metadata" color={C.textInverse} />
+      ) : null}
+      <T variant="cardTitle" color={active ? C.textInverse : C.textPrimary}>
+        {label}
+      </T>
     </PressableScale>
   );
 }
 
-/* ─────────────────────────── segmented control ─────────────────────────── */
-
-/** Two-up switch on a recessed track — Inbox tabs and Orders tabs. */
 export function Segmented<K extends string>({
   options,
   value,
@@ -431,43 +445,57 @@ export function Segmented<K extends string>({
 }) {
   return (
     <View
+      accessibilityRole="tablist"
       style={[
-        { flexDirection: 'row', gap: 6, backgroundColor: C.surfaceSecondary, borderRadius: radius.md, padding: 3 },
+        {
+          flexDirection: "row",
+          gap: space.space4,
+          backgroundColor: C.surfaceSecondary,
+          borderRadius: radius.radiusMedium,
+          borderCurve: "continuous",
+          padding: space.space4,
+        },
         style,
       ]}
     >
-      {options.map((o) => {
-        const on = o.key === value;
+      {options.map((option) => {
+        const selected = option.key === value;
         return (
-          <Tap
-            key={o.key}
-            onPress={() => onChange(o.key)}
+          <PressableScale
+            key={option.key}
+            onPress={() => onChange(option.key)}
+            motionRole="selection"
             accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
+            accessibilityState={{ selected }}
             style={{
               flex: 1,
-              height: 34,
-              borderRadius: 9,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              backgroundColor: on ? C.background : 'transparent',
-              ...(on && shadow.raised),
+              minHeight: touch.minimum,
+              borderRadius: radius.radiusSmall,
+              borderCurve: "continuous",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: space.space4,
+              backgroundColor: selected ? C.primary : "transparent",
+              borderWidth: selected ? 1 : 0,
+              borderColor: selected ? C.primary : C.border,
+              ...(selected ? elevation.raised : {}),
             }}
           >
-            <T w={600} size={13.5} color={on ? C.text : C.textSecondary}>
-              {o.label}
+            <T
+              variant="cardTitle"
+              color={selected ? C.textInverse : C.textSecondary}
+            >
+              {option.label}
             </T>
-            {o.badge}
-          </Tap>
+            {option.badge}
+          </PressableScale>
         );
       })}
     </View>
   );
 }
 
-/** Underlined tab strip used on the two profile screens. */
 export function UnderlineTabs<K extends string>({
   options,
   value,
@@ -480,127 +508,209 @@ export function UnderlineTabs<K extends string>({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <View style={[{ flexDirection: 'row', gap: 22 }, style]}>
-      {options.map((o) => {
-        const on = o.key === value;
+    <View
+      accessibilityRole="tablist"
+      style={[{ flexDirection: "row", gap: space.space24 }, style]}
+    >
+      {options.map((option) => {
+        const selected = option.key === value;
         return (
-          <Tap
-            key={o.key}
-            onPress={() => onChange(o.key)}
+          <PressableScale
+            key={option.key}
+            onPress={() => onChange(option.key)}
+            motionRole="selection"
             accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
+            accessibilityState={{ selected }}
             style={{
-              paddingBottom: 8,
+              minHeight: touch.minimum,
+              justifyContent: "center",
               borderBottomWidth: 2,
-              borderBottomColor: on ? C.text : 'transparent',
+              borderBottomColor: selected ? C.primary : "transparent",
             }}
           >
-            <T w={600} size={14.5} color={on ? C.text : C.textMuted}>
-              {o.label}
+            <T
+              variant="bodyMedium"
+              color={selected ? C.textPrimary : C.textSecondary}
+            >
+              {option.label}
             </T>
-          </Tap>
+          </PressableScale>
         );
       })}
     </View>
   );
 }
 
-/* ─────────────────────────── avatar ─────────────────────────── */
-
 export function Avatar({
   initials,
   bg,
-  size = 44,
-  fontSize,
+  size = touch.minimum,
+  imageUrl,
+  accessibilityLabel,
 }: {
   initials: string;
   bg: string;
   size?: number;
-  fontSize?: number;
+  imageUrl?: string | null;
+  accessibilityLabel?: string;
 }) {
+  const normalizedImageUrl = imageUrl?.trim() || null;
+
+  return (
+    <AvatarVisual
+      key={normalizedImageUrl ?? "initials"}
+      initials={initials}
+      bg={bg}
+      size={size}
+      imageUrl={normalizedImageUrl}
+      accessibilityLabel={accessibilityLabel}
+    />
+  );
+}
+
+function AvatarVisual({
+  initials,
+  bg,
+  size,
+  imageUrl,
+  accessibilityLabel,
+}: {
+  initials: string;
+  bg: string;
+  size: number;
+  imageUrl: string | null;
+  accessibilityLabel?: string;
+}) {
+  const [imageFailed, setImageFailed] = React.useState(false);
+  const initialsVariant: TypographyRole =
+    size >= 80
+      ? "screenTitle"
+      : size >= 56
+        ? "sectionTitle"
+        : size <= 36
+          ? "caption"
+          : "bodyMedium";
+
+  if (imageUrl && !imageFailed) {
+    return (
+      <Image
+        source={{ uri: imageUrl }}
+        contentFit="cover"
+        transition={duration.standard}
+        onError={() => setImageFailed(true)}
+        accessible={Boolean(accessibilityLabel)}
+        accessibilityLabel={accessibilityLabel}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: bg,
+        }}
+      />
+    );
+  }
+
   return (
     <View
+      accessible={Boolean(accessibilityLabel)}
+      accessibilityLabel={accessibilityLabel}
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
         backgroundColor: bg,
-        alignItems: 'center',
-        justifyContent: 'center',
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
-      <T w={600} size={fontSize ?? size * 0.34} color={C.primaryText}>
+      <T variant={initialsVariant} color={C.textInverse}>
         {initials}
       </T>
     </View>
   );
 }
 
-/* ─────────────────────────── badge ─────────────────────────── */
-
-/**
- * Accent count pill — unread offers, order counts, tab badges.
- *
- * One of the few places the accent is spent. White on `C.accent` clears 4.5:1,
- * which matters at 11px.
- */
-export function Badge({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Badge({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
   return (
     <View
       style={[
         {
-          minWidth: 19,
-          height: 19,
-          paddingHorizontal: 5,
-          borderRadius: 10,
+          minWidth: 20,
+          minHeight: 20,
+          paddingHorizontal: space.space4,
+          borderRadius: radius.radiusPill,
           backgroundColor: C.accent,
-          alignItems: 'center',
-          justifyContent: 'center',
+          alignItems: "center",
+          justifyContent: "center",
         },
         style,
       ]}
     >
-      <T w={700} size={11} color={C.primaryText}>
+      <T variant="caption" color={C.textPrimary}>
         {children}
       </T>
     </View>
   );
 }
 
-/* ─────────────────────────── toggle ─────────────────────────── */
-
-export function Toggle({ on, onPress }: { on: boolean; onPress?: () => void }) {
+export function Toggle({
+  on,
+  onPress,
+  accessibilityLabel,
+  accessibilityHint,
+}: {
+  on: boolean;
+  onPress?: () => void;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+}) {
   return (
-    <Tap
+    <PressableScale
       onPress={onPress}
+      disabled={!onPress}
+      motionRole="selection"
       accessibilityRole="switch"
-      accessibilityState={{ checked: on }}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ checked: on, disabled: !onPress }}
       style={{
-        width: 46,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: on ? C.text : C.border,
+        width: touch.minimum,
+        height: touch.minimum,
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
       <View
         style={{
-          position: 'absolute',
-          top: 3,
-          left: on ? 21 : 3,
-          width: 22,
-          height: 22,
-          borderRadius: 11,
-          backgroundColor: C.background,
-          ...shadow.raised,
+          width: 44,
+          height: 28,
+          borderRadius: radius.radiusPill,
+          backgroundColor: on ? C.primary : C.borderStrong,
         }}
-      />
-    </Tap>
+      >
+        <View
+          style={{
+            position: "absolute",
+            top: 3,
+            left: on ? 19 : 3,
+            width: 22,
+            height: 22,
+            borderRadius: radius.radiusPill,
+            backgroundColor: C.background,
+            ...elevation.raised,
+          }}
+        />
+      </View>
+    </PressableScale>
   );
 }
 
-/* ─────────────────────────── rows ─────────────────────────── */
-
-/** Grouped-list row with an optional leading icon and trailing chevron. */
 export function Row({
   icon,
   label,
@@ -618,52 +728,69 @@ export function Row({
   onPress?: () => void;
   last?: boolean;
   right?: React.ReactNode;
-  /** Fixes the label column, as on the Sell form. */
   labelWidth?: number;
 }) {
-  return (
-    <Tap
-      onPress={onPress}
-      accessibilityRole="button"
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingHorizontal: 15,
-        paddingVertical: 14,
-        borderBottomWidth: last ? 0 : 1,
-        borderBottomColor: C.border,
-      }}
-    >
-      {icon && <Icon name={icon} size={18} color={C.text} />}
+  const content = (
+    <>
+      {icon ? <Icon name={icon} role="inline" color={C.textPrimary} /> : null}
       {labelWidth ? (
         <>
-          <T size={13.5} color={C.textSecondary} style={{ width: labelWidth }}>
+          <T
+            variant="metadata"
+            color={C.textSecondary}
+            style={{ width: labelWidth }}
+          >
             {label}
           </T>
-          <T w={500} size={14.5} color={valueColor ?? C.text} numberOfLines={1} style={{ flex: 1 }}>
+          <T
+            variant="bodyMedium"
+            color={valueColor ?? C.textPrimary}
+            style={{ flex: 1 }}
+          >
             {value}
           </T>
         </>
       ) : (
         <>
-          <T w={500} size={14.5} style={{ flex: 1 }}>
+          <T variant="bodyMedium" style={{ flex: 1 }}>
             {label}
           </T>
-          {value !== undefined && (
-            <T size={13} color={valueColor ?? C.textMuted}>
+          {value !== undefined ? (
+            <T variant="metadata" color={valueColor ?? C.textSecondary}>
               {value}
             </T>
-          )}
+          ) : null}
         </>
       )}
       {right}
-      <Icon name="chevronRight" size={16} color={C.borderStrong} />
+      {onPress ? (
+        <Icon name="chevronRight" role="metadata" color={C.textSecondary} />
+      ) : null}
+    </>
+  );
+  const rowStyle: ViewStyle = {
+    minHeight: touch.minimum,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.space12,
+    paddingHorizontal: space.space16,
+    paddingVertical: space.space12,
+    borderBottomWidth: last ? 0 : 1,
+    borderBottomColor: C.border,
+  };
+  return onPress ? (
+    <Tap
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label}, ${value}` : label}
+      style={rowStyle}
+    >
+      {content}
     </Tap>
+  ) : (
+    <View style={rowStyle}>{content}</View>
   );
 }
-
-/* ─────────────────────────── empty state ─────────────────────────── */
 
 export function EmptyState({
   icon,
@@ -679,38 +806,179 @@ export function EmptyState({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <View style={[{ paddingVertical: 72, paddingHorizontal: 48, alignItems: 'center' }, style]}>
+    <View
+      style={[
+        {
+          paddingVertical: space.space48,
+          paddingHorizontal: space.space24,
+          alignItems: "center",
+        },
+        style,
+      ]}
+    >
       <View
+        accessible={false}
         style={{
-          width: 64,
-          height: 64,
-          borderRadius: 32,
+          width: touch.large,
+          height: touch.large,
+          borderRadius: radius.radiusPill,
           backgroundColor: C.surfaceSecondary,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 18,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: space.space16,
         }}
       >
-        <Icon name={icon} size={26} color={C.textMuted} strokeWidth={1.6} />
+        <Icon name={icon} role="hero" color={C.textSecondary} decorative />
       </View>
-      <T w={700} size={17} tracking={-0.3} style={{ textAlign: 'center' }}>
+      <T
+        variant="sectionTitle"
+        accessibilityRole="header"
+        style={{ textAlign: "center" }}
+      >
         {title}
       </T>
-      <T size={14} color={C.textSecondary} lh={21} style={{ textAlign: 'center', marginTop: 7 }}>
+      <T
+        variant="body"
+        color={C.textSecondary}
+        style={{ textAlign: "center", marginTop: space.space8 }}
+      >
         {body}
       </T>
-      {/* Call sites set their own top margin, so this only provides the width. */}
-      {!!action && <View style={{ alignSelf: 'stretch' }}>{action}</View>}
+      {action ? (
+        <View style={{ alignSelf: "stretch", marginTop: space.space16 }}>
+          {action}
+        </View>
+      ) : null}
     </View>
   );
 }
 
-/* ─────────────────────────── misc ─────────────────────────── */
-
-/** Section label above a group of controls. */
-export function SectionLabel({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
+/** Concise inline failure for fields, forms, and retained-content refreshes. */
+export function InlineError({
+  message,
+  actionLabel,
+  onAction,
+  style,
+}: {
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
   return (
-    <T w={600} size={13} color={C.textSecondary} style={style}>
+    <View
+      accessibilityRole="alert"
+      style={[
+        {
+          minHeight: touch.minimum,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: space.space8,
+          paddingHorizontal: space.space12,
+          paddingVertical: space.space8,
+          borderRadius: radius.radiusMedium,
+          borderWidth: 1,
+          borderColor: C.error,
+          backgroundColor: C.errorSurface,
+        },
+        style,
+      ]}
+    >
+      <Icon name="info" role="metadata" color={C.error} decorative />
+      <T variant="metadata" color={C.errorText} style={{ flex: 1 }}>
+        {message}
+      </T>
+      {actionLabel && onAction ? (
+        <Tap
+          onPress={onAction}
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
+          style={{
+            minWidth: touch.minimum,
+            minHeight: touch.minimum,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <T variant="button" color={C.errorText}>
+            {actionLabel}
+          </T>
+        </Tap>
+      ) : null}
+    </View>
+  );
+}
+
+/** Full-screen/read-region error that never exposes raw service diagnostics. */
+export function ScreenError({
+  error,
+  title = "Could not load this page",
+  fallback = "Check your connection and try again.",
+  onRetry,
+}: {
+  error?: unknown;
+  title?: string;
+  fallback?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <EmptyState
+      icon="info"
+      title={title}
+      body={retryableReadMessage(error, fallback)}
+      action={
+        onRetry ? <Button label="Try again" onPress={onRetry} /> : undefined
+      }
+    />
+  );
+}
+
+/** Non-destructive refresh failure shown while existing real content remains. */
+export function RefreshNotice({ onRetry }: { onRetry?: () => void }) {
+  return (
+    <Note tone="error">
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: space.space8,
+        }}
+      >
+        <Icon name="info" role="metadata" color={C.error} decorative />
+        <T variant="metadata" color={C.errorText} style={{ flex: 1 }}>
+          Could not refresh. The content below may be out of date.
+        </T>
+        {onRetry ? (
+          <Tap
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel="Retry refresh"
+            style={{
+              minWidth: touch.minimum,
+              minHeight: touch.minimum,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <T variant="button" color={C.errorText}>
+              Retry
+            </T>
+          </Tap>
+        ) : null}
+      </View>
+    </Note>
+  );
+}
+
+export function SectionLabel({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<TextStyle>;
+}) {
+  return (
+    <T variant="cardTitle" color={C.textSecondary} style={style}>
       {children}
     </T>
   );

@@ -1,18 +1,14 @@
-import React, { useState } from 'react';
-import { View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Text, View } from 'react-native';
 
 import { formatPrice } from '@/components/listing-card';
-import { Button, T } from '@/components/ui';
+import { FadeIn } from '@/components/skeleton';
+import { Button, InlineError } from '@/components/ui';
+import { haptic } from '@/lib/haptics';
 import { respondToOffer } from '@/lib/mutations';
 import type { OfferRow } from '@/lib/queries';
-import { color as C, radius, space } from '@/theme/tokens';
+import { space } from '@/theme/tokens';
 
-/**
- * The six `offer_state` values, in the words the UI shows.
- *
- * `expired` is included because the column can hold it — whatever sweeps
- * `expires_at` sets it, and a row in that state must not render blank.
- */
 const STATE_LABEL: Record<OfferRow['state'], string> = {
   open: 'Pending',
   countered: 'Countered',
@@ -22,14 +18,8 @@ const STATE_LABEL: Record<OfferRow['state'], string> = {
   expired: 'Expired',
 };
 
-/**
- * An offer inside a conversation.
- *
- * The actions shown are exactly the ones the policies permit: the seller
- * answers, the buyer withdraws, and only while the offer is still live. An
- * accepted offer shows no buttons at all — the next step is checkout, which is
- * the buyer's to take from the listing.
- */
+type OfferAction = 'accepted' | 'declined' | 'withdrawn';
+
 export function OfferCard({
   offer,
   me,
@@ -41,103 +31,118 @@ export function OfferCard({
   currency: string;
   onChanged: () => void;
 }) {
-  const [busy, setBusy] = useState<null | 'accepted' | 'declined' | 'withdrawn'>(null);
+  const [busy, setBusy] = useState<OfferAction | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef<OfferAction | null>(null);
 
-  const mine = me === offer.buyer_id;
-  const live = offer.state === 'open' || offer.state === 'countered';
+  const isBuyer = me === offer.buyer_id;
+  const isSeller = me === offer.seller_id;
+  const actionableBuyerOffer = offer.state === 'open' && offer.counter_of === null;
+  const attribution = offer.counter_of
+    ? 'Counteroffer'
+    : offer.state === 'countered'
+      ? 'Offer countered'
+      : isBuyer
+        ? 'You offered'
+        : 'Offer received';
 
-  const respond = async (action: 'accepted' | 'declined' | 'withdrawn') => {
-    if (busy) return;
+  const respond = async (action: OfferAction) => {
+    if (busyRef.current) return;
+    busyRef.current = action;
     setBusy(action);
     setError(null);
     try {
       await respondToOffer(offer.id, action);
+      haptic('important-confirmation');
       onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not update the offer');
+    } catch {
+      setError('Could not update the offer. Try again.');
     } finally {
+      busyRef.current = null;
       setBusy(null);
     }
   };
 
-  const tone =
-    offer.state === 'accepted' ? C.success : offer.state === 'open' ? C.accent : C.textSecondary;
+  const stateClassName = offer.state === 'accepted'
+    ? 'text-nilya-success'
+    : offer.state === 'declined'
+      ? 'text-nilya-error-text'
+      : offer.state === 'open' || offer.state === 'countered'
+        ? 'text-nilya-text'
+        : 'text-nilya-secondary';
 
   return (
-    <View
-      style={{
-        borderRadius: radius.lg,
-        borderWidth: 1,
-        borderColor: C.border,
-        backgroundColor: C.surface,
-        padding: 14,
-        gap: 8,
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-        <T w={700} size={17} style={{ flex: 1 }}>
-          {formatPrice(offer.amount_cents, currency)}
-        </T>
-        <T w={600} size={11.5} color={tone}>
-          {STATE_LABEL[offer.state]}
-        </T>
-      </View>
-
-      <T size={12.5} color={C.textSecondary}>
-        {mine ? 'You offered' : 'Offer received'} ·{' '}
-        {new Date(offer.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-      </T>
-
-      {live && (
-        <View style={{ flexDirection: 'row', gap: 7, marginTop: 2 }}>
-          {mine ? (
-            <Button
-              label={busy === 'withdrawn' ? 'Withdrawing…' : 'Withdraw'}
-              variant="outline"
-              height={40}
-              size={13.5}
-              disabled={!!busy}
-              onPress={() => respond('withdrawn')}
-              style={{ flex: 1, borderRadius: 11 }}
-            />
-          ) : (
-            <>
-              <Button
-                label={busy === 'accepted' ? 'Accepting…' : 'Accept'}
-                height={40}
-                size={13.5}
-                disabled={!!busy}
-                onPress={() => respond('accepted')}
-                style={{ flex: 1, borderRadius: 11 }}
-              />
-              <Button
-                label={busy === 'declined' ? 'Declining…' : 'Decline'}
-                variant="outline"
-                height={40}
-                size={13.5}
-                disabled={!!busy}
-                onPress={() => respond('declined')}
-                style={{ flex: 1, borderRadius: 11 }}
-              />
-            </>
-          )}
+    <FadeIn y={4}>
+      <View className="gap-2 rounded-2xl border border-nilya-border bg-nilya-surface p-4">
+        <View className="flex-row items-start gap-3">
+          <View className="min-w-0 flex-1">
+            <Text className="text-xs font-medium text-nilya-secondary">Offer</Text>
+            <Text className="mt-1 text-xl font-bold text-nilya-text">
+              {formatPrice(offer.amount_cents, currency)}
+            </Text>
+          </View>
+          <Text className={`text-sm font-semibold ${stateClassName}`}>
+            {STATE_LABEL[offer.state]}
+          </Text>
         </View>
-      )}
 
-      {offer.state === 'accepted' && (
-        <T size={12} color={C.textSecondary} lh={17} style={{ marginTop: 2 }}>
-          {mine
-            ? 'Open the listing to pay at this price.'
-            : 'The buyer can now check out at this price.'}
-        </T>
-      )}
+        <Text className="text-xs text-nilya-secondary">
+          {attribution} -{' '}
+          {new Date(offer.created_at).toLocaleDateString(undefined, {
+            day: 'numeric',
+            month: 'short',
+          })}
+        </Text>
 
-      {!!error && (
-        <T size={12} color={C.error} style={{ marginTop: space.xs }}>
-          {error}
-        </T>
-      )}
-    </View>
+        {actionableBuyerOffer && isBuyer && (
+          <View className="mt-1 flex-row gap-2">
+            <Button
+              label={busy === 'withdrawn' ? 'Withdrawing...' : 'Withdraw'}
+              variant="secondary"
+              buttonSize="compact"
+              disabled={!!busy}
+              loading={busy === 'withdrawn'}
+              loadingLabel="Withdrawing..."
+              onPress={() => respond('withdrawn')}
+              style={{ flex: 1 }}
+            />
+          </View>
+        )}
+
+        {actionableBuyerOffer && isSeller && (
+          <View className="mt-1 flex-row gap-2">
+            <Button
+              label={busy === 'accepted' ? 'Accepting...' : 'Accept'}
+              buttonSize="compact"
+              disabled={!!busy}
+              loading={busy === 'accepted'}
+              loadingLabel="Accepting..."
+              onPress={() => respond('accepted')}
+              style={{ flex: 1 }}
+            />
+            <Button
+              label={busy === 'declined' ? 'Declining...' : 'Decline'}
+              variant="secondary"
+              buttonSize="compact"
+              disabled={!!busy}
+              loading={busy === 'declined'}
+              loadingLabel="Declining..."
+              onPress={() => respond('declined')}
+              style={{ flex: 1 }}
+            />
+          </View>
+        )}
+
+        {offer.state === 'accepted' && (
+          <Text className="mt-1 text-xs leading-4 text-nilya-secondary">
+            {isBuyer
+              ? 'Open the listing to pay at this price.'
+              : 'The buyer can now check out at this price.'}
+          </Text>
+        )}
+
+        {!!error && <InlineError message={error} style={{ marginTop: space.space4 }} />}
+      </View>
+    </FadeIn>
   );
 }

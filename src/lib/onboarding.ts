@@ -1,34 +1,51 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useState } from 'react';
 
 /**
- * Onboarding state that has nowhere else to live.
+ * The first-run record, and the reasons each field lives on the device.
  *
- * Three things are kept here rather than in Postgres, and the reason is the
- * same for each: the schema has no column for them and inventing one is not
- * this task's to do.
- *
- *   language   — no `profiles.language`. Stored locally and treated as a device
- *                preference. Note that nothing is translated yet, so this
- *                records a choice rather than applying one.
- *   categories — `follows` is profile→profile; there is no user↔category table.
- *                Selections personalise the local first run only.
+ *   language   — no `profiles.language`, and no settings table anywhere in the
+ *                schema. A genuine device preference. Nothing is translated yet,
+ *                so this records a choice rather than applying one, and the step
+ *                says so.
+ *   country    — the one hybrid. It IS a real column (`profiles.country_code`),
+ *                but the country step runs before an account exists, so there is
+ *                no row to write it to yet. Held here until a session exists and
+ *                the profile step commits it: a staging area, not the source of
+ *                truth. After that commit the account is authoritative and this
+ *                value is not read again.
  *   completed  — no `profiles.onboarded_at`. A device flag, which is the right
- *                shape anyway: onboarding is a first-run experience per install.
+ *                shape anyway: onboarding is a first-run experience per install,
+ *                and it is what the root navigator reads to decide whether to
+ *                open the flow at all.
  *
- * `country` is the one hybrid. It IS a real column (`profiles.country_code`),
- * but the country step runs before an account exists, so there is no row to
- * write it to yet. It is held here until a session exists and then written to
- * the profile — local as a staging area, not as the source of truth.
+ * Name, city and avatar are not here at all: all three are written straight to
+ * `profiles` by the step that collects them, which runs after authentication.
  *
- * Name and avatar are not here at all: both steps run after authentication and
- * go straight to `profiles`.
+ * REMOVED — `categories`. Earlier builds stored chosen interests here. There is
+ * no member-to-category relation anywhere in the schema (`follows` is
+ * profile→profile, `favorites` is user→listing, `categories` has no join
+ * table), so a stored interest could not reach the account, could not survive a
+ * reinstall, and personalised nothing. Keeping it would have been exactly the
+ * "parallel local store standing in for a column" the constitution forbids, so
+ * the step was removed rather than dressed up. `readOnboarding` still tolerates
+ * the key in records written by those earlier builds and discards it.
+ *
+ * This module is storage and constants only. The live state is a provider —
+ * see `store/onboarding-store.tsx` — because the root navigator and the steps
+ * have to agree on `completed`, and a hook that each caller instantiates
+ * separately would leave the navigator reading a stale copy of it.
  */
 
+// Compatibility identifier: changing this would replay onboarding for existing installs.
 const KEY = 'sawa.onboarding.v1';
 
 export type LanguageCode = 'en' | 'fr' | 'ar';
 
+/**
+ * The languages offered, each named in its own script with the English name
+ * beneath — a reader who cannot read the current interface language can still
+ * find their own.
+ */
 export const LANGUAGES: { code: LanguageCode; label: string; native: string }[] = [
   { code: 'en', label: 'English', native: 'English' },
   { code: 'fr', label: 'French', native: 'Français' },
@@ -39,78 +56,40 @@ export type OnboardingState = {
   language: LanguageCode | null;
   /** ISO 3166-1 alpha-2, staged until it can be written to `profiles`. */
   country: string | null;
-  /** Category slugs from the real `categories` table, chosen at first run. */
-  categories: string[];
   completed: boolean;
 };
 
-const EMPTY: OnboardingState = { language: null, country: null, categories: [], completed: false };
+export const EMPTY_ONBOARDING: OnboardingState = {
+  language: null,
+  country: null,
+  completed: false,
+};
 
-async function read(): Promise<OnboardingState> {
+export async function readOnboarding(): Promise<OnboardingState> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
-    if (!raw) return EMPTY;
+    if (!raw) return EMPTY_ONBOARDING;
     const parsed = JSON.parse(raw) as Partial<OnboardingState>;
+    /* Read field by field rather than spreading: a record written by an earlier
+       build carries a `categories` array that no longer has an owner, and
+       spreading would carry it back into state and straight out to storage. */
     return {
       language: parsed.language ?? null,
       country: parsed.country ?? null,
-      categories: Array.isArray(parsed.categories) ? parsed.categories : [],
       completed: parsed.completed === true,
     };
   } catch {
     /* A corrupt or unreadable value is treated as a fresh install rather than
        crashing the first screen the app ever shows. */
-    return EMPTY;
+    return EMPTY_ONBOARDING;
   }
 }
 
-async function write(next: OnboardingState): Promise<void> {
+export async function writeOnboarding(next: OnboardingState): Promise<void> {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(next));
   } catch {
     /* Storage full or unavailable: the flow still works for this session, the
-       person just sees the welcome again next launch. Not worth an error. */
+       person just sees the first run again next launch. Not worth an error. */
   }
-}
-
-/**
- * Reads the stored state once and exposes writers.
- *
- * `loading` matters: the root navigator must not decide between onboarding and
- * the app until this has resolved, or a returning user gets a flash of the
- * welcome screen before it corrects itself.
- */
-export function useOnboarding() {
-  const [state, setState] = useState<OnboardingState>(EMPTY);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const stored = await read();
-      if (cancelled) return;
-      setState(stored);
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const update = useCallback((patch: Partial<OnboardingState>) => {
-    setState((prev) => {
-      const next = { ...prev, ...patch };
-      void write(next);
-      return next;
-    });
-  }, []);
-
-  return {
-    ...state,
-    loading,
-    setLanguage: useCallback((language: LanguageCode) => update({ language }), [update]),
-    setCountry: useCallback((country: string) => update({ country: country.toUpperCase() }), [update]),
-    setCategories: useCallback((categories: string[]) => update({ categories }), [update]),
-    complete: useCallback(() => update({ completed: true }), [update]),
-  };
 }

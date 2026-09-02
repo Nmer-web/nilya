@@ -30,6 +30,7 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
 });
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 /** service_role: the only role with any write grant on `orders`. */
 const db = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
@@ -69,14 +70,26 @@ Deno.serve(async (req) => {
     return json({ error: 'Expected a JSON body' }, 400);
   }
 
-  const listingId = body.listingId?.trim();
-  const deliveryKey = body.deliveryKey?.trim();
+  const listingId = typeof body.listingId === 'string' ? body.listingId.trim() : '';
+  const deliveryKey = typeof body.deliveryKey === 'string' ? body.deliveryKey.trim() : '';
   if (!listingId || !deliveryKey) {
     return json({ error: 'listingId and deliveryKey are required' }, 400);
   }
+  if (!UUID_PATTERN.test(listingId)) {
+    return json({ error: 'That listing reference is not valid' }, 400);
+  }
+
+  if (body.offerId !== undefined && typeof body.offerId !== 'string') {
+    return json({ error: 'offerId must be a valid identifier' }, 400);
+  }
+
+  const offerId = body.offerId?.trim() || null;
+  if (offerId && !UUID_PATTERN.test(offerId)) {
+    return json({ error: 'That offer reference is not valid' }, 400);
+  }
 
   try {
-    return await createCheckout(buyerId, listingId, deliveryKey, body.offerId?.trim() || null);
+    return await createCheckout(buyerId, listingId, deliveryKey, offerId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Checkout failed';
     /* Deliberately not logging the body: it is a purchase request tied to a
@@ -111,30 +124,81 @@ async function createCheckout(
   /* ── the item, as the database has it ── */
   const { data: listing, error: listingError } = await db
     .from('listings')
-    .select('id, seller_id, title, price_cents, currency, status, country_code')
+    .select('id, seller_id, title, price_cents, currency, condition, status, country_code')
     .eq('id', listingId)
     .maybeSingle();
 
   if (listingError) throw new Error(listingError.message);
   if (!listing) throw new Error('That listing no longer exists');
   if (listing.status !== 'active') throw new Error('That listing is no longer available');
+  if (listing.condition !== 'new') throw new Error('That listing is not available on NILYA');
   if (listing.seller_id === buyerId) throw new Error('You cannot buy your own listing');
+  if (!Number.isSafeInteger(listing.price_cents) || listing.price_cents <= 0) {
+    throw new Error('That listing does not have a valid price');
+  }
+
+  /* Holiday mode is an availability state on the seller, not a listing status.
+     Check it before reading payout details or creating/reusing an order so a
+     direct or stale client cannot bypass the hidden Buy button. */
+  const { data: sellerProfile, error: sellerProfileError } = await db
+    .from('profiles')
+    .select('holiday_mode')
+    .eq('id', listing.seller_id)
+    .maybeSingle();
+
+  if (sellerProfileError || !sellerProfile) {
+    throw new Error('Seller availability could not be confirmed');
+  }
+  if (sellerProfile.holiday_mode === true) {
+    throw new Error('Seller is currently away');
+  }
+
+  /* Seller payout readiness is private. The trusted function checks it and
+     returns one generic availability error rather than exposing Connect data. */
+  const { data: sellerAccount, error: sellerAccountError } = await db
+    .from('seller_accounts')
+    .select('stripe_account_id, charges_enabled, payouts_enabled, details_submitted')
+    .eq('profile_id', listing.seller_id)
+    .maybeSingle();
+
+  if (sellerAccountError) throw new Error('Seller payment availability could not be confirmed');
+  if (
+    !sellerAccount?.stripe_account_id ||
+    !sellerAccount.charges_enabled ||
+    !sellerAccount.payouts_enabled ||
+    !sellerAccount.details_submitted
+  ) {
+    throw new Error("This product isn't available for checkout right now");
+  }
 
   /* ── price: an accepted offer overrides the list price ── */
   let itemPriceCents = listing.price_cents as number;
   if (offerId) {
     const { data: offer, error: offerError } = await db
       .from('offers')
-      .select('id, amount_cents, state, buyer_id, listing_id')
+      .select('id, amount_cents, state, buyer_id, seller_id, listing_id, expires_at')
       .eq('id', offerId)
       .maybeSingle();
 
     if (offerError) throw new Error(offerError.message);
     if (!offer) throw new Error('That offer no longer exists');
-    if (offer.buyer_id !== buyerId || offer.listing_id !== listingId) {
+    if (
+      offer.buyer_id !== buyerId ||
+      offer.seller_id !== listing.seller_id ||
+      offer.listing_id !== listingId
+    ) {
       throw new Error('That offer does not belong to this purchase');
     }
     if (offer.state !== 'accepted') throw new Error('That offer has not been accepted');
+    if (offer.expires_at) {
+      const expiry = Date.parse(offer.expires_at as string);
+      if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+        throw new Error('That offer is no longer available');
+      }
+    }
+    if (!Number.isSafeInteger(offer.amount_cents) || offer.amount_cents <= 0) {
+      throw new Error('That offer does not have a valid amount');
+    }
     itemPriceCents = offer.amount_cents as number;
   }
 
@@ -161,11 +225,17 @@ async function createCheckout(
 
   if (settingsError) throw new Error(settingsError.message);
 
+  const listingCurrency = String(listing.currency).trim().toUpperCase();
+  const baseCurrency = String(settings.base_currency).trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(listingCurrency) || listingCurrency !== baseCurrency) {
+    throw new Error('That listing currency is not supported for checkout');
+  }
+
   const shippingCents = option.price_cents as number;
   const protectionFeeCents = option.waives_protection_fee
     ? 0
     : (settings.protection_fee_cents as number);
-  const currency = (listing.currency ?? settings.base_currency ?? 'EUR') as string;
+  const currency = listingCurrency;
 
   /* ── the order ──
    *
@@ -176,7 +246,9 @@ async function createCheckout(
    */
   const existing = await db
     .from('orders')
-    .select('id, buyer_id, status')
+    .select(
+      'id, buyer_id, status, offer_id, item_price_cents, shipping_cents, protection_fee_cents, currency, delivery_kind, delivery_key'
+    )
     .eq('listing_id', listingId)
     .not('status', 'in', '("cancelled","refunded")')
     .maybeSingle();
@@ -185,9 +257,31 @@ async function createCheckout(
 
   let orderId: string;
   if (existing.data) {
-    const order = existing.data as { id: string; buyer_id: string; status: string };
+    const order = existing.data as {
+      id: string;
+      buyer_id: string;
+      status: string;
+      offer_id: string | null;
+      item_price_cents: number;
+      shipping_cents: number;
+      protection_fee_cents: number;
+      currency: string;
+      delivery_kind: string;
+      delivery_key: string;
+    };
     if (order.buyer_id !== buyerId) throw new Error('Someone else is already buying this item');
     if (order.status !== 'pending_payment') throw new Error('This order has already been paid');
+    if (
+      order.offer_id !== offerId ||
+      order.item_price_cents !== itemPriceCents ||
+      order.shipping_cents !== shippingCents ||
+      order.protection_fee_cents !== protectionFeeCents ||
+      order.currency.trim().toUpperCase() !== currency ||
+      order.delivery_kind !== option.kind ||
+      order.delivery_key !== option.key
+    ) {
+      throw new Error('This checkout was already prepared with different purchase details');
+    }
     /* The buyer came back to an unfinished checkout: reuse the order rather
        than orphaning it, so one listing does not accumulate dead orders. */
     orderId = order.id;
@@ -313,8 +407,8 @@ function returnPage(success: boolean): Response {
    * paid when the webhook says so. A courtesy page, not a receipt.
    */
   const text = success
-    ? 'Payment received.\n\nYou can close this window and return to SAWA. Your order updates as soon as the payment is confirmed.'
-    : 'Checkout cancelled.\n\nNothing was charged. You can close this window and return to SAWA.';
+    ? 'Checkout submitted.\n\nYou can close this window and return to NILYA. Your order updates only after Stripe confirms the payment.'
+    : 'Checkout cancelled.\n\nYou can close this window and return to NILYA to see the current order status.';
 
   return new Response(text, {
     status: 200,

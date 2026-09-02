@@ -1,11 +1,11 @@
-import { useRouter } from 'expo-router';
 import React from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icon';
-import { T, Tap } from '@/components/ui';
-import { alpha, color as C, shadow } from '@/theme/tokens';
+import { PressableScale, T, Tap } from '@/components/ui';
+import { useGoBack } from '@/hooks/use-go-back';
+import { color as C, elevation, radius, space, touch } from '@/theme/tokens';
 
 /**
  * Back-and-title bar used by every pushed screen.
@@ -19,29 +19,27 @@ export function ScreenHeader({
   /** Show a close cross rather than a back chevron, as on Verification. */
   dismiss,
   border = true,
-  titleSize = 17,
   style,
 }: {
   title?: string;
   right?: React.ReactNode;
   dismiss?: boolean;
   border?: boolean;
-  titleSize?: number;
   style?: StyleProp<ViewStyle>;
 }) {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
+  const goBack = useGoBack();
 
   return (
     <View
       style={[
         {
           paddingTop: insets.top,
-          paddingBottom: 10,
-          paddingHorizontal: 10,
+          paddingBottom: space.space8,
+          paddingHorizontal: space.space12,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 6,
+          gap: space.space4,
           borderBottomWidth: border ? 1 : 0,
           borderBottomColor: C.border,
         },
@@ -49,16 +47,15 @@ export function ScreenHeader({
       ]}
     >
       <Tap
-        onPress={() => router.back()}
+        onPress={goBack}
         accessibilityRole="button"
         accessibilityLabel={dismiss ? 'Close' : 'Back'}
-        hitSlop={8}
-        style={{ width: 34, height: 34, alignItems: 'center', justifyContent: 'center' }}
+        style={{ width: touch.minimum, height: touch.minimum, alignItems: 'center', justifyContent: 'center' }}
       >
-        <Icon name={dismiss ? 'close' : 'chevronLeft'} size={20} color={C.text} strokeWidth={2} />
+        <Icon name={dismiss ? 'close' : 'chevronLeft'} role="action" color={C.textPrimary} />
       </Tap>
       {!!title && (
-        <T w={600} size={titleSize} numberOfLines={1} style={{ flex: 1 }}>
+        <T variant="bodyMedium" style={{ flex: 1 }}>
           {title}
         </T>
       )}
@@ -72,11 +69,11 @@ export function ScreenHeader({
 export function TabTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
   return (
     <View>
-      <T w={600} size={28} tracking={-0.6}>
+      <T variant="screenTitle" accessibilityRole="header">
         {children}
       </T>
       {!!sub && (
-        <T size={13.5} color={C.textSecondary} style={{ marginTop: 4 }}>
+        <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space4 }}>
           {sub}
         </T>
       )}
@@ -88,32 +85,43 @@ export function TabTitle({ children, sub }: { children: React.ReactNode; sub?: s
 export function FloatingIconButton({
   name,
   onPress,
-  color = C.text,
+  color = C.textPrimary,
   fill = 'none',
   label,
+  accessibilityState,
 }: {
   name: IconName;
   onPress?: () => void;
   color?: string;
   fill?: string;
   label: string;
+  accessibilityState?: {
+    selected?: boolean;
+    disabled?: boolean;
+    checked?: boolean | 'mixed';
+    busy?: boolean;
+    expanded?: boolean;
+  };
 }) {
   return (
-    <Tap
+    <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={accessibilityState}
       style={{
-        width: 38,
-        height: 38,
-        borderRadius: 19,
-        backgroundColor: alpha.floatingControl,
+        width: touch.minimum,
+        height: touch.minimum,
+        borderRadius: radius.radiusPill,
+        backgroundColor: C.background,
+        borderWidth: 1,
+        borderColor: C.border,
         alignItems: 'center',
         justifyContent: 'center',
-        ...shadow.raised,
+        ...elevation.raised,
       }}
     >
-      <Icon name={name} size={19} color={color} fill={fill} strokeWidth={name === 'heart' ? 1.8 : 2} />
-    </Tap>
+      <Icon name={name} role="action" color={color} fill={fill} decorative />
+    </PressableScale>
   );
 }

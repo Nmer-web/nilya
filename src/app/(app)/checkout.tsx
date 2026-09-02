@@ -1,6 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,12 +8,16 @@ import { Icon } from '@/components/icon';
 import { ListingImage, formatPrice } from '@/components/listing-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { Skeleton } from '@/components/skeleton';
-import { Button, Card, EmptyState, T, Tap } from '@/components/ui';
+import { Button, Card, EmptyState, InlineError, ScreenError, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
+import { NEW_CONDITION } from '@/lib/database.types';
+import { retryableReadMessage } from '@/lib/errors';
 import { fetchDeliveryOptions, startCheckout, type DeliveryOptionRow } from '@/lib/mutations';
 import { coverUrl, fetchAcceptedOffer, fetchListing, fetchPlatformSettings } from '@/lib/queries';
 import { useAuth } from '@/store/auth-store';
-import { color as C, radius, space } from '@/theme/tokens';
+import { color as C, elevation, radius, space, touch } from '@/theme/tokens';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 /**
  * Checkout.
@@ -28,15 +32,26 @@ import { color as C, radius, space } from '@/theme/tokens';
  * only when the webhook verifies the event. Returning from the browser proves
  * nothing, so this screen refetches rather than assuming.
  */
-export default function Checkout() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+export default function CheckoutRoute() {
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const listingId = uuidFromParam(id);
+
+  if (!listingId) return <CheckoutUnavailable />;
+
+  return <Checkout key={listingId} listingId={listingId} />;
+}
+
+function Checkout({ listingId }: { listingId: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
-  const listing = useAsync(() => fetchListing(id), `checkout-listing:${id}`);
+  const listing = useAsync(() => fetchListing(listingId), `checkout-listing:${listingId}`);
   const settings = useAsync(fetchPlatformSettings, 'platform-settings');
-  const offer = useAsync(() => fetchAcceptedOffer(id), `accepted-offer:${id}`);
+  const offer = useAsync(
+    () => fetchAcceptedOffer(listingId),
+    `accepted-offer:${listingId}`
+  );
 
   const row = listing.data;
   const options = useAsync(
@@ -47,15 +62,27 @@ export default function Checkout() {
   const [deliveryKey, setDeliveryKey] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  const startingRef = useRef(false);
+  const checkoutRequest = useRef(0);
 
-  if (listing.loading) {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      startingRef.current = false;
+      checkoutRequest.current += 1;
+    };
+  }, []);
+
+  if (listing.loading || settings.loading || offer.loading) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
         <ScreenHeader title="Checkout" />
-        <View style={{ padding: space.gutter, gap: 12 }}>
-          <Skeleton width="100%" height={92} round={radius.lg} />
-          <Skeleton width="100%" height={140} round={radius.lg} />
-          <Skeleton width="100%" height={110} round={radius.lg} />
+        <View style={{ padding: space.gutterCompact, gap: space.space12 }}>
+          <Skeleton width="100%" height={92} round={radius.radiusLarge} />
+          <Skeleton width="100%" height={140} round={radius.radiusLarge} />
+          <Skeleton width="100%" height={110} round={radius.radiusLarge} />
         </View>
       </View>
     );
@@ -65,14 +92,31 @@ export default function Checkout() {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
         <ScreenHeader title="Checkout" />
-        <EmptyState
-          icon="bag"
-          title={listing.error ? 'Could not load this item' : 'Listing unavailable'}
-          body={listing.error ? listing.error.message : 'It may have been sold or removed.'}
-          style={{ paddingVertical: 44 }}
-          action={
-            <Button label="Back to browsing" height={48} onPress={() => router.dismissTo('/')} style={{ marginTop: 20 }} />
-          }
+        {listing.error ? (
+          <ScreenError error={listing.error} title="Could not load this item" onRetry={listing.refetch} />
+        ) : (
+          <EmptyState
+            icon="bag"
+            title="Listing unavailable"
+            body="It may have been sold or removed."
+            style={{ paddingVertical: touch.minimum }}
+            action={<Button label="Back to browsing" onPress={() => router.dismissTo('/')} style={{ marginTop: space.space20 }} />}
+          />
+        )}
+      </View>
+    );
+  }
+
+  if (settings.error || offer.error || !settings.data) {
+    const source = settings.error ?? offer.error;
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background }}>
+        <ScreenHeader title="Checkout" />
+        <ScreenError
+          error={source}
+          title="Could not prepare checkout"
+          fallback="Pricing could not be confirmed."
+          onRetry={settings.error ? settings.refetch : offer.refetch}
         />
       </View>
     );
@@ -81,7 +125,9 @@ export default function Checkout() {
   /* The two states where checking out cannot succeed, refused up front rather
      than after a round trip that the server would reject anyway. */
   const isMine = user?.id === row.seller_id;
-  const unavailable = row.status !== 'active';
+  const unavailable = row.status !== 'active' || row.condition !== NEW_CONDITION;
+  const sellerAway = row.seller?.holiday_mode === true;
+  const signedOut = !user;
 
   const ladder = options.data ?? [];
   const selected = ladder.find((o) => o.key === deliveryKey) ?? null;
@@ -93,15 +139,23 @@ export default function Checkout() {
   const totalCents = itemPriceCents + shippingCents + protectionFeeCents;
 
   const pay = async () => {
-    if (!selected || starting) return;
+    if (!selected || startingRef.current || signedOut || isMine || unavailable || sellerAway) return;
+
+    const request = checkoutRequest.current + 1;
+    checkoutRequest.current = request;
+    startingRef.current = true;
     setStarting(true);
     setError(null);
+
+    let handedOff = false;
     try {
       const result = await startCheckout({
         listingId: row.id,
         deliveryKey: selected.key,
         offerId: offer.data?.id ?? null,
       });
+      if (!mounted.current || checkoutRequest.current !== request) return;
+
       /*
        * Hosted Stripe Checkout in a browser sheet. The app never sees card
        * details and holds no Stripe secret — it only opens a URL the server
@@ -109,11 +163,19 @@ export default function Checkout() {
        * they paid, so the order screen is where the truth is read.
        */
       await WebBrowser.openBrowserAsync(result.checkoutUrl);
+      if (!mounted.current || checkoutRequest.current !== request) return;
+
+      handedOff = true;
       router.replace({ pathname: '/order/[id]', params: { id: result.orderId } });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start checkout');
+      if (mounted.current && checkoutRequest.current === request) {
+        setError(retryableReadMessage(e, 'Checkout could not be started.'));
+      }
     } finally {
-      setStarting(false);
+      if (checkoutRequest.current === request && !handedOff) {
+        startingRef.current = false;
+        if (mounted.current) setStarting(false);
+      }
     }
   };
 
@@ -123,44 +185,65 @@ export default function Checkout() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: space.gutter, paddingBottom: insets.bottom + 120 }}
+        contentContainerStyle={{ padding: space.gutterCompact, paddingBottom: insets.bottom + 120 }}
       >
-        <Card style={{ flexDirection: 'row', gap: 12, padding: 14 }}>
-          <View style={{ width: 54 }}>
-            <ListingImage url={coverUrl(row.images)} width={54} round={radius.sm} />
+        <Card style={{ flexDirection: 'row', gap: space.space16, padding: space.space16, ...elevation.raised }}>
+          <View style={{ width: 72 }}>
+            <ListingImage url={coverUrl(row.images)} width={72} round={radius.radiusMedium} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <T w={500} size={15} numberOfLines={2}>
+            <T variant="cardTitle" numberOfLines={2}>
               {row.title}
             </T>
-            <T w={700} size={18} style={{ marginTop: 3 }}>
+            <T variant="price" style={{ marginTop: space.space4 }}>
               {formatPrice(itemPriceCents, row.currency)}
             </T>
             {!!offer.data && (
-              <T size={12.5} color={C.success} style={{ marginTop: 2 }}>
+              <T variant="metadata" color={C.success} style={{ marginTop: space.space4 }}>
                 Accepted offer · was {formatPrice(row.price_cents, row.currency)}
               </T>
             )}
             {!!row.seller && (
-              <T size={12.5} color={C.textSecondary} style={{ marginTop: 2 }}>
+              <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space4 }}>
                 Sold by {row.seller.display_name}
               </T>
             )}
           </View>
         </Card>
 
-        <T w={600} size={15} style={{ marginTop: space.xl, marginBottom: space.md }}>
+        {sellerAway ? (
+          <View
+            accessibilityRole="alert"
+            className="mt-4 flex-row items-start gap-2 border-y border-nilya-border py-4"
+          >
+            <Icon name="info" role="metadata" color={C.textSecondary} decorative />
+            <View className="min-w-0 flex-1">
+              <T variant="bodyMedium">Seller is currently away</T>
+              <T variant="metadata" color={C.textSecondary} className="mt-1">
+                Checkout is paused for this product.
+              </T>
+            </View>
+          </View>
+        ) : null}
+
+        <T variant="sectionTitle" style={{ marginTop: space.space20, marginBottom: space.space12 }}>
           Delivery
         </T>
 
         {options.loading ? (
-          <Skeleton width="100%" height={140} round={radius.lg} />
+          <Skeleton width="100%" height={140} round={radius.radiusLarge} />
+        ) : options.error ? (
+          <InlineError
+            message={retryableReadMessage(options.error, 'Delivery options could not be loaded.')}
+            actionLabel="Retry"
+            onAction={options.refetch}
+          />
         ) : ladder.length === 0 ? (
-          <T size={13} color={C.textSecondary}>
+          <T variant="metadata" color={C.textSecondary}>
             No delivery options are configured for this country yet.
           </T>
         ) : (
-          <View style={{ gap: 8 }}>
+          <View accessibilityRole="radiogroup" style={{ gap: space.space8 }}>
             {ladder.map((option) => (
               <DeliveryChoice
                 key={option.key}
@@ -173,11 +256,11 @@ export default function Checkout() {
           </View>
         )}
 
-        <T w={600} size={15} style={{ marginTop: space.xl, marginBottom: space.md }}>
-          Total
+        <T variant="sectionTitle" style={{ marginTop: space.space20, marginBottom: space.space12 }}>
+          Order summary
         </T>
 
-        <Card style={{ padding: 14, gap: 8 }}>
+        <Card style={{ padding: space.space16, gap: space.space8, ...elevation.raised }}>
           <Line label="Item" value={formatPrice(itemPriceCents, row.currency)} />
           <Line
             label={selected ? selected.name : 'Delivery'}
@@ -198,30 +281,26 @@ export default function Checkout() {
                   : formatPrice(protectionFeeCents, row.currency)
             }
           />
-          <View style={{ height: 1, backgroundColor: C.border, marginVertical: 4 }} />
+          <View style={{ height: 1, backgroundColor: C.border, marginVertical: space.space4 }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <T w={700} size={15}>
+            <T variant="price">
               Total
             </T>
-            <T w={700} size={15}>
+            <T variant="price">
               {selected ? formatPrice(totalCents, row.currency) : '—'}
             </T>
           </View>
         </Card>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: space.lg }}>
-          <Icon name="shieldSolid" size={16} color={C.textSecondary} />
-          <T size={12} color={C.textSecondary} lh={17} style={{ flex: 1 }}>
-            Card details are entered on Stripe, never in SAWA. Your order is confirmed only once
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.space8, marginTop: space.space16 }}>
+          <Icon name="shieldSolid" role="metadata" color={C.textSecondary} decorative />
+          <T variant="caption" color={C.textSecondary} style={{ flex: 1 }}>
+            Card details are entered on Stripe, never in NILYA. Your order is confirmed only once
             Stripe verifies the payment.
           </T>
         </View>
 
-        {!!error && (
-          <T size={12.5} color={C.error} style={{ textAlign: 'center', paddingTop: space.md }}>
-            {error}
-          </T>
-        )}
+        {!!error && <InlineError message={error} style={{ marginTop: space.space12 }} />}
       </ScrollView>
 
       <View
@@ -230,17 +309,23 @@ export default function Checkout() {
           left: 0,
           right: 0,
           bottom: 0,
-          padding: space.gutter,
-          paddingBottom: Math.max(insets.bottom, 12) + 8,
+          padding: space.gutterCompact,
+          paddingBottom: Math.max(insets.bottom, space.space12) + space.space8,
           backgroundColor: C.background,
           borderTopWidth: 1,
           borderTopColor: C.border,
+          ...elevation.sheet,
         }}
       >
         <Button
+          style={{ minHeight: touch.large }}
           label={
             isMine
               ? 'This is your listing'
+              : signedOut
+                ? 'Sign in to check out'
+              : sellerAway
+                ? 'Seller is currently away'
               : unavailable
                 ? 'No longer available'
                 : starting
@@ -249,8 +334,9 @@ export default function Checkout() {
                     ? `Pay ${formatPrice(totalCents, row.currency)}`
                     : 'Choose a delivery option'
           }
-          height={52}
-          disabled={isMine || unavailable || !selected || starting}
+          disabled={signedOut || isMine || sellerAway || unavailable || !selected || starting}
+          loading={starting}
+          loadingLabel="Opening Stripe…"
           onPress={pay}
         />
       </View>
@@ -258,13 +344,47 @@ export default function Checkout() {
   );
 }
 
+function uuidFromParam(value: string | string[] | undefined): string | null {
+  const values = Array.isArray(value) ? value : [value];
+
+  for (const candidate of values) {
+    const normalized = candidate?.trim();
+    if (normalized && UUID_PATTERN.test(normalized)) return normalized;
+  }
+
+  return null;
+}
+
+function CheckoutUnavailable() {
+  const router = useRouter();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.background }}>
+      <ScreenHeader title="Checkout" />
+      <EmptyState
+        icon="bag"
+        title="Listing unavailable"
+        body="This checkout link is not valid."
+        style={{ paddingVertical: touch.minimum }}
+        action={
+          <Button
+            label="Back to browsing"
+            onPress={() => router.dismissTo('/')}
+            style={{ marginTop: space.space20 }}
+          />
+        }
+      />
+    </View>
+  );
+}
+
 function Line({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-      <T size={13.5} color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.space12 }}>
+      <T variant="metadata" color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
         {label}
       </T>
-      <T size={13.5}>{value}</T>
+      <T variant="metadata">{value}</T>
     </View>
   );
 }
@@ -284,42 +404,44 @@ function DeliveryChoice({
     <Tap
       onPress={onPress}
       accessibilityRole="radio"
+      accessibilityLabel={`${option.name}, ${option.price_cents === 0 ? 'Free' : formatPrice(option.price_cents, currency)}`}
+      accessibilityHint={option.subtitle ?? option.eta_label}
       accessibilityState={{ selected }}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        padding: 14,
-        minHeight: 44,
-        borderRadius: radius.lg,
+        gap: space.space12,
+        padding: space.space16,
+        minHeight: touch.minimum,
+        borderRadius: radius.radiusLarge,
         borderWidth: 1,
-        borderColor: selected ? C.text : C.border,
-        backgroundColor: selected ? C.surface : C.background,
+        borderColor: selected ? C.primary : C.border,
+        backgroundColor: selected ? C.primarySoft : C.surface,
       }}
     >
       <View
         style={{
           width: 20,
           height: 20,
-          borderRadius: 10,
+          borderRadius: radius.radiusPill,
           borderWidth: selected ? 6 : 1.5,
-          borderColor: selected ? C.text : C.borderStrong,
+          borderColor: selected ? C.primary : C.borderStrong,
         }}
       />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <T w={500} size={14}>
+        <T variant="bodyMedium">
           {option.name}
         </T>
         {!!option.subtitle && (
-          <T size={12.5} color={C.textSecondary} numberOfLines={1} style={{ marginTop: 1 }}>
+          <T variant="metadata" color={C.textSecondary} numberOfLines={1} style={{ marginTop: space.space4 }}>
             {option.subtitle}
           </T>
         )}
-        <T size={12} color={C.textMuted} style={{ marginTop: 2 }}>
+        <T variant="caption" color={C.textSecondary} style={{ marginTop: space.space4 }}>
           {option.eta_label}
         </T>
       </View>
-      <T w={600} size={14}>
+      <T variant="bodyMedium">
         {option.price_cents === 0 ? 'Free' : formatPrice(option.price_cents, currency)}
       </T>
     </Tap>

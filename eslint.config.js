@@ -16,7 +16,7 @@ const ENV_MESSAGE =
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/*', 'supabase/*'],
+    ignores: ['node_modules/**', 'dist/**', 'build/**', 'coverage/**', '*.min.js', 'supabase/**'],
   },
   {
     files: ['src/**/*.{ts,tsx,js,jsx}'],

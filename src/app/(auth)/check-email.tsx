@@ -3,11 +3,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ButtonSpinner, FormError } from '@/components/field';
+import { FormError } from '@/components/field';
 import { Icon } from '@/components/icon';
 import { Button, Note, T, Tap } from '@/components/ui';
 import { useAuth } from '@/store/auth-store';
-import { color as C, radius } from '@/theme/tokens';
+import { color as C, radius, space, touch } from '@/theme/tokens';
 
 /** Matches auth.email.max_frequency in supabase/config.toml. */
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -76,64 +76,62 @@ export default function CheckEmail() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           flexGrow: 1,
-          paddingHorizontal: 22,
-          paddingTop: insets.top + 48,
-          paddingBottom: insets.bottom + 32,
+          paddingHorizontal: space.gutterRegular,
+          paddingTop: insets.top + space.space48,
+          paddingBottom: insets.bottom + space.space32,
         }}
       >
         <View
           style={{
             width: 56,
             height: 56,
-            borderRadius: radius.xl,
-            backgroundColor: C.text,
+            borderRadius: radius.radiusXLarge,
+            backgroundColor: C.textPrimary,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon name="send" size={25} color={C.primaryText} strokeWidth={1.7} />
+          <Icon name="send" size={25} color={C.textInverse} strokeWidth={1.7} />
         </View>
 
-        <T w={600} size={27} tracking={-0.6} lh={32.4} style={{ marginTop: 20 }}>
+        <T variant="screenTitle" style={{ marginTop: space.space20 }}>
           Confirm your email
         </T>
-        <T size={14.5} color={C.textSecondary} lh={22.5} style={{ marginTop: 10 }}>
+        <T variant="body" color={C.textSecondary} style={{ marginTop: space.space12 }}>
           We sent a link to
         </T>
-        <T w={600} size={15} style={{ marginTop: 2 }}>
+        <T variant="bodyMedium" style={{ marginTop: space.space4 }}>
           {pendingEmail}
         </T>
-        <T size={14.5} color={C.textSecondary} lh={22.5} style={{ marginTop: 10 }}>
+        <T variant="body" color={C.textSecondary} style={{ marginTop: space.space12 }}>
           Open it on this device and you&apos;ll be signed in automatically. The link expires after an hour.
         </T>
 
         {sentAgain && (
-          <Note tone="green" style={{ marginTop: 20 }}>
-            <T size={13.5} color={C.success} lh={19}>
+          <Note tone="success" style={{ marginTop: space.space20 }}>
+            <T variant="metadata" color={C.success}>
               Sent again. If it still hasn&apos;t arrived, check your spam folder.
             </T>
           </Note>
         )}
 
-        <View style={{ marginTop: 20 }}>
+        <View style={{ marginTop: space.space20 }}>
           <FormError message={error} />
         </View>
 
         <Button
           label={
-            busy
-              ? 'Sending…'
-              : cooldown > 0
-                ? `Resend in ${cooldown}s`
-                : 'Resend confirmation email'
+            cooldown > 0
+              ? `Resend in ${cooldown}s`
+              : 'Resend confirmation email'
           }
-          variant="strong"
+          loading={busy}
+          loadingLabel="Sending…"
+          variant="secondary"
           onPress={resend}
           disabled={busy || cooldown > 0}
-          style={{ marginTop: 8, opacity: cooldown > 0 && !busy ? 0.5 : 1 }}
-        >
-          {busy && <ButtonSpinner />}
-        </Button>
+          style={{ marginTop: space.space8 }}
+        />
 
         <View style={{ flex: 1 }} />
 
@@ -141,9 +139,9 @@ export default function CheckEmail() {
           onPress={backToSignIn}
           accessibilityRole="button"
           hitSlop={6}
-          style={{ alignSelf: 'center', paddingVertical: 8, marginTop: 32 }}
+          style={{ alignSelf: 'center', minHeight: touch.minimum, justifyContent: 'center', marginTop: space.space32 }}
         >
-          <T w={600} size={14} color={C.text}>
+          <T variant="button" color={C.primary}>
             Back to sign in
           </T>
         </Tap>

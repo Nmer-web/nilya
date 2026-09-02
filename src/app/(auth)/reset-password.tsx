@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ButtonSpinner, FormError, PasswordField } from '@/components/field';
+import { FormError, PasswordField } from '@/components/field';
 import { Icon } from '@/components/icon';
 import { Button, T, Tap } from '@/components/ui';
 import { MIN_PASSWORD, passwordError } from '@/lib/validate';
 import { useAuth } from '@/store/auth-store';
-import { color as C, radius } from '@/theme/tokens';
+import { color as C, radius, space, touch } from '@/theme/tokens';
 
 /**
  * Reached only via a recovery deep link. The link already established a
@@ -64,28 +64,28 @@ export default function ResetPassword() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           flexGrow: 1,
-          paddingHorizontal: 22,
-          paddingTop: insets.top + 48,
-          paddingBottom: insets.bottom + 32,
+          paddingHorizontal: space.gutterRegular,
+          paddingTop: insets.top + space.space48,
+          paddingBottom: insets.bottom + space.space32,
         }}
       >
         <View
           style={{
             width: 56,
             height: 56,
-            borderRadius: radius.xl,
-            backgroundColor: C.text,
+            borderRadius: radius.radiusXLarge,
+            backgroundColor: C.textPrimary,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon name="shieldCheck" size={27} color={C.primaryText} strokeWidth={1.7} />
+          <Icon name="shieldCheck" size={27} color={C.textInverse} strokeWidth={1.7} />
         </View>
 
-        <T w={600} size={27} tracking={-0.6} lh={32.4} style={{ marginTop: 20 }}>
+        <T variant="screenTitle" style={{ marginTop: space.space20 }}>
           Choose a new password
         </T>
-        <T size={14.5} color={C.textSecondary} lh={22.5} style={{ marginTop: 8, marginBottom: 26 }}>
+        <T variant="body" color={C.textSecondary} style={{ marginTop: space.space8, marginBottom: space.space24 }}>
           You&apos;ll stay signed in on this device once it&apos;s saved.
         </T>
 
@@ -121,13 +121,13 @@ export default function ResetPassword() {
         />
 
         <Button
-          label={busy ? 'Saving…' : 'Save password'}
+          label="Save password"
+          loading={busy}
+          loadingLabel="Saving…"
           onPress={submit}
           disabled={busy}
-          style={{ marginTop: 12 }}
-        >
-          {busy && <ButtonSpinner />}
-        </Button>
+          style={{ marginTop: space.space12 }}
+        />
 
         <View style={{ flex: 1 }} />
 
@@ -135,9 +135,9 @@ export default function ResetPassword() {
           onPress={() => void signOut()}
           accessibilityRole="button"
           hitSlop={6}
-          style={{ alignSelf: 'center', paddingVertical: 8, marginTop: 32 }}
+          style={{ alignSelf: 'center', minHeight: touch.minimum, justifyContent: 'center', marginTop: space.space32 }}
         >
-          <T w={600} size={14} color={C.text}>
+          <T variant="button" color={C.primary}>
             Cancel and sign out
           </T>
         </Tap>

@@ -1,0 +1,2392 @@
+<div id="nilya-design-system">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    #nilya-design-system {
+      --nilya-green: #0F6E56;
+      --nilya-green-dark: #084A3A;
+      --nilya-green-deep: #06382D;
+      --nilya-green-soft: rgba(15, 110, 86, 0.08);
+      --nilya-green-medium: rgba(15, 110, 86, 0.16);
+      --nilya-amber: #EF9F27;
+      --nilya-ink: #141413;
+      --nilya-muted: #6B6B66;
+      --nilya-surface: #FFFFFF;
+      --nilya-pale: #F2F7F5;
+      --nilya-border: rgba(20, 20, 19, 0.10);
+      --nilya-shadow: 0 18px 48px rgba(20, 20, 19, 0.10);
+      --nilya-shadow-small: 0 6px 18px rgba(20, 20, 19, 0.10);
+      --nilya-phone-width: 393px;
+      color: var(--nilya-ink);
+      font-family: Inter, system-ui, sans-serif;
+      width: 100%;
+    }
+
+    #nilya-design-system * {
+      box-sizing: border-box;
+    }
+
+    #nilya-design-system button,
+    #nilya-design-system input {
+      font: inherit;
+    }
+
+    #nilya-design-system button {
+      cursor: pointer;
+    }
+
+    #nilya-design-system .nilya-workbench {
+      display: grid;
+      gap: 20px;
+      width: 100%;
+    }
+
+    #nilya-design-system .workbench-nav {
+      align-items: center;
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 24px;
+      box-shadow: var(--nilya-shadow-small);
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 8px;
+      scrollbar-width: none;
+    }
+
+    #nilya-design-system .workbench-nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    #nilya-design-system .workbench-nav button {
+      background: transparent;
+      border: 0;
+      border-radius: 16px;
+      color: var(--nilya-muted);
+      min-height: 44px;
+      padding: 10px 16px;
+      white-space: nowrap;
+    }
+
+    #nilya-design-system .workbench-nav button[aria-selected="true"] {
+      background: var(--nilya-green);
+      color: var(--nilya-surface);
+      font-weight: 600;
+    }
+
+    #nilya-design-system .design-section[hidden] {
+      display: none;
+    }
+
+    #nilya-design-system .design-section {
+      display: grid;
+      gap: 22px;
+    }
+
+    #nilya-design-system .direction-hero {
+      background:
+        radial-gradient(circle at 82% 22%, rgba(255, 255, 255, 0.18), transparent 30%),
+        linear-gradient(140deg, var(--nilya-green-deep), var(--nilya-green) 72%, #4C8F65);
+      border-radius: 30px;
+      color: var(--nilya-surface);
+      display: grid;
+      gap: 28px;
+      grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.75fr);
+      min-height: 360px;
+      overflow: hidden;
+      padding: 34px;
+      position: relative;
+    }
+
+    #nilya-design-system .direction-copy {
+      align-content: end;
+      display: grid;
+      gap: 18px;
+      max-width: 520px;
+      position: relative;
+      z-index: 2;
+    }
+
+    #nilya-design-system .direction-copy img {
+      height: 54px;
+      width: 54px;
+    }
+
+    #nilya-design-system .direction-copy h1 {
+      font-size: clamp(38px, 7vw, 58px);
+      letter-spacing: -2.4px;
+      line-height: 0.98;
+      margin: 0;
+      max-width: 520px;
+    }
+
+    #nilya-design-system .direction-copy p {
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 15px;
+      line-height: 1.6;
+      margin: 0;
+      max-width: 440px;
+    }
+
+    #nilya-design-system .mood-stack {
+      align-content: center;
+      display: grid;
+      gap: 12px;
+      position: relative;
+      z-index: 2;
+    }
+
+    #nilya-design-system .mood-chip {
+      align-items: center;
+      backdrop-filter: blur(12px);
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 18px;
+      display: flex;
+      font-size: 13px;
+      font-weight: 600;
+      gap: 10px;
+      min-height: 48px;
+      padding: 10px 14px;
+    }
+
+    #nilya-design-system .mood-chip i {
+      color: var(--nilya-amber);
+    }
+
+    #nilya-design-system .section-heading {
+      align-items: end;
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+    }
+
+    #nilya-design-system .section-heading h2 {
+      font-size: 26px;
+      letter-spacing: -0.8px;
+      line-height: 1.1;
+      margin: 0;
+    }
+
+    #nilya-design-system .section-heading p {
+      color: var(--nilya-muted);
+      font-size: 13px;
+      margin: 0;
+      text-align: right;
+    }
+
+    #nilya-design-system .principal-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    #nilya-design-system .overview-screen {
+      background: var(--nilya-pale);
+      border: 1px solid var(--nilya-border);
+      border-radius: 22px;
+      color: var(--nilya-ink);
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      padding: 10px;
+      text-align: left;
+    }
+
+    #nilya-design-system .overview-screen:hover {
+      box-shadow: var(--nilya-shadow-small);
+      transform: translateY(-2px);
+    }
+
+    #nilya-design-system .overview-screen strong {
+      font-size: 13px;
+      padding: 0 4px 2px;
+    }
+
+    #nilya-design-system .mini-phone {
+      aspect-ratio: 393 / 852;
+      background: var(--nilya-surface);
+      border-radius: 18px;
+      box-shadow: 0 8px 20px rgba(20, 20, 19, 0.08);
+      display: grid;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #nilya-design-system .mini-hero {
+      background: linear-gradient(155deg, var(--nilya-green-deep), var(--nilya-green));
+      display: grid;
+      gap: 8px;
+      padding: 16px 12px;
+    }
+
+    #nilya-design-system .mini-hero-lines span,
+    #nilya-design-system .mini-copy-line {
+      background: currentColor;
+      border-radius: 999px;
+      display: block;
+      height: 5px;
+      opacity: 0.85;
+    }
+
+    #nilya-design-system .mini-hero-lines {
+      color: var(--nilya-surface);
+      display: grid;
+      gap: 5px;
+      width: 76%;
+    }
+
+    #nilya-design-system .mini-hero-lines span:last-child {
+      width: 62%;
+    }
+
+    #nilya-design-system .mini-product-stage {
+      align-items: center;
+      background: var(--nilya-surface);
+      border-radius: 15px;
+      display: flex;
+      flex: 1;
+      justify-content: center;
+      min-height: 70px;
+    }
+
+    #nilya-design-system .mini-product {
+      background: var(--nilya-green-medium);
+      border-radius: 48% 48% 32% 32%;
+      height: 54%;
+      position: relative;
+      width: 52%;
+    }
+
+    #nilya-design-system .mini-product::after {
+      background: var(--nilya-green);
+      border-radius: 999px;
+      bottom: 12%;
+      content: "";
+      height: 22%;
+      left: 12%;
+      position: absolute;
+      width: 76%;
+    }
+
+    #nilya-design-system .mini-catalogue {
+      background: var(--nilya-pale);
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 1fr 1fr;
+      padding: 14px 10px;
+    }
+
+    #nilya-design-system .mini-catalogue::before {
+      background: var(--nilya-surface);
+      border-radius: 10px;
+      content: "";
+      grid-column: 1 / -1;
+      height: 22px;
+    }
+
+    #nilya-design-system .mini-card {
+      background: var(--nilya-surface);
+      border-radius: 12px;
+      display: grid;
+      gap: 5px;
+      padding: 6px;
+    }
+
+    #nilya-design-system .mini-card::before {
+      background: var(--nilya-green-soft);
+      border-radius: 9px;
+      content: "";
+      height: 54px;
+    }
+
+    #nilya-design-system .mini-card::after {
+      background: var(--nilya-ink);
+      border-radius: 999px;
+      content: "";
+      height: 5px;
+      width: 65%;
+    }
+
+    #nilya-design-system .mini-detail {
+      background: var(--nilya-green-soft);
+      display: grid;
+      grid-template-rows: 54% 46%;
+    }
+
+    #nilya-design-system .mini-detail-stage {
+      align-items: center;
+      display: flex;
+      justify-content: center;
+    }
+
+    #nilya-design-system .mini-detail-panel {
+      background: var(--nilya-surface);
+      border-radius: 22px 22px 0 0;
+      display: grid;
+      gap: 7px;
+      margin-top: -12px;
+      padding: 16px 12px;
+    }
+
+    #nilya-design-system .mini-detail-panel span {
+      background: var(--nilya-ink);
+      border-radius: 999px;
+      height: 5px;
+    }
+
+    #nilya-design-system .mini-detail-panel span:nth-child(2) {
+      background: var(--nilya-muted);
+      width: 58%;
+    }
+
+    #nilya-design-system .foundation-grid,
+    #nilya-design-system .component-grid,
+    #nilya-design-system .states-grid,
+    #nilya-design-system .handoff-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #nilya-design-system .spec-panel {
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 22px;
+      min-width: 0;
+      padding: 20px;
+    }
+
+    #nilya-design-system .spec-panel h3 {
+      font-size: 18px;
+      margin: 0 0 16px;
+    }
+
+    #nilya-design-system .official-lockup {
+      display: block;
+      height: auto;
+      max-width: 320px;
+      width: 100%;
+    }
+
+    #nilya-design-system .palette-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    #nilya-design-system .palette-row {
+      align-items: center;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 48px minmax(0, 1fr) auto;
+      min-height: 48px;
+    }
+
+    #nilya-design-system .palette-swatch {
+      border: 1px solid var(--nilya-border);
+      border-radius: 14px;
+      height: 42px;
+      width: 48px;
+    }
+
+    #nilya-design-system .palette-row strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    #nilya-design-system .palette-row span,
+    #nilya-design-system .token-caption {
+      color: var(--nilya-muted);
+      font-size: 12px;
+    }
+
+    #nilya-design-system .ratio-bar {
+      border-radius: 999px;
+      display: flex;
+      height: 16px;
+      margin-top: 18px;
+      overflow: hidden;
+    }
+
+    #nilya-design-system .ratio-bar span:nth-child(1) {
+      background: var(--nilya-pale);
+      width: 65%;
+    }
+
+    #nilya-design-system .ratio-bar span:nth-child(2) {
+      background: var(--nilya-green);
+      width: 25%;
+    }
+
+    #nilya-design-system .ratio-bar span:nth-child(3) {
+      background: var(--nilya-ink);
+      width: 10%;
+    }
+
+    #nilya-design-system .type-ramp {
+      display: grid;
+      gap: 15px;
+    }
+
+    #nilya-design-system .type-sample {
+      align-items: baseline;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    #nilya-design-system .type-sample strong {
+      display: block;
+      letter-spacing: -0.5px;
+    }
+
+    #nilya-design-system .type-sample.hero strong {
+      font-size: 38px;
+      letter-spacing: -1.8px;
+      line-height: 0.98;
+    }
+
+    #nilya-design-system .type-sample.screen strong {
+      font-size: 30px;
+    }
+
+    #nilya-design-system .type-sample.section strong {
+      font-size: 23px;
+    }
+
+    #nilya-design-system .type-sample.product strong {
+      font-size: 18px;
+    }
+
+    #nilya-design-system .type-sample.price strong {
+      font-size: 24px;
+    }
+
+    #nilya-design-system .radius-board {
+      align-items: end;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    #nilya-design-system .radius-token {
+      display: grid;
+      gap: 8px;
+      text-align: center;
+    }
+
+    #nilya-design-system .radius-shape {
+      background: var(--nilya-green-soft);
+      border: 1px solid var(--nilya-green-medium);
+      height: 72px;
+    }
+
+    #nilya-design-system .motion-row {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 120px minmax(0, 1fr) 70px;
+      margin-bottom: 12px;
+    }
+
+    #nilya-design-system .motion-track {
+      background: var(--nilya-green-soft);
+      border-radius: 999px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    #nilya-design-system .motion-track span {
+      background: var(--nilya-green);
+      border-radius: inherit;
+      display: block;
+      height: 100%;
+    }
+
+    #nilya-design-system .component-canvas {
+      background: var(--nilya-pale);
+      border-radius: 22px;
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+    }
+
+    #nilya-design-system .product-card-spec {
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 20px;
+      display: grid;
+      gap: 10px;
+      overflow: hidden;
+      padding: 10px;
+      position: relative;
+    }
+
+    #nilya-design-system .product-stage {
+      align-items: center;
+      background: var(--nilya-green-soft);
+      border-radius: 16px;
+      display: flex;
+      justify-content: center;
+      min-height: 150px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #nilya-design-system .product-stage.photo {
+      background:
+        linear-gradient(140deg, rgba(15, 110, 86, 0.14), rgba(255, 255, 255, 0.6)),
+        repeating-linear-gradient(45deg, rgba(20, 20, 19, 0.03), rgba(20, 20, 19, 0.03) 8px, transparent 8px, transparent 16px);
+    }
+
+    #nilya-design-system .product-stage.photo::after {
+      color: var(--nilya-muted);
+      content: "SELLER PHOTO · COVER";
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+    }
+
+    #nilya-design-system .product-card-copy {
+      display: grid;
+      gap: 3px;
+      padding: 0 2px 4px;
+    }
+
+    #nilya-design-system .product-card-copy strong {
+      font-size: 16px;
+    }
+
+    #nilya-design-system .product-card-copy b {
+      font-size: 20px;
+    }
+
+    #nilya-design-system .product-card-copy span {
+      color: var(--nilya-muted);
+      font-size: 13px;
+    }
+
+    #nilya-design-system .floating-icon {
+      align-items: center;
+      background: rgba(255, 255, 255, 0.94);
+      border: 0;
+      border-radius: 999px;
+      box-shadow: var(--nilya-shadow-small);
+      color: var(--nilya-ink);
+      display: inline-flex;
+      height: 44px;
+      justify-content: center;
+      min-width: 44px;
+      width: 44px;
+    }
+
+    #nilya-design-system .product-card-spec > .floating-icon {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      z-index: 2;
+    }
+
+    #nilya-design-system .floating-icon[aria-pressed="true"] {
+      background: var(--nilya-green);
+      color: var(--nilya-surface);
+    }
+
+    #nilya-design-system .cutout-object {
+      filter: drop-shadow(0 16px 12px rgba(20, 20, 19, 0.14));
+      height: 126px;
+      width: 160px;
+    }
+
+    #nilya-design-system .cutout-object .object-main {
+      fill: var(--nilya-green);
+    }
+
+    #nilya-design-system .cutout-object .object-light {
+      fill: #4C927E;
+    }
+
+    #nilya-design-system .cutout-object .object-dark {
+      fill: var(--nilya-green-deep);
+    }
+
+    #nilya-design-system .control-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    #nilya-design-system .search-spec {
+      align-items: center;
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 17px;
+      display: flex;
+      gap: 10px;
+      min-height: 52px;
+      padding: 0 14px;
+    }
+
+    #nilya-design-system .search-spec input {
+      background: transparent;
+      border: 0;
+      color: var(--nilya-ink);
+      flex: 1;
+      font-size: 16px;
+      min-width: 0;
+      outline: 0;
+    }
+
+    #nilya-design-system .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    #nilya-design-system .chip {
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 999px;
+      color: var(--nilya-ink);
+      min-height: 44px;
+      padding: 10px 16px;
+    }
+
+    #nilya-design-system .chip[aria-pressed="true"] {
+      background: var(--nilya-green);
+      color: var(--nilya-surface);
+    }
+
+    #nilya-design-system .primary-action,
+    #nilya-design-system .secondary-action {
+      border-radius: 14px;
+      font-weight: 600;
+      min-height: 48px;
+      padding: 12px 18px;
+    }
+
+    #nilya-design-system .primary-action {
+      background: var(--nilya-green);
+      border: 1px solid var(--nilya-green);
+      color: var(--nilya-surface);
+    }
+
+    #nilya-design-system .secondary-action {
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      color: var(--nilya-ink);
+    }
+
+    #nilya-design-system .component-nav {
+      align-items: center;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid var(--nilya-border);
+      border-radius: 28px;
+      box-shadow: var(--nilya-shadow-small);
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      padding: 7px 8px;
+    }
+
+    #nilya-design-system .component-nav span {
+      align-items: center;
+      color: var(--nilya-muted);
+      display: flex;
+      flex-direction: column;
+      font-size: 11px;
+      gap: 4px;
+      min-height: 44px;
+      justify-content: center;
+    }
+
+    #nilya-design-system .component-nav span:first-child {
+      color: var(--nilya-green);
+      font-weight: 600;
+    }
+
+    #nilya-design-system .component-nav span:nth-child(3) i {
+      align-items: center;
+      background: var(--nilya-green);
+      border-radius: 999px;
+      color: var(--nilya-surface);
+      display: flex;
+      height: 32px;
+      justify-content: center;
+      width: 32px;
+    }
+
+    #nilya-design-system .prototype-layout {
+      align-items: start;
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+    }
+
+    #nilya-design-system .prototype-controls {
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 22px;
+      display: grid;
+      gap: 16px;
+      padding: 14px;
+      position: sticky;
+      top: 12px;
+    }
+
+    #nilya-design-system .prototype-controls strong {
+      font-size: 13px;
+    }
+
+    #nilya-design-system .screen-picker {
+      display: grid;
+      gap: 4px;
+    }
+
+    #nilya-design-system .screen-picker button,
+    #nilya-design-system .viewport-picker button {
+      background: transparent;
+      border: 0;
+      border-radius: 12px;
+      color: var(--nilya-muted);
+      min-height: 44px;
+      padding: 9px 11px;
+      text-align: left;
+    }
+
+    #nilya-design-system .screen-picker button[aria-pressed="true"],
+    #nilya-design-system .viewport-picker button[aria-pressed="true"] {
+      background: var(--nilya-green-soft);
+      color: var(--nilya-green);
+      font-weight: 600;
+    }
+
+    #nilya-design-system .viewport-picker {
+      display: grid;
+      gap: 4px;
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    #nilya-design-system .viewport-picker button {
+      font-size: 12px;
+      padding: 8px 4px;
+      text-align: center;
+    }
+
+    #nilya-design-system .phone-presentation {
+      align-items: center;
+      background:
+        radial-gradient(circle at 50% 28%, rgba(15, 110, 86, 0.14), transparent 34%),
+        var(--nilya-pale);
+      border-radius: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+      overflow: hidden;
+      padding: 24px 12px;
+    }
+
+    #nilya-design-system .viewport-label {
+      color: var(--nilya-muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    #nilya-design-system .phone-shell {
+      aspect-ratio: 393 / 852;
+      background: var(--nilya-surface);
+      border: 7px solid var(--nilya-ink);
+      border-radius: 42px;
+      box-shadow: 0 28px 58px rgba(20, 20, 19, 0.18);
+      max-width: 100%;
+      overflow: hidden;
+      position: relative;
+      width: min(var(--nilya-phone-width), 100%);
+    }
+
+    #nilya-design-system .phone-screen {
+      background: var(--nilya-surface);
+      display: none;
+      height: 100%;
+      inset: 0;
+      overflow: hidden;
+      position: absolute;
+      width: 100%;
+    }
+
+    #nilya-design-system .phone-screen.is-active {
+      display: block;
+    }
+
+    #nilya-design-system .status-bar {
+      align-items: center;
+      color: currentColor;
+      display: flex;
+      font-size: 11px;
+      font-weight: 700;
+      height: 28px;
+      justify-content: space-between;
+      left: 0;
+      padding: 4px 18px 0;
+      position: absolute;
+      right: 0;
+      top: 0;
+      z-index: 12;
+    }
+
+    #nilya-design-system .status-icons {
+      align-items: center;
+      display: flex;
+      gap: 5px;
+    }
+
+    #nilya-design-system .status-icons span {
+      background: currentColor;
+      border-radius: 2px;
+      display: block;
+      height: 6px;
+      opacity: 0.85;
+      width: 12px;
+    }
+
+    #nilya-design-system .home-featured-screen,
+    #nilya-design-system .splash-screen {
+      background:
+        radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.18), transparent 26%),
+        linear-gradient(155deg, var(--nilya-green-deep), var(--nilya-green) 72%, #4C8F65);
+      color: var(--nilya-surface);
+    }
+
+    #nilya-design-system .splash-screen {
+      align-items: center;
+      justify-content: center;
+    }
+
+    #nilya-design-system .splash-screen.is-active {
+      display: flex;
+    }
+
+    #nilya-design-system .splash-screen img {
+      animation: nilya-mark-in 700ms cubic-bezier(.2, .8, .2, 1) both;
+      height: 104px;
+      width: 104px;
+    }
+
+    @keyframes nilya-mark-in {
+      from { opacity: 0; transform: scale(.92); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    #nilya-design-system .featured-content {
+      display: grid;
+      gap: 12px;
+      height: 100%;
+      padding: 34px 18px 92px;
+    }
+
+    #nilya-design-system .featured-header,
+    #nilya-design-system .screen-header-row {
+      align-items: center;
+      display: flex;
+      justify-content: space-between;
+      min-height: 48px;
+    }
+
+    #nilya-design-system .featured-header img {
+      height: 36px;
+      width: 36px;
+    }
+
+    #nilya-design-system .dark-control {
+      align-items: center;
+      backdrop-filter: blur(10px);
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      color: var(--nilya-surface);
+      display: flex;
+      height: 44px;
+      justify-content: center;
+      width: 44px;
+    }
+
+    #nilya-design-system .featured-headline {
+      font-size: clamp(34px, 9.8vw, 44px);
+      letter-spacing: -2px;
+      line-height: 0.96;
+      margin: 4px 0 0;
+      max-width: 310px;
+    }
+
+    #nilya-design-system .featured-stage {
+      background: var(--nilya-surface);
+      border-radius: 30px;
+      color: var(--nilya-ink);
+      display: grid;
+      flex: 1;
+      gap: 8px;
+      grid-template-rows: minmax(0, 1fr) auto;
+      min-height: 0;
+      padding: 14px 14px 18px;
+      position: relative;
+    }
+
+    #nilya-design-system .featured-product-visual {
+      align-items: center;
+      background: var(--nilya-green-soft);
+      border-radius: 23px;
+      display: flex;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #nilya-design-system .featured-product-visual::after,
+    #nilya-design-system .detail-visual::after {
+      background: rgba(20, 20, 19, 0.10);
+      border-radius: 50%;
+      bottom: 16%;
+      content: "";
+      filter: blur(5px);
+      height: 18px;
+      position: absolute;
+      width: 52%;
+    }
+
+    #nilya-design-system .featured-product-visual .cutout-object,
+    #nilya-design-system .detail-visual .cutout-object {
+      height: 60%;
+      position: relative;
+      width: 74%;
+      z-index: 2;
+    }
+
+    #nilya-design-system .featured-meta {
+      align-items: end;
+      display: flex;
+      justify-content: space-between;
+      padding: 2px 2px 0;
+    }
+
+    #nilya-design-system .featured-meta strong {
+      display: block;
+      font-size: 18px;
+    }
+
+    #nilya-design-system .featured-meta span {
+      color: var(--nilya-muted);
+      font-size: 13px;
+    }
+
+    #nilya-design-system .featured-carousel-dots {
+      display: flex;
+      gap: 5px;
+      justify-content: center;
+    }
+
+    #nilya-design-system .featured-carousel-dots span {
+      background: rgba(255, 255, 255, 0.34);
+      border-radius: 999px;
+      height: 5px;
+      width: 5px;
+    }
+
+    #nilya-design-system .featured-carousel-dots span.is-active {
+      background: var(--nilya-surface);
+      width: 18px;
+    }
+
+    #nilya-design-system .featured-cta {
+      background: var(--nilya-surface);
+      border: 0;
+      border-radius: 15px;
+      color: var(--nilya-green-deep);
+      font-weight: 700;
+      min-height: 50px;
+    }
+
+    #nilya-design-system .light-screen {
+      background: var(--nilya-pale);
+      color: var(--nilya-ink);
+      padding: 34px 16px 94px;
+    }
+
+    #nilya-design-system .light-screen h2 {
+      font-size: clamp(28px, 8vw, 34px);
+      letter-spacing: -1.2px;
+      line-height: 1.05;
+      margin: 8px 0 14px;
+    }
+
+    #nilya-design-system .phone-search-row {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) 48px;
+    }
+
+    #nilya-design-system .phone-search {
+      align-items: center;
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 17px;
+      display: flex;
+      gap: 9px;
+      height: 50px;
+      padding: 0 13px;
+    }
+
+    #nilya-design-system .phone-search span {
+      color: var(--nilya-muted);
+      font-size: 13px;
+    }
+
+    #nilya-design-system .phone-filter {
+      align-items: center;
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 16px;
+      color: var(--nilya-ink);
+      display: flex;
+      height: 48px;
+      justify-content: center;
+    }
+
+    #nilya-design-system .phone-chip-row {
+      display: flex;
+      gap: 7px;
+      margin: 10px 0 14px;
+      overflow: hidden;
+    }
+
+    #nilya-design-system .phone-chip {
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 999px;
+      font-size: 12px;
+      min-height: 38px;
+      padding: 8px 13px;
+      white-space: nowrap;
+    }
+
+    #nilya-design-system .phone-chip.is-active {
+      background: var(--nilya-green);
+      color: var(--nilya-surface);
+    }
+
+    #nilya-design-system .phone-section-row {
+      align-items: center;
+      display: flex;
+      justify-content: space-between;
+      margin: 4px 0 10px;
+    }
+
+    #nilya-design-system .phone-section-row strong {
+      font-size: 19px;
+    }
+
+    #nilya-design-system .phone-section-row span {
+      color: var(--nilya-green);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    #nilya-design-system .phone-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #nilya-design-system .phone-card {
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 19px;
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      overflow: hidden;
+      padding: 7px 7px 10px;
+      position: relative;
+    }
+
+    #nilya-design-system .phone-card-stage {
+      align-items: center;
+      background: var(--nilya-green-soft);
+      border-radius: 14px;
+      display: flex;
+      height: clamp(116px, 34vw, 140px);
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    #nilya-design-system .phone-card-stage .cutout-object {
+      height: 76%;
+      width: 88%;
+    }
+
+    #nilya-design-system .phone-card strong {
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #nilya-design-system .phone-card b {
+      font-size: 17px;
+    }
+
+    #nilya-design-system .phone-card span {
+      color: var(--nilya-muted);
+      font-size: 11px;
+    }
+
+    #nilya-design-system .phone-card .tiny-favorite {
+      align-items: center;
+      background: rgba(255, 255, 255, 0.94);
+      border: 0;
+      border-radius: 999px;
+      display: flex;
+      height: 38px;
+      justify-content: center;
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      width: 38px;
+      z-index: 3;
+    }
+
+    #nilya-design-system .detail-screen {
+      background:
+        radial-gradient(circle at 70% 18%, rgba(255, 255, 255, 0.55), transparent 25%),
+        var(--nilya-green-soft);
+      color: var(--nilya-ink);
+    }
+
+    #nilya-design-system .detail-top-controls {
+      display: flex;
+      justify-content: space-between;
+      left: 14px;
+      position: absolute;
+      right: 14px;
+      top: 36px;
+      z-index: 5;
+    }
+
+    #nilya-design-system .detail-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    #nilya-design-system .detail-visual {
+      align-items: center;
+      display: flex;
+      height: 55%;
+      justify-content: center;
+      position: relative;
+    }
+
+    #nilya-design-system .image-counter {
+      background: rgba(20, 20, 19, 0.78);
+      border-radius: 999px;
+      bottom: 20px;
+      color: var(--nilya-surface);
+      font-size: 11px;
+      padding: 7px 10px;
+      position: absolute;
+      right: 18px;
+    }
+
+    #nilya-design-system .detail-panel {
+      background: var(--nilya-surface);
+      border-radius: 30px 30px 0 0;
+      bottom: 0;
+      display: grid;
+      gap: 10px;
+      height: 49%;
+      left: 0;
+      padding: 22px 18px 92px;
+      position: absolute;
+      right: 0;
+    }
+
+    #nilya-design-system .detail-panel h2 {
+      font-size: 27px;
+      letter-spacing: -1px;
+      line-height: 1.05;
+      margin: 0;
+    }
+
+    #nilya-design-system .detail-price {
+      font-size: 25px;
+      font-weight: 700;
+    }
+
+    #nilya-design-system .detail-meta {
+      color: var(--nilya-muted);
+      display: flex;
+      flex-wrap: wrap;
+      font-size: 12px;
+      gap: 6px;
+    }
+
+    #nilya-design-system .detail-description {
+      color: var(--nilya-muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    #nilya-design-system .sticky-actions {
+      background: rgba(255, 255, 255, 0.96);
+      bottom: 0;
+      display: grid;
+      gap: 9px;
+      grid-template-columns: 1fr 1.15fr;
+      left: 0;
+      padding: 10px 14px 16px;
+      position: absolute;
+      right: 0;
+      z-index: 10;
+    }
+
+    #nilya-design-system .sell-progress {
+      background: var(--nilya-green-soft);
+      border-radius: 999px;
+      height: 7px;
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+
+    #nilya-design-system .sell-progress span {
+      background: var(--nilya-green);
+      display: block;
+      height: 100%;
+      transition: width 240ms ease;
+      width: 12.5%;
+    }
+
+    #nilya-design-system .sell-photo-stage {
+      align-items: center;
+      background: var(--nilya-green-soft);
+      border: 1px dashed rgba(15, 110, 86, 0.38);
+      border-radius: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      height: 42%;
+      justify-content: center;
+      margin-top: 14px;
+      text-align: center;
+    }
+
+    #nilya-design-system .sell-photo-stage i {
+      color: var(--nilya-green);
+      height: 32px;
+      width: 32px;
+    }
+
+    #nilya-design-system .sell-photo-stage strong {
+      font-size: 19px;
+    }
+
+    #nilya-design-system .sell-photo-stage span {
+      color: var(--nilya-muted);
+      font-size: 12px;
+      max-width: 220px;
+    }
+
+    #nilya-design-system .sell-bottom {
+      bottom: 16px;
+      left: 16px;
+      position: absolute;
+      right: 16px;
+    }
+
+    #nilya-design-system .sell-bottom button {
+      width: 100%;
+    }
+
+    #nilya-design-system .inbox-list,
+    #nilya-design-system .profile-groups {
+      display: grid;
+      gap: 10px;
+    }
+
+    #nilya-design-system .conversation-row {
+      align-items: center;
+      background: var(--nilya-surface);
+      border-bottom: 1px solid var(--nilya-border);
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 46px minmax(0, 1fr) auto;
+      min-height: 74px;
+      padding: 8px 2px;
+    }
+
+    #nilya-design-system .avatar-placeholder {
+      align-items: center;
+      background: var(--nilya-green-medium);
+      border-radius: 999px;
+      color: var(--nilya-green-deep);
+      display: flex;
+      font-weight: 700;
+      height: 46px;
+      justify-content: center;
+      width: 46px;
+    }
+
+    #nilya-design-system .conversation-copy {
+      min-width: 0;
+    }
+
+    #nilya-design-system .conversation-copy strong,
+    #nilya-design-system .conversation-copy span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #nilya-design-system .conversation-copy strong {
+      font-size: 14px;
+    }
+
+    #nilya-design-system .conversation-copy span,
+    #nilya-design-system .conversation-time {
+      color: var(--nilya-muted);
+      font-size: 11px;
+    }
+
+    #nilya-design-system .unread-indicator {
+      background: var(--nilya-green);
+      border-radius: 999px;
+      height: 8px;
+      margin: 6px auto 0;
+      width: 8px;
+    }
+
+    #nilya-design-system .profile-identity {
+      align-items: center;
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 72px minmax(0, 1fr);
+      margin: 12px 0 18px;
+    }
+
+    #nilya-design-system .profile-identity .avatar-placeholder {
+      font-size: 22px;
+      height: 72px;
+      width: 72px;
+    }
+
+    #nilya-design-system .profile-identity h2 {
+      font-size: 24px;
+      margin: 0 0 4px;
+    }
+
+    #nilya-design-system .profile-identity span {
+      color: var(--nilya-muted);
+      font-size: 12px;
+    }
+
+    #nilya-design-system .profile-group {
+      background: var(--nilya-green-soft);
+      border-radius: 20px;
+      overflow: hidden;
+      padding: 4px 12px;
+    }
+
+    #nilya-design-system .profile-row {
+      align-items: center;
+      border-bottom: 1px solid var(--nilya-border);
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 30px minmax(0, 1fr) 18px;
+      min-height: 48px;
+    }
+
+    #nilya-design-system .profile-row:last-child {
+      border-bottom: 0;
+    }
+
+    #nilya-design-system .profile-row span {
+      font-size: 13px;
+    }
+
+    #nilya-design-system .chat-top-product {
+      align-items: center;
+      background: var(--nilya-green-soft);
+      border-radius: 16px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 48px 1fr;
+      padding: 9px;
+    }
+
+    #nilya-design-system .chat-product-thumb {
+      background: var(--nilya-surface);
+      border-radius: 11px;
+      height: 48px;
+    }
+
+    #nilya-design-system .chat-thread {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    #nilya-design-system .bubble {
+      border-radius: 18px;
+      font-size: 13px;
+      line-height: 1.4;
+      max-width: 78%;
+      padding: 11px 13px;
+    }
+
+    #nilya-design-system .bubble.incoming {
+      align-self: flex-start;
+      background: var(--nilya-green-soft);
+    }
+
+    #nilya-design-system .bubble.outgoing {
+      align-self: flex-end;
+      background: var(--nilya-green);
+      color: var(--nilya-surface);
+    }
+
+    #nilya-design-system .prototype-bottom-nav {
+      align-items: center;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid var(--nilya-border);
+      border-radius: 28px;
+      bottom: 10px;
+      box-shadow: var(--nilya-shadow-small);
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      left: 10px;
+      padding: 5px 4px;
+      position: absolute;
+      right: 10px;
+      z-index: 20;
+    }
+
+    #nilya-design-system .prototype-bottom-nav[hidden] {
+      display: none;
+    }
+
+    #nilya-design-system .prototype-bottom-nav button {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: var(--nilya-muted);
+      display: flex;
+      flex-direction: column;
+      font-size: 10px;
+      gap: 2px;
+      justify-content: center;
+      min-height: 44px;
+      padding: 3px;
+    }
+
+    #nilya-design-system .prototype-bottom-nav button[aria-current="page"] {
+      color: var(--nilya-green);
+      font-weight: 700;
+    }
+
+    #nilya-design-system .prototype-bottom-nav button[data-screen-link="sell"] i {
+      align-items: center;
+      background: var(--nilya-green);
+      border-radius: 999px;
+      color: var(--nilya-surface);
+      display: flex;
+      height: 30px;
+      justify-content: center;
+      width: 30px;
+    }
+
+    #nilya-design-system .filter-sheet {
+      background: rgba(20, 20, 19, 0.28);
+      display: none;
+      inset: 0;
+      position: absolute;
+      z-index: 30;
+    }
+
+    #nilya-design-system .filter-sheet.is-open {
+      display: flex;
+      align-items: end;
+    }
+
+    #nilya-design-system .filter-sheet-panel {
+      background: var(--nilya-surface);
+      border-radius: 30px 30px 0 0;
+      display: grid;
+      gap: 14px;
+      max-height: 75%;
+      padding: 16px 16px 22px;
+      width: 100%;
+    }
+
+    #nilya-design-system .sheet-handle {
+      background: var(--nilya-border);
+      border-radius: 999px;
+      height: 5px;
+      justify-self: center;
+      width: 48px;
+    }
+
+    #nilya-design-system .filter-sheet-panel h3 {
+      font-size: 22px;
+      margin: 0;
+    }
+
+    #nilya-design-system .state-card {
+      background: var(--nilya-surface);
+      border: 1px solid var(--nilya-border);
+      border-radius: 20px;
+      display: grid;
+      gap: 10px;
+      min-height: 150px;
+      padding: 16px;
+    }
+
+    #nilya-design-system .state-card h3 {
+      font-size: 16px;
+      margin: 0;
+    }
+
+    #nilya-design-system .state-card p {
+      color: var(--nilya-muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    #nilya-design-system .state-icon {
+      align-items: center;
+      background: var(--nilya-green-soft);
+      border-radius: 999px;
+      color: var(--nilya-green);
+      display: flex;
+      height: 44px;
+      justify-content: center;
+      width: 44px;
+    }
+
+    #nilya-design-system .skeleton-lines {
+      display: grid;
+      gap: 8px;
+    }
+
+    #nilya-design-system .skeleton-lines span {
+      background: linear-gradient(90deg, var(--nilya-green-soft), var(--nilya-pale), var(--nilya-green-soft));
+      border-radius: 999px;
+      height: 12px;
+    }
+
+    #nilya-design-system .skeleton-lines span:last-child {
+      width: 62%;
+    }
+
+    #nilya-design-system .state-flag {
+      align-items: center;
+      display: flex;
+      font-size: 12px;
+      font-weight: 600;
+      gap: 7px;
+    }
+
+    #nilya-design-system .state-flag::before {
+      background: var(--nilya-green);
+      border-radius: 999px;
+      content: "";
+      height: 8px;
+      width: 8px;
+    }
+
+    #nilya-design-system .handoff-table {
+      border-collapse: collapse;
+      font-size: 13px;
+      width: 100%;
+    }
+
+    #nilya-design-system .handoff-table th,
+    #nilya-design-system .handoff-table td {
+      border-bottom: 1px solid var(--nilya-border);
+      padding: 11px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    #nilya-design-system .handoff-table th {
+      color: var(--nilya-muted);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    #nilya-design-system .flow-map {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    #nilya-design-system .flow-step {
+      background: var(--nilya-green-soft);
+      border-radius: 16px;
+      display: grid;
+      gap: 6px;
+      min-height: 94px;
+      padding: 12px;
+    }
+
+    #nilya-design-system .flow-step b {
+      color: var(--nilya-green);
+      font-size: 12px;
+    }
+
+    #nilya-design-system .flow-step span {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    #nilya-design-system .handoff-note {
+      background: var(--nilya-green-deep);
+      border-radius: 22px;
+      color: var(--nilya-surface);
+      padding: 20px;
+    }
+
+    #nilya-design-system .handoff-note h3 {
+      margin: 0 0 8px;
+    }
+
+    #nilya-design-system .handoff-note p {
+      color: rgba(255, 255, 255, 0.76);
+      font-size: 13px;
+      line-height: 1.55;
+      margin: 0;
+    }
+
+    #nilya-design-system .prototype-live {
+      color: var(--nilya-muted);
+      font-size: 12px;
+      min-height: 18px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #nilya-design-system *,
+      #nilya-design-system *::before,
+      #nilya-design-system *::after {
+        animation-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    @media (max-width: 760px) {
+      #nilya-design-system .direction-hero,
+      #nilya-design-system .foundation-grid,
+      #nilya-design-system .component-grid,
+      #nilya-design-system .states-grid,
+      #nilya-design-system .handoff-grid,
+      #nilya-design-system .prototype-layout {
+        grid-template-columns: 1fr;
+      }
+
+      #nilya-design-system .direction-hero {
+        min-height: 440px;
+      }
+
+      #nilya-design-system .mood-stack {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      #nilya-design-system .prototype-controls {
+        position: static;
+      }
+
+      #nilya-design-system .screen-picker {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      #nilya-design-system .principal-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 440px) {
+      #nilya-design-system .principal-grid,
+      #nilya-design-system .flow-map {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      #nilya-design-system .mood-stack,
+      #nilya-design-system .screen-picker {
+        grid-template-columns: 1fr;
+      }
+
+      #nilya-design-system .section-heading {
+        align-items: start;
+        flex-direction: column;
+      }
+
+      #nilya-design-system .section-heading p {
+        text-align: left;
+      }
+    }
+  </style>
+
+  <div class="nilya-workbench">
+    <nav class="workbench-nav" aria-label="Nilya design deliverables">
+      <button type="button" data-section-button="overview" aria-selected="true">Direction</button>
+      <button type="button" data-section-button="foundations" aria-selected="false">Foundations</button>
+      <button type="button" data-section-button="components" aria-selected="false">Components</button>
+      <button type="button" data-section-button="prototype" aria-selected="false">Prototype</button>
+      <button type="button" data-section-button="states" aria-selected="false">States</button>
+      <button type="button" data-section-button="handoff" aria-selected="false">Handoff</button>
+    </nav>
+
+    <section class="design-section" data-section="overview" role="tabpanel">
+      <div class="direction-hero">
+        <div class="direction-copy">
+          <img alt="Nilya" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiPgogIDxyZWN0IHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHJ4PSIyMzAiIGZpbGw9IiMwRjZFNTYiLz4KICA8cGF0aCBkPSJNMzU0IDcwMFYzNzBMNjcwIDcwMFYzNzAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSI4MCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgPGNpcmNsZSBjeD0iNjcwIiBjeT0iMzE1IiByPSI0MyIgZmlsbD0iI0VGOUYyNyIvPgo8L3N2Zz4K">
+          <h1>New products.<br>Better discoveries.</h1>
+          <p>Immersive product focus, calm marketplace utility, and original Nilya geometry—built around real Supabase fields and truthful empty states.</p>
+        </div>
+        <div class="mood-stack" aria-label="Visual personality">
+          <div class="mood-chip"><i data-lucide="sparkles" aria-hidden="true"></i>Editorial atmosphere</div>
+          <div class="mood-chip"><i data-lucide="scan-line" aria-hidden="true"></i>Product-led stages</div>
+          <div class="mood-chip"><i data-lucide="layers-3" aria-hidden="true"></i>Soft layered depth</div>
+          <div class="mood-chip"><i data-lucide="shield-check" aria-hidden="true"></i>Truthful marketplace UI</div>
+        </div>
+      </div>
+
+      <div class="section-heading">
+        <h2>Principal screen overview</h2>
+        <p>Select an artboard to open it in the interactive prototype.</p>
+      </div>
+
+      <div class="principal-grid">
+        <button type="button" class="overview-screen" data-open-screen="home-featured">
+          <span class="mini-phone mini-hero">
+            <span class="mini-hero-lines"><span></span><span></span></span>
+            <span class="mini-product-stage"><span class="mini-product"></span></span>
+          </span>
+          <strong>Home · Featured</strong>
+        </button>
+        <button type="button" class="overview-screen" data-open-screen="home-feed">
+          <span class="mini-phone mini-catalogue">
+            <span class="mini-card"></span><span class="mini-card"></span>
+            <span class="mini-card"></span><span class="mini-card"></span>
+          </span>
+          <strong>Home · Feed</strong>
+        </button>
+        <button type="button" class="overview-screen" data-open-screen="browse">
+          <span class="mini-phone mini-catalogue">
+            <span class="mini-card"></span><span class="mini-card"></span>
+            <span class="mini-card"></span><span class="mini-card"></span>
+          </span>
+          <strong>Browse</strong>
+        </button>
+        <button type="button" class="overview-screen" data-open-screen="search">
+          <span class="mini-phone mini-catalogue">
+            <span class="mini-card"></span><span class="mini-card"></span>
+            <span class="mini-card"></span><span class="mini-card"></span>
+          </span>
+          <strong>Search</strong>
+        </button>
+        <button type="button" class="overview-screen" data-open-screen="detail">
+          <span class="mini-phone mini-detail">
+            <span class="mini-detail-stage"><span class="mini-product"></span></span>
+            <span class="mini-detail-panel"><span></span><span></span><span></span></span>
+          </span>
+          <strong>Product detail</strong>
+        </button>
+        <button type="button" class="overview-screen" data-open-screen="sell">
+          <span class="mini-phone mini-detail">
+            <span class="mini-detail-stage"><span class="mini-product"></span></span>
+            <span class="mini-detail-panel"><span></span><span></span><span></span></span>
+          </span>
+          <strong>Sell journey</strong>
+        </button>
+        <button type="button" class="overview-screen" data-open-screen="inbox">
+          <span class="mini-phone mini-detail">
+            <span class="mini-detail-panel"><span></span><span></span><span></span><span></span></span>
+            <span class="mini-detail-panel"><span></span><span></span><span></span></span>
+          </span>
+          <strong>Inbox</strong>
+        </button>
+        <button type="button" class="overview-screen" data-open-screen="chat">
+          <span class="mini-phone mini-detail">
+            <span class="mini-detail-panel"><span></span><span></span><span></span></span>
+            <span class="mini-detail-panel"><span></span><span></span><span></span></span>
+          </span>
+          <strong>Chat</strong>
+        </button>
+        <button type="button" class="overview-screen" data-open-screen="profile">
+          <span class="mini-phone mini-detail">
+            <span class="mini-detail-stage"><span class="mini-product"></span></span>
+            <span class="mini-detail-panel"><span></span><span></span><span></span></span>
+          </span>
+          <strong>Profile hub</strong>
+        </button>
+      </div>
+    </section>
+
+    <section class="design-section" data-section="foundations" role="tabpanel" hidden>
+      <div class="section-heading">
+        <h2>Brand and visual foundations</h2>
+        <p>Fixed light system · Inter · semantic green hierarchy</p>
+      </div>
+      <div class="foundation-grid">
+        <article class="spec-panel">
+          <h3>Official lockup</h3>
+          <img class="official-lockup" alt="Nilya Marketplace" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MjAgMTgwIiB3aWR0aD0iNjIwIiBoZWlnaHQ9IjE4MCI+CiAgPHJlY3QgeD0iMCIgeT0iMjAiIHdpZHRoPSIxNDAiIGhlaWdodD0iMTQwIiByeD0iMzIiIGZpbGw9IiMwRjZFNTYiLz4KICA8cGF0aCBkPSJNNDAgMTE4VjYzTDExMCAxMThWNjMiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSIxNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgPGNpcmNsZSBjeD0iMTEwIiBjeT0iNTUiIHI9IjgiIGZpbGw9IiNFRjlGMjciLz4KICA8dGV4dCB4PSIxNzYiIHk9IjEwMyIgZm9udC1mYW1pbHk9IkludGVyLCAnSGVsdmV0aWNhIE5ldWUnLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSI3MiIgZm9udC13ZWlnaHQ9IjUwMCIgbGV0dGVyLXNwYWNpbmc9Ii0yIiBmaWxsPSIjMTQxNDEzIj5uaWx5YTwvdGV4dD4KICA8dGV4dCB4PSIxODAiIHk9IjEzNSIgZm9udC1mYW1pbHk9IkludGVyLCAnSGVsdmV0aWNhIE5ldWUnLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNSIgbGV0dGVyLXNwYWNpbmc9IjgiIGZpbGw9IiM2QjZCNjYiPk1BUktFVFBMQUNFPC90ZXh0Pgo8L3N2Zz4K">
+          <p class="token-caption">Clear space equals the icon corner radius. Minimum icon 24px. Remove the tagline below 32px.</p>
+        </article>
+        <article class="spec-panel">
+          <h3>Surface balance</h3>
+          <div class="ratio-bar" aria-label="65 percent light, 25 percent green, 10 percent ink and semantic states"><span></span><span></span><span></span></div>
+          <p class="token-caption">65% light · 25% green atmosphere · 10% ink, border, and semantic state</p>
+        </article>
+        <article class="spec-panel">
+          <h3>Canonical palette</h3>
+          <div class="palette-list">
+            <div class="palette-row"><span class="palette-swatch" style="background:#0F6E56"></span><span><strong>Nilya Green</strong>Primary actions, focus, selected controls</span><code>#0F6E56</code></div>
+            <div class="palette-row"><span class="palette-swatch" style="background:#EF9F27"></span><span><strong>Nilya Amber</strong>Logo dot and rare brand moments only</span><code>#EF9F27</code></div>
+            <div class="palette-row"><span class="palette-swatch" style="background:#141413"></span><span><strong>Ink</strong>Primary text and optional dark CTA</span><code>#141413</code></div>
+            <div class="palette-row"><span class="palette-swatch" style="background:#6B6B66"></span><span><strong>Muted</strong>Readable secondary text</span><code>#6B6B66</code></div>
+            <div class="palette-row"><span class="palette-swatch" style="background:#FFFFFF"></span><span><strong>Surface</strong>Cards, information panels, catalogue</span><code>#FFFFFF</code></div>
+            <div class="palette-row"><span class="palette-swatch" style="background:#084A3A"></span><span><strong>Hero green</strong>Editorial and feature surfaces</span><code>#084A3A</code></div>
+          </div>
+        </article>
+        <article class="spec-panel">
+          <h3>Inter type ramp</h3>
+          <div class="type-ramp">
+            <div class="type-sample hero"><strong>Discover better.</strong><span>Hero · 42–48 / 700</span></div>
+            <div class="type-sample screen"><strong>Browse</strong><span>Title · 30–34 / 700</span></div>
+            <div class="type-sample section"><strong>New arrivals</strong><span>Section · 22–26 / 700</span></div>
+            <div class="type-sample product"><strong>Product title</strong><span>Product · 16–20 / 600</span></div>
+            <div class="type-sample price"><strong>Real price</strong><span>Price · 20–28 / 700</span></div>
+          </div>
+        </article>
+        <article class="spec-panel">
+          <h3>Radius ladder</h3>
+          <div class="radius-board">
+            <div class="radius-token"><span class="radius-shape" style="border-radius:12px"></span><b>12</b><span>Controls</span></div>
+            <div class="radius-token"><span class="radius-shape" style="border-radius:17px"></span><b>16–18</b><span>Inputs</span></div>
+            <div class="radius-token"><span class="radius-shape" style="border-radius:20px"></span><b>18–22</b><span>Cards</span></div>
+            <div class="radius-token"><span class="radius-shape" style="border-radius:30px"></span><b>28–34</b><span>Stages</span></div>
+          </div>
+        </article>
+        <article class="spec-panel">
+          <h3>Motion contract</h3>
+          <div class="motion-row"><span>Carousel</span><span class="motion-track"><span style="width:82%"></span></span><b>320ms</b></div>
+          <div class="motion-row"><span>Detail open</span><span class="motion-track"><span style="width:76%"></span></span><b>300ms</b></div>
+          <div class="motion-row"><span>Card press</span><span class="motion-track"><span style="width:46%"></span></span><b>180ms</b></div>
+          <div class="motion-row"><span>Sheet spring</span><span class="motion-track"><span style="width:88%"></span></span><b>340ms</b></div>
+          <p class="token-caption">No looping product float. Reduced-motion equivalents remove travel and scale.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="design-section" data-section="components" role="tabpanel" hidden>
+      <div class="section-heading">
+        <h2>Canonical component library</h2>
+        <p>One system for cutouts and normal seller photography</p>
+      </div>
+      <div class="component-grid">
+        <article class="component-canvas">
+          <div class="product-card-spec">
+            <button type="button" class="floating-icon" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button>
+            <div class="product-stage">
+              <svg class="cutout-object" viewBox="0 0 200 150" role="img" aria-label="Generic unbranded product cutout specimen">
+                <ellipse class="object-dark" cx="100" cy="130" rx="70" ry="8" opacity=".14"></ellipse>
+                <path class="object-light" d="M48 45c0-18 14-30 32-30h40c18 0 32 12 32 30v48H48z"></path>
+                <rect class="object-main" x="30" y="54" width="140" height="66" rx="26"></rect>
+                <rect class="object-dark" x="51" y="70" width="98" height="38" rx="16"></rect>
+                <path class="object-dark" d="M54 116h10v24H54zm82 0h10v24h-10z"></path>
+              </svg>
+            </div>
+            <div class="product-card-copy"><strong>Product title</strong><b>Real price</b><span>Location from listing</span></div>
+          </div>
+          <span class="token-caption">Cutout variant · contain · tonal stage · 20px card radius</span>
+        </article>
+        <article class="component-canvas">
+          <div class="product-card-spec">
+            <button type="button" class="floating-icon" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button>
+            <div class="product-stage photo"></div>
+            <div class="product-card-copy"><strong>Product title</strong><b>Real price</b><span>Location from listing</span></div>
+          </div>
+          <span class="token-caption">Photo variant · cover · no background-removal dependency</span>
+        </article>
+        <article class="component-canvas">
+          <div class="control-stack">
+            <label class="search-spec"><i data-lucide="search" aria-hidden="true"></i><input type="search" aria-label="Search specimen" placeholder="Search products and sellers"></label>
+            <div class="chip-row">
+              <button type="button" class="chip" aria-pressed="true">All</button>
+              <button type="button" class="chip" aria-pressed="false">Fashion</button>
+              <button type="button" class="chip" aria-pressed="false">Home</button>
+              <button type="button" class="chip" aria-pressed="false">Beauty</button>
+            </div>
+            <button type="button" class="primary-action">Primary action</button>
+            <button type="button" class="secondary-action">Secondary action</button>
+          </div>
+        </article>
+        <article class="component-canvas">
+          <div class="chip-row">
+            <button type="button" class="floating-icon" aria-label="Back"><i data-lucide="arrow-left" aria-hidden="true"></i></button>
+            <button type="button" class="floating-icon" aria-label="Share"><i data-lucide="share-2" aria-hidden="true"></i></button>
+            <button type="button" class="floating-icon" data-favorite aria-label="Save product" aria-pressed="true"><i data-lucide="heart" aria-hidden="true"></i></button>
+            <button type="button" class="floating-icon" aria-label="Filter"><i data-lucide="sliders-horizontal" aria-hidden="true"></i></button>
+          </div>
+          <div class="component-nav" aria-label="Bottom navigation specimen">
+            <span><i data-lucide="house" aria-hidden="true"></i>Home</span>
+            <span><i data-lucide="grid-2x2" aria-hidden="true"></i>Browse</span>
+            <span><i data-lucide="plus" aria-hidden="true"></i>Sell</span>
+            <span><i data-lucide="message-circle" aria-hidden="true"></i>Inbox</span>
+            <span><i data-lucide="user-round" aria-hidden="true"></i>Profile</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="design-section" data-section="prototype" role="tabpanel" hidden>
+      <div class="section-heading">
+        <h2>Interactive clickable prototype</h2>
+        <p>Presentation-only interactions · no external data or writes</p>
+      </div>
+      <div class="prototype-layout">
+        <aside class="prototype-controls">
+          <strong>Screen</strong>
+          <div class="screen-picker" aria-label="Prototype screens">
+            <button type="button" data-screen-button="splash" aria-pressed="false">Splash</button>
+            <button type="button" data-screen-button="home-featured" aria-pressed="true">Home · Featured</button>
+            <button type="button" data-screen-button="home-feed" aria-pressed="false">Home · Feed</button>
+            <button type="button" data-screen-button="browse" aria-pressed="false">Browse</button>
+            <button type="button" data-screen-button="search" aria-pressed="false">Search</button>
+            <button type="button" data-screen-button="detail" aria-pressed="false">Product detail</button>
+            <button type="button" data-screen-button="sell" aria-pressed="false">Sell</button>
+            <button type="button" data-screen-button="inbox" aria-pressed="false">Inbox</button>
+            <button type="button" data-screen-button="chat" aria-pressed="false">Chat</button>
+            <button type="button" data-screen-button="profile" aria-pressed="false">Profile</button>
+          </div>
+          <strong>Viewport</strong>
+          <div class="viewport-picker" aria-label="Prototype viewport">
+            <button type="button" data-viewport="360" aria-pressed="false">360</button>
+            <button type="button" data-viewport="393" aria-pressed="true">393</button>
+            <button type="button" data-viewport="430" aria-pressed="false">430</button>
+          </div>
+          <div class="prototype-live" aria-live="polite">Home · Featured · 393 × 852</div>
+        </aside>
+
+        <div class="phone-presentation">
+          <span class="viewport-label">393 × 852 artboard</span>
+          <div class="phone-shell">
+            <section class="phone-screen splash-screen" data-phone-screen="splash" aria-label="Splash screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <img alt="Nilya" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiPgogIDxyZWN0IHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHJ4PSIyMzAiIGZpbGw9IiMwRjZFNTYiLz4KICA8cGF0aCBkPSJNMzU0IDcwMFYzNzBMNjcwIDcwMFYzNzAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSI4MCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgPGNpcmNsZSBjeD0iNjcwIiBjeT0iMzE1IiByPSI0MyIgZmlsbD0iI0VGOUYyNyIvPgo8L3N2Zz4K">
+            </section>
+
+            <section class="phone-screen home-featured-screen is-active" data-phone-screen="home-featured" aria-label="Home featured screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <div class="featured-content">
+                <div class="featured-header">
+                  <img alt="Nilya" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiPgogIDxyZWN0IHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHJ4PSIyMzAiIGZpbGw9IiMwRjZFNTYiLz4KICA8cGF0aCBkPSJNMzU0IDcwMFYzNzBMNjcwIDcwMFYzNzAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSI4MCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgPGNpcmNsZSBjeD0iNjcwIiBjeT0iMzE1IiByPSI0MyIgZmlsbD0iI0VGOUYyNyIvPgo8L3N2Zz4K">
+                  <button type="button" class="dark-control" aria-label="Notifications" data-screen-link="inbox"><i data-lucide="bell" aria-hidden="true"></i></button>
+                </div>
+                <h2 class="featured-headline">New products.<br>Better discoveries.</h2>
+                <div class="featured-stage">
+                  <button type="button" class="floating-icon" data-favorite aria-label="Save featured product" aria-pressed="false" style="position:absolute;right:20px;top:20px;z-index:3"><i data-lucide="heart" aria-hidden="true"></i></button>
+                  <div class="featured-product-visual">
+                    <svg class="cutout-object" viewBox="0 0 200 150" role="img" aria-label="Generic unbranded product cutout specimen">
+                      <ellipse class="object-dark" cx="100" cy="130" rx="70" ry="8" opacity=".14"></ellipse>
+                      <path class="object-light" d="M48 45c0-18 14-30 32-30h40c18 0 32 12 32 30v48H48z"></path>
+                      <rect class="object-main" x="30" y="54" width="140" height="66" rx="26"></rect>
+                      <rect class="object-dark" x="51" y="70" width="98" height="38" rx="16"></rect>
+                      <path class="object-dark" d="M54 116h10v24H54zm82 0h10v24h-10z"></path>
+                    </svg>
+                  </div>
+                  <div class="featured-meta"><span><strong class="carousel-product-label">Featured product</strong><span>Title and price from Supabase</span></span><button type="button" class="floating-icon" data-carousel-next aria-label="Next featured product"><i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+                </div>
+                <div class="featured-carousel-dots" aria-label="Featured item 1 of 3"><span class="is-active"></span><span></span><span></span></div>
+                <button type="button" class="featured-cta" data-screen-link="home-feed">Explore products</button>
+              </div>
+            </section>
+
+            <section class="phone-screen light-screen" data-phone-screen="home-feed" aria-label="Home feed screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <div class="screen-header-row">
+                <img alt="Nilya" style="height:34px;width:117px;object-fit:contain;object-position:left" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MjAgMTgwIiB3aWR0aD0iNjIwIiBoZWlnaHQ9IjE4MCI+CiAgPHJlY3QgeD0iMCIgeT0iMjAiIHdpZHRoPSIxNDAiIGhlaWdodD0iMTQwIiByeD0iMzIiIGZpbGw9IiMwRjZFNTYiLz4KICA8cGF0aCBkPSJNNDAgMTE4VjYzTDExMCAxMThWNjMiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSIxNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgPGNpcmNsZSBjeD0iMTEwIiBjeT0iNTUiIHI9IjgiIGZpbGw9IiNFRjlGMjciLz4KICA8dGV4dCB4PSIxNzYiIHk9IjEwMyIgZm9udC1mYW1pbHk9IkludGVyLCAnSGVsdmV0aWNhIE5ldWUnLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSI3MiIgZm9udC13ZWlnaHQ9IjUwMCIgbGV0dGVyLXNwYWNpbmc9Ii0yIiBmaWxsPSIjMTQxNDEzIj5uaWx5YTwvdGV4dD4KICA8dGV4dCB4PSIxODAiIHk9IjEzNSIgZm9udC1mYW1pbHk9IkludGVyLCAnSGVsdmV0aWNhIE5ldWUnLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNSIgbGV0dGVyLXNwYWNpbmc9IjgiIGZpbGw9IiM2QjZCNjYiPk1BUktFVFBMQUNFPC90ZXh0Pgo8L3N2Zz4K">
+                <button type="button" class="floating-icon" aria-label="Notifications" data-screen-link="inbox"><i data-lucide="bell" aria-hidden="true"></i></button>
+              </div>
+              <label class="phone-search"><i data-lucide="search" aria-hidden="true"></i><span>Search products and sellers</span></label>
+              <div class="phone-chip-row"><button class="phone-chip is-active" type="button">All</button><button class="phone-chip" type="button">Fashion</button><button class="phone-chip" type="button">Electronics</button><button class="phone-chip" type="button">Home</button></div>
+              <div class="phone-section-row"><strong>New arrivals</strong><span>See all</span></div>
+              <div class="phone-grid">
+                <article class="phone-card"><button class="tiny-favorite" type="button" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button><div class="phone-card-stage"></div><strong>Product title</strong><b>Real price</b><span>Listing location</span></article>
+                <article class="phone-card"><button class="tiny-favorite" type="button" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button><div class="phone-card-stage"></div><strong>Product title</strong><b>Real price</b><span>Listing location</span></article>
+                <article class="phone-card"><button class="tiny-favorite" type="button" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button><div class="phone-card-stage"></div><strong>Product title</strong><b>Real price</b><span>Listing location</span></article>
+                <article class="phone-card"><button class="tiny-favorite" type="button" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button><div class="phone-card-stage"></div><strong>Product title</strong><b>Real price</b><span>Listing location</span></article>
+              </div>
+            </section>
+
+            <section class="phone-screen light-screen" data-phone-screen="browse" aria-label="Browse catalogue screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <h2>Browse</h2>
+              <div class="phone-search-row"><label class="phone-search"><i data-lucide="search" aria-hidden="true"></i><span>Search catalogue</span></label><button type="button" class="phone-filter" data-filter-open aria-label="Open filters"><i data-lucide="sliders-horizontal" aria-hidden="true"></i></button></div>
+              <div class="phone-chip-row"><button class="phone-chip is-active" type="button">All</button><button class="phone-chip" type="button">Beauty</button><button class="phone-chip" type="button">Sports</button><button class="phone-chip" type="button">Accessories</button></div>
+              <div class="phone-grid">
+                <article class="phone-card"><button class="tiny-favorite" type="button" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button><div class="phone-card-stage"></div><strong>Product title</strong><b>Real price</b><span>Listing location</span></article>
+                <article class="phone-card"><button class="tiny-favorite" type="button" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button><div class="phone-card-stage"></div><strong>Product title</strong><b>Real price</b><span>Listing location</span></article>
+                <article class="phone-card"><button class="tiny-favorite" type="button" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button><div class="phone-card-stage"></div><strong>Product title</strong><b>Real price</b><span>Listing location</span></article>
+              </div>
+            </section>
+
+            <section class="phone-screen light-screen" data-phone-screen="search" aria-label="Search screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <div class="screen-header-row"><button type="button" class="floating-icon" data-screen-link="home-feed" aria-label="Back"><i data-lucide="arrow-left" aria-hidden="true"></i></button><strong>Search</strong><button type="button" class="floating-icon" data-filter-open aria-label="Open filters"><i data-lucide="sliders-horizontal" aria-hidden="true"></i></button></div>
+              <label class="phone-search" style="margin-top:10px"><i data-lucide="search" aria-hidden="true"></i><span>Search products and sellers</span></label>
+              <div class="phone-chip-row"><button class="phone-chip is-active" type="button">Relevant</button><button class="phone-chip" type="button">Newest</button><button class="phone-chip" type="button">Price</button></div>
+              <div class="phone-section-row"><strong>Results</strong><span>Real query only</span></div>
+              <div class="state-card" style="border:0;min-height:260px;align-content:center;text-align:center">
+                <span class="state-icon" style="margin:auto"><i data-lucide="search" aria-hidden="true"></i></span>
+                <h3>Start with a product or seller</h3>
+                <p>Results appear here only after a real search.</p>
+              </div>
+            </section>
+
+            <section class="phone-screen detail-screen" data-phone-screen="detail" aria-label="Product detail screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <div class="detail-top-controls"><button type="button" class="floating-icon" data-screen-link="browse" aria-label="Back"><i data-lucide="arrow-left" aria-hidden="true"></i></button><span class="detail-actions"><button type="button" class="floating-icon" aria-label="Share"><i data-lucide="share-2" aria-hidden="true"></i></button><button type="button" class="floating-icon" data-favorite aria-label="Save product" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i></button></span></div>
+              <div class="detail-visual">
+                <svg class="cutout-object" viewBox="0 0 200 150" role="img" aria-label="Generic unbranded product cutout specimen">
+                  <ellipse class="object-dark" cx="100" cy="130" rx="70" ry="8" opacity=".14"></ellipse>
+                  <path class="object-light" d="M48 45c0-18 14-30 32-30h40c18 0 32 12 32 30v48H48z"></path>
+                  <rect class="object-main" x="30" y="54" width="140" height="66" rx="26"></rect>
+                  <rect class="object-dark" x="51" y="70" width="98" height="38" rx="16"></rect>
+                  <path class="object-dark" d="M54 116h10v24H54zm82 0h10v24h-10z"></path>
+                </svg>
+                <span class="image-counter">1 / real photos</span>
+              </div>
+              <div class="detail-panel">
+                <div class="detail-meta"><span>NEW</span><span>·</span><span>Published time</span></div>
+                <h2>Product title from listing</h2>
+                <strong class="detail-price">Real price</strong>
+                <div class="detail-meta"><span>Listing location</span><span>·</span><span>Seller identity</span></div>
+                <p class="detail-description">The seller’s real description and verified attributes appear here without invented stock, ratings, variants, or delivery estimates.</p>
+              </div>
+              <div class="sticky-actions"><button type="button" class="secondary-action" data-screen-link="chat">Message seller</button><button type="button" class="primary-action">Buy now</button></div>
+            </section>
+
+            <section class="phone-screen light-screen" data-phone-screen="sell" aria-label="Sell flow screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <div class="screen-header-row"><button type="button" class="floating-icon" data-screen-link="home-feed" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button><span class="sell-step-label">Step 1 of 8</span><span style="width:44px"></span></div>
+              <div class="sell-progress"><span></span></div>
+              <h2 class="sell-step-title">Add real product photos</h2>
+              <p class="token-caption sell-step-copy">Use clear seller-owned photos. The first image becomes the cover.</p>
+              <div class="sell-photo-stage"><i data-lucide="camera" aria-hidden="true"></i><strong>Choose photos</strong><span>Real image bytes are previewed before upload. No condition step is included.</span></div>
+              <div class="sell-bottom"><button type="button" class="primary-action" data-sell-next>Continue</button></div>
+            </section>
+
+            <section class="phone-screen light-screen" data-phone-screen="inbox" aria-label="Inbox screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <h2>Inbox</h2>
+              <div class="inbox-list">
+                <button type="button" class="conversation-row" data-screen-link="chat" style="border-left:0;border-right:0;border-top:0;text-align:left">
+                  <span class="avatar-placeholder">M</span><span class="conversation-copy"><strong>Member display name</strong><span>Latest real message and listing context</span></span><span class="conversation-time">Time<span class="unread-indicator" aria-label="Unread"></span></span>
+                </button>
+                <button type="button" class="conversation-row" data-screen-link="chat" style="border-left:0;border-right:0;border-top:0;text-align:left">
+                  <span class="avatar-placeholder">M</span><span class="conversation-copy"><strong>Member display name</strong><span>Latest real message and listing context</span></span><span class="conversation-time">Time</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="phone-screen light-screen" data-phone-screen="chat" aria-label="Chat screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <div class="screen-header-row"><button type="button" class="floating-icon" data-screen-link="inbox" aria-label="Back"><i data-lucide="arrow-left" aria-hidden="true"></i></button><strong>Member name</strong><button type="button" class="floating-icon" aria-label="Conversation options"><i data-lucide="ellipsis" aria-hidden="true"></i></button></div>
+              <div class="chat-top-product"><span class="chat-product-thumb"></span><span class="conversation-copy"><strong>Listing title</strong><span>Real price · current availability</span></span></div>
+              <div class="chat-thread">
+                <span class="bubble incoming">Incoming message from the real conversation.</span>
+                <span class="bubble outgoing">Outgoing messages use Nilya Green with white text.</span>
+                <span class="bubble incoming">Offer cards appear only when a real offer exists.</span>
+              </div>
+            </section>
+
+            <section class="phone-screen light-screen" data-phone-screen="profile" aria-label="Profile hub screen">
+              <div class="status-bar"><span>9:41</span><span class="status-icons"><span></span></span></div>
+              <div class="profile-identity"><span class="avatar-placeholder">Y</span><span><h2>Your profile</h2><span>Real city and country</span></span></div>
+              <div class="profile-groups">
+                <div class="profile-group">
+                  <div class="profile-row"><i data-lucide="package" aria-hidden="true"></i><span>My listings</span><i data-lucide="chevron-right" aria-hidden="true"></i></div>
+                  <div class="profile-row"><i data-lucide="heart" aria-hidden="true"></i><span>Favorites</span><i data-lucide="chevron-right" aria-hidden="true"></i></div>
+                  <div class="profile-row"><i data-lucide="receipt-text" aria-hidden="true"></i><span>Orders</span><i data-lucide="chevron-right" aria-hidden="true"></i></div>
+                </div>
+                <div class="profile-group">
+                  <div class="profile-row"><i data-lucide="calendar-off" aria-hidden="true"></i><span>Holiday mode</span><i data-lucide="chevron-right" aria-hidden="true"></i></div>
+                  <div class="profile-row"><i data-lucide="badge-percent" aria-hidden="true"></i><span>Bundle discounts</span><i data-lucide="chevron-right" aria-hidden="true"></i></div>
+                  <div class="profile-row"><i data-lucide="settings" aria-hidden="true"></i><span>Settings</span><i data-lucide="chevron-right" aria-hidden="true"></i></div>
+                  <div class="profile-row"><i data-lucide="circle-help" aria-hidden="true"></i><span>Help Centre</span><i data-lucide="chevron-right" aria-hidden="true"></i></div>
+                </div>
+              </div>
+            </section>
+
+            <nav class="prototype-bottom-nav" aria-label="Prototype bottom navigation">
+              <button type="button" data-screen-link="home-feed" aria-current="page"><i data-lucide="house" aria-hidden="true"></i>Home</button>
+              <button type="button" data-screen-link="browse"><i data-lucide="grid-2x2" aria-hidden="true"></i>Browse</button>
+              <button type="button" data-screen-link="sell"><i data-lucide="plus" aria-hidden="true"></i>Sell</button>
+              <button type="button" data-screen-link="inbox"><i data-lucide="message-circle" aria-hidden="true"></i>Inbox</button>
+              <button type="button" data-screen-link="profile"><i data-lucide="user-round" aria-hidden="true"></i>Profile</button>
+            </nav>
+
+            <div class="filter-sheet" aria-hidden="true">
+              <div class="filter-sheet-panel">
+                <span class="sheet-handle"></span>
+                <div class="screen-header-row"><h3>Filters</h3><button type="button" class="floating-icon" data-filter-close aria-label="Close filters"><i data-lucide="x" aria-hidden="true"></i></button></div>
+                <strong>Category</strong>
+                <div class="chip-row"><button type="button" class="chip" aria-pressed="true">All</button><button type="button" class="chip" aria-pressed="false">Fashion</button><button type="button" class="chip" aria-pressed="false">Home</button></div>
+                <strong>Price</strong>
+                <div class="search-spec"><span>Minimum</span><span style="margin-left:auto;color:var(--nilya-muted)">Maximum</span></div>
+                <button type="button" class="primary-action" data-filter-close>Show results</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="design-section" data-section="states" role="tabpanel" hidden>
+      <div class="section-heading">
+        <h2>Interaction and system states</h2>
+        <p>Every state carries text or structure—not color alone.</p>
+      </div>
+      <div class="states-grid">
+        <article class="state-card"><div class="skeleton-lines"><span></span><span></span><span></span></div><h3>Loading</h3><p>Image and text skeletons preserve final layout without fabricated content.</p></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="package-open" aria-hidden="true"></i></span><h3>Empty</h3><p>No products yet. A truthful action can invite the member to sell or adjust filters.</p></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="triangle-alert" aria-hidden="true"></i></span><h3>Error</h3><p>Could not load this page. Retry preserves any existing real content.</p><button type="button" class="secondary-action">Try again</button></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="wifi-off" aria-hidden="true"></i></span><h3>Offline</h3><p>You appear to be offline. Previously loaded real content may remain visible.</p></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="image-off" aria-hidden="true"></i></span><h3>Image failed</h3><p>The product image could not be displayed. Title and price remain readable.</p></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="heart" aria-hidden="true"></i></span><h3>Favorite selected</h3><p>Filled icon, accessible selected state, and confirmation feedback distinguish the saved state.</p></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="sliders-horizontal" aria-hidden="true"></i></span><h3>Filter active</h3><p>Selected label and applied-count text accompany the green selected treatment.</p><span class="state-flag">Filters applied</span></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="message-circle" aria-hidden="true"></i></span><h3>Unread conversation</h3><p>Heavier row text and an announced unread state accompany the small green dot.</p></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="lock-keyhole" aria-hidden="true"></i></span><h3>Sold or unavailable</h3><p>Actions are removed or disabled with explicit availability copy; no dead controls remain.</p></article>
+        <article class="state-card"><span class="state-icon"><i data-lucide="user-round-check" aria-hidden="true"></i></span><h3>Seller owner view</h3><p>Edit and manage actions replace buyer CTAs only when the authenticated member owns the listing.</p></article>
+      </div>
+    </section>
+
+    <section class="design-section" data-section="handoff" role="tabpanel" hidden>
+      <div class="section-heading">
+        <h2>Developer handoff</h2>
+        <p>Measurements, behavior, and data boundaries</p>
+      </div>
+      <div class="handoff-grid">
+        <article class="spec-panel">
+          <h3>Responsive artboards</h3>
+          <table class="handoff-table">
+            <thead><tr><th>Viewport</th><th>Gutter</th><th>Grid gap</th><th>Use</th></tr></thead>
+            <tbody>
+              <tr><td>360 × 800</td><td>16–20</td><td>10</td><td>Compact Android</td></tr>
+              <tr><td>393 × 852</td><td>20</td><td>10–12</td><td>Primary design</td></tr>
+              <tr><td>430 × 932</td><td>24</td><td>12</td><td>Large phone</td></tr>
+            </tbody>
+          </table>
+        </article>
+        <article class="spec-panel">
+          <h3>Core measurements</h3>
+          <table class="handoff-table">
+            <tbody>
+              <tr><th>Touch target</th><td>44 × 44 minimum</td></tr>
+              <tr><th>Product image</th><td>65–72% of card height</td></tr>
+              <tr><th>Detail stage</th><td>52–60% of first viewport</td></tr>
+              <tr><th>Information panel</th><td>28–32 top radius</td></tr>
+              <tr><th>Floating navigation</th><td>24–30 radius</td></tr>
+              <tr><th>Focus</th><td>Green + visible structure</td></tr>
+            </tbody>
+          </table>
+        </article>
+      </div>
+
+      <article class="spec-panel">
+        <h3>Sell flow map</h3>
+        <div class="flow-map">
+          <div class="flow-step"><b>01</b><span>Photos</span></div>
+          <div class="flow-step"><b>02</b><span>Product basics</span></div>
+          <div class="flow-step"><b>03</b><span>Category</span></div>
+          <div class="flow-step"><b>04</b><span>Product details</span></div>
+          <div class="flow-step"><b>05</b><span>Price</span></div>
+          <div class="flow-step"><b>06</b><span>Delivery</span></div>
+          <div class="flow-step"><b>07</b><span>Review</span></div>
+          <div class="flow-step"><b>08</b><span>Publish</span></div>
+        </div>
+      </article>
+
+      <article class="handoff-note">
+        <h3>Real-data boundary</h3>
+        <p>Quantity, stock, variants, ratings, discounts, favorite counts, promotional labels, view counts, demand, seller badges, and delivery estimates remain absent unless supported by real schema fields and populated records. Every listing read and write remains NEW-only. The visual prototype stores presentation state locally and performs no application or Supabase writes.</p>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.getElementById('nilya-design-system');
+      const sectionButtons = Array.from(root.querySelectorAll('[data-section-button]'));
+      const sections = Array.from(root.querySelectorAll('[data-section]'));
+      const screenButtons = Array.from(root.querySelectorAll('[data-screen-button]'));
+      const screens = Array.from(root.querySelectorAll('[data-phone-screen]'));
+      const viewportButtons = Array.from(root.querySelectorAll('[data-viewport]'));
+      const phoneShell = root.querySelector('.phone-shell');
+      const viewportLabel = root.querySelector('.viewport-label');
+      const live = root.querySelector('.prototype-live');
+      const bottomNav = root.querySelector('.prototype-bottom-nav');
+      const filterSheet = root.querySelector('.filter-sheet');
+      const screenLabels = {
+        splash: 'Splash',
+        'home-featured': 'Home · Featured',
+        'home-feed': 'Home · Feed',
+        browse: 'Browse',
+        search: 'Search',
+        detail: 'Product detail',
+        sell: 'Sell',
+        inbox: 'Inbox',
+        chat: 'Chat',
+        profile: 'Profile'
+      };
+      const navScreens = new Set(['home-featured', 'home-feed', 'browse', 'inbox', 'profile']);
+      let currentScreen = 'home-featured';
+      let currentViewport = 393;
+      let carouselIndex = 0;
+      let sellStep = 1;
+
+      function showSection(name) {
+        sections.forEach((section) => {
+          section.hidden = section.getAttribute('data-section') !== name;
+        });
+        sectionButtons.forEach((button) => {
+          button.setAttribute('aria-selected', String(button.getAttribute('data-section-button') === name));
+        });
+      }
+
+      function updateNav(screenName) {
+        root.querySelectorAll('[data-screen-link]').forEach((button) => {
+          button.removeAttribute('aria-current');
+          const target = button.getAttribute('data-screen-link');
+          if ((screenName === 'home-featured' || screenName === 'home-feed') && target === 'home-feed') {
+            button.setAttribute('aria-current', 'page');
+          } else if (target === screenName) {
+            button.setAttribute('aria-current', 'page');
+          }
+        });
+      }
+
+      function showScreen(name) {
+        currentScreen = name;
+        screens.forEach((screen) => {
+          screen.classList.toggle('is-active', screen.getAttribute('data-phone-screen') === name);
+        });
+        screenButtons.forEach((button) => {
+          button.setAttribute('aria-pressed', String(button.getAttribute('data-screen-button') === name));
+        });
+        bottomNav.hidden = !navScreens.has(name);
+        updateNav(name);
+        live.textContent = screenLabels[name] + ' · ' + currentViewport + ' × ' + Math.round(currentViewport * 852 / 393);
+      }
+
+      sectionButtons.forEach((button) => {
+        button.addEventListener('click', () => showSection(button.getAttribute('data-section-button')));
+      });
+
+      root.querySelectorAll('[data-open-screen]').forEach((button) => {
+        button.addEventListener('click', () => {
+          showSection('prototype');
+          showScreen(button.getAttribute('data-open-screen'));
+        });
+      });
+
+      screenButtons.forEach((button) => {
+        button.addEventListener('click', () => showScreen(button.getAttribute('data-screen-button')));
+      });
+
+      root.querySelectorAll('[data-screen-link]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const target = button.getAttribute('data-screen-link');
+          showSection('prototype');
+          showScreen(target);
+        });
+      });
+
+      viewportButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          currentViewport = Number(button.getAttribute('data-viewport'));
+          phoneShell.style.setProperty('--nilya-phone-width', currentViewport + 'px');
+          viewportButtons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+          const height = Math.round(currentViewport * 852 / 393);
+          viewportLabel.textContent = currentViewport + ' × ' + height + ' artboard';
+          live.textContent = screenLabels[currentScreen] + ' · ' + currentViewport + ' × ' + height;
+        });
+      });
+
+      root.querySelectorAll('[data-favorite]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const next = button.getAttribute('aria-pressed') !== 'true';
+          button.setAttribute('aria-pressed', String(next));
+          button.setAttribute('aria-label', next ? 'Remove saved product' : 'Save product');
+        });
+      });
+
+      root.querySelectorAll('.chip').forEach((button) => {
+        button.addEventListener('click', () => {
+          const group = button.parentElement;
+          group.querySelectorAll('.chip').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+        });
+      });
+
+      root.querySelectorAll('[data-filter-open]').forEach((button) => {
+        button.addEventListener('click', () => {
+          filterSheet.classList.add('is-open');
+          filterSheet.setAttribute('aria-hidden', 'false');
+        });
+      });
+
+      root.querySelectorAll('[data-filter-close]').forEach((button) => {
+        button.addEventListener('click', () => {
+          filterSheet.classList.remove('is-open');
+          filterSheet.setAttribute('aria-hidden', 'true');
+        });
+      });
+
+      const featuredNames = ['Featured product', 'New arrival', 'Marketplace discovery'];
+      root.querySelectorAll('[data-carousel-next]').forEach((button) => {
+        button.addEventListener('click', () => {
+          carouselIndex = (carouselIndex + 1) % featuredNames.length;
+          root.querySelector('.carousel-product-label').textContent = featuredNames[carouselIndex];
+          const dots = root.querySelectorAll('.featured-carousel-dots span');
+          dots.forEach((dot, index) => dot.classList.toggle('is-active', index === carouselIndex));
+          root.querySelector('.featured-carousel-dots').setAttribute('aria-label', 'Featured item ' + (carouselIndex + 1) + ' of 3');
+        });
+      });
+
+      const sellSteps = [
+        ['Add real product photos', 'Use clear seller-owned photos. The first image becomes the cover.'],
+        ['Describe the product', 'Title, brand, and description map only to supported listing fields.'],
+        ['Choose a category', 'Categories come from the real Supabase reference table.'],
+        ['Add product details', 'Only supported attributes are requested. Condition is fixed to NEW.'],
+        ['Set the price', 'The entered price is validated before publication.'],
+        ['Choose delivery', 'Delivery choices use existing supported routes and fields.'],
+        ['Review the listing', 'Review real photos and fields before creating the private draft.'],
+        ['Publish the product', 'Publication uploads real photo bytes and activates the verified NEW listing.']
+      ];
+
+      root.querySelectorAll('[data-sell-next]').forEach((button) => {
+        button.addEventListener('click', () => {
+          sellStep = sellStep === 8 ? 1 : sellStep + 1;
+          const step = sellSteps[sellStep - 1];
+          root.querySelector('.sell-step-label').textContent = 'Step ' + sellStep + ' of 8';
+          root.querySelector('.sell-step-title').textContent = step[0];
+          root.querySelector('.sell-step-copy').textContent = step[1];
+          root.querySelector('.sell-progress span').style.width = (sellStep * 12.5) + '%';
+          button.textContent = sellStep === 8 ? 'Publish product' : 'Continue';
+        });
+      });
+    })();
+  </script>
+</div>

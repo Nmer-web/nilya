@@ -3,12 +3,12 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ButtonSpinner, Field, FormError } from '@/components/field';
+import { Field, FormError } from '@/components/field';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, Note, T, Tap } from '@/components/ui';
 import { emailError } from '@/lib/validate';
 import { useAuth } from '@/store/auth-store';
-import { color as C } from '@/theme/tokens';
+import { color as C, space, touch } from '@/theme/tokens';
 
 export default function ForgotPassword() {
   const insets = useSafeAreaInsets();
@@ -56,24 +56,24 @@ export default function ForgotPassword() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           flexGrow: 1,
-          paddingHorizontal: 22,
-          paddingTop: 8,
-          paddingBottom: insets.bottom + 32,
+          paddingHorizontal: space.gutterRegular,
+          paddingTop: space.space8,
+          paddingBottom: insets.bottom + space.space32,
         }}
       >
-        <T w={600} size={27} tracking={-0.6} lh={32.4}>
+        <T variant="screenTitle">
           Reset your password
         </T>
-        <T size={14.5} color={C.textSecondary} lh={22.5} style={{ marginTop: 8, marginBottom: 26 }}>
+        <T variant="body" color={C.textSecondary} style={{ marginTop: space.space8, marginBottom: space.space24 }}>
           Enter your email and we&apos;ll send you a link to choose a new one.
         </T>
 
         {sent ? (
-          <Note tone="green">
-            <T w={600} size={14} color={C.success}>
+          <Note tone="success">
+            <T variant="bodyMedium" color={C.success}>
               Check your inbox
             </T>
-            <T size={13.5} color={C.success} lh={19.5} style={{ marginTop: 4 }}>
+            <T variant="metadata" color={C.success} style={{ marginTop: space.space4 }}>
               If an account exists for {email.trim()}, a reset link is on its way. Open it on this device to set a
               new password.
             </T>
@@ -101,13 +101,13 @@ export default function ForgotPassword() {
             />
 
             <Button
-              label={busy ? 'Sending…' : 'Send reset link'}
+              label="Send reset link"
+              loading={busy}
+              loadingLabel="Sending…"
               onPress={submit}
               disabled={busy}
-              style={{ marginTop: 12 }}
-            >
-              {busy && <ButtonSpinner />}
-            </Button>
+              style={{ marginTop: space.space12 }}
+            />
           </>
         )}
 
@@ -117,9 +117,9 @@ export default function ForgotPassword() {
           onPress={() => router.replace('/sign-in')}
           accessibilityRole="button"
           hitSlop={6}
-          style={{ alignSelf: 'center', paddingVertical: 8, marginTop: 32 }}
+          style={{ alignSelf: 'center', minHeight: touch.minimum, justifyContent: 'center', marginTop: space.space32 }}
         >
-          <T w={600} size={14} color={C.text}>
+          <T variant="button" color={C.primary}>
             Back to sign in
           </T>
         </Tap>

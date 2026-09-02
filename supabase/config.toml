@@ -1,10 +1,12 @@
 # Minimal Supabase CLI config. Every key the CLI understands has a default, so
-# this file only states what SAWA actually needs to differ.
+# this file only states what NILYA Development actually needs to differ.
 #
 # `supabase init` generates a much longer annotated version of this file and
 # will offer to overwrite this one — if you run it, keep the [functions] block
 # below or the Stripe webhook will start rejecting Stripe.
 
+# Historical local CLI identifier. Keep it stable so the brand rename does not
+# create a second local Supabase project or disturb existing development data.
 project_id = "sawa"
 
 [functions.stripe-webhook]
@@ -28,9 +30,11 @@ verify_jwt = false
 
 [auth]
 enabled = true
-# Deep link back into the Expo app. `scheme` in app.json is "sawa".
-site_url = "sawa://"
+# NILYA is canonical. The old SAWA callback remains allow-listed temporarily so
+# existing installed development builds and previously sent auth emails can finish.
+site_url = "nilya://"
 additional_redirect_urls = [
+  "nilya://auth-callback",
   "sawa://auth-callback",
   "http://127.0.0.1:8081",
 ]
@@ -66,7 +70,7 @@ enable_signup = false
 enable_confirmations = false
 
 [auth.external.google]
-# Disabled: no OAuth credentials exist for SAWA yet, and none were invented.
+# Disabled: no OAuth credentials exist for NILYA yet, and none were invented.
 # To enable, create an OAuth client in Google Cloud Console with redirect URI
 #   https://tggnhpvrvnmrvmsdyxyu.supabase.co/auth/v1/callback
 # then set enabled = true and supply the client id below. If there are separate

@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
 import { View, type GestureResponderEvent } from 'react-native';
 
-import { color as C, shadow } from '@/theme/tokens';
+import { color as C, elevation, radius, space, touch } from '@/theme/tokens';
 
-const KNOB = 22;
+const KNOB = space.space24;
 
 /**
- * Single-thumb range control matching the design's styled `input[type=range]`:
- * a 3px track, black progress fill and a cream-ringed knob.
+ * Single-thumb range control using NILYA's canonical neutral control language.
  *
- * Hand-rolled rather than pulled from a package so the knob and track match the
- * design exactly and the app keeps one fewer native dependency. It uses the
+ * Hand-rolled so the existing responder behavior stays intact without another
+ * native dependency. It uses the
  * View responder props directly, so each handler closes over the current
  * geometry and no mutable refs are involved.
  */
@@ -54,17 +53,17 @@ export function Slider({
         if (e.nativeEvent.actionName === 'increment') onChange(Math.min(max, value + 10));
         if (e.nativeEvent.actionName === 'decrement') onChange(Math.max(min, value - 10));
       }}
-      style={{ height: 36, justifyContent: 'center' }}
+      style={{ minHeight: touch.minimum, justifyContent: 'center' }}
     >
-      <View style={{ height: 3, borderRadius: 2, backgroundColor: C.border }} />
+      <View style={{ height: space.space4, borderRadius: radius.radiusPill, backgroundColor: C.border }} />
       <View
         style={{
           position: 'absolute',
           left: 0,
           width: knobLeft + KNOB / 2,
-          height: 3,
-          borderRadius: 2,
-          backgroundColor: C.text,
+          height: space.space4,
+          borderRadius: radius.radiusPill,
+          backgroundColor: C.textPrimary,
         }}
       />
       <View
@@ -73,11 +72,11 @@ export function Slider({
           left: knobLeft,
           width: KNOB,
           height: KNOB,
-          borderRadius: KNOB / 2,
-          backgroundColor: C.text,
-          borderWidth: 3,
+          borderRadius: radius.radiusPill,
+          backgroundColor: C.textPrimary,
+          borderWidth: 2,
           borderColor: C.surface,
-          ...shadow.raised,
+          ...elevation.raised,
         }}
       />
     </View>

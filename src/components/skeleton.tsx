@@ -1,8 +1,18 @@
 import React, { useEffect } from 'react';
-import { Animated, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
-import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
-import { color as C, radius, space } from '@/theme/tokens';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { color as C, duration as durationToken, easing, elevation, opacity as opacityToken, radius, screenGutter, space } from '@/theme/tokens';
 
 /**
  * Shimmer as an opacity pulse rather than a travelling highlight.
@@ -14,18 +24,25 @@ import { color as C, radius, space } from '@/theme/tokens';
  * same at a glance.
  */
 function useShimmer() {
-  const v = useAnimatedValue(0);
+  const value = useSharedValue<number>(opacityToken.skeletonHigh);
+  const { allowRepeat } = useReducedMotion();
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(v, { toValue: 1, duration: 850, useNativeDriver: NATIVE_DRIVER }),
-        Animated.timing(v, { toValue: 0, duration: 850, useNativeDriver: NATIVE_DRIVER }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [v]);
+    cancelAnimation(value);
+    if (!allowRepeat) {
+      value.set(opacityToken.skeletonHigh);
+      return;
+    }
+    value.set(withRepeat(
+      withSequence(
+        withTiming(opacityToken.skeletonLow, { duration: durationToken.slow }),
+        withTiming(opacityToken.skeletonHigh, { duration: durationToken.slow })
+      ),
+      -1,
+      false
+    ));
+    return () => cancelAnimation(value);
+  }, [allowRepeat, value]);
 
   /**
    * A shallow pulse, and deliberately in unison across the screen. Staggering
@@ -33,14 +50,14 @@ function useShimmer() {
    * breathing together reads as one surface waiting rather than many parts
    * blinking.
    */
-  return v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.55] });
+  return useAnimatedStyle(() => ({ opacity: value.value }));
 }
 
 /** A single shimmering block. Compose these into screen-shaped skeletons. */
 export function Skeleton({
   width,
   height,
-  round = radius.sm,
+  round = radius.radiusSmall,
   style,
 }: {
   width?: number | `${number}%`;
@@ -48,12 +65,12 @@ export function Skeleton({
   round?: number;
   style?: StyleProp<ViewStyle>;
 }) {
-  const opacity = useShimmer();
+  const animatedStyle = useShimmer();
   return (
     <Animated.View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[{ width, height, borderRadius: round, backgroundColor: C.surfaceSecondary, opacity }, style]}
+      style={[{ width, height, borderRadius: round, backgroundColor: C.skeletonBase }, animatedStyle, style]}
     />
   );
 }
@@ -61,18 +78,32 @@ export function Skeleton({
 /**
  * One product card, unloaded — image, title, price, metadata.
  *
- * Every measurement is taken from the real `ListingCard` so that nothing shifts
- * when content replaces it: the 3:4 well, the 8pt gap under it, and the same
- * four stacked lines. A skeleton whose geometry only approximates the card
- * produces a jump at the very moment the user starts reading.
+ * Every measurement is taken from the real `ListingCard`'s framed treatment so
+ * that nothing shifts when content replaces it: the same bordered/raised
+ * frame, the 3:4 well, the 12pt inner padding, and the same core text stack.
+ * A skeleton whose geometry only approximates the card produces a jump at the
+ * very moment the user starts reading.
  */
 export function ProductSkeleton({ width }: { width: number }) {
   return (
-    <View style={{ width }}>
-      <Skeleton width={width} height={width * (4 / 3)} round={radius.lg} />
-      <Skeleton width="70%" height={12} style={{ marginTop: 10 }} />
-      <Skeleton width="38%" height={15} style={{ marginTop: 7 }} />
-      <Skeleton width="52%" height={10} style={{ marginTop: 8 }} />
+    <View
+      style={{
+        width,
+        overflow: 'hidden',
+        borderRadius: radius.radiusXLarge,
+        borderCurve: 'continuous',
+        borderWidth: 1,
+        borderColor: C.border,
+        backgroundColor: C.surface,
+        ...elevation.raised,
+      }}
+    >
+      <Skeleton width={width} height={width * (4 / 3)} round={0} />
+      <View style={{ padding: space.space12 }}>
+        <Skeleton width="70%" height={12} />
+        <Skeleton width="38%" height={15} style={{ marginTop: space.space8 }} />
+        <Skeleton width="52%" height={10} style={{ marginTop: space.space8 }} />
+      </View>
     </View>
   );
 }
@@ -80,7 +111,8 @@ export function ProductSkeleton({ width }: { width: number }) {
 /** Grid of listing skeletons laid out on the same gutters as `ListingGrid`. */
 export function ProductGridSkeleton({ count = 6, columns = 2 }: { count?: number; columns?: number }) {
   const { width: screen } = useWindowDimensions();
-  const width = (screen - space.gutter * 2 - 10 * (columns - 1)) / columns;
+  const gutter = screenGutter(screen);
+  const width = (screen - gutter * 2 - space.space12 * (columns - 1)) / columns;
 
   return (
     <View
@@ -89,9 +121,9 @@ export function ProductGridSkeleton({ count = 6, columns = 2 }: { count?: number
       style={{
         flexDirection: 'row',
         flexWrap: 'wrap',
-        rowGap: 20,
-        columnGap: 10,
-        paddingHorizontal: space.gutter,
+        rowGap: space.space20,
+        columnGap: space.space12,
+        paddingHorizontal: gutter,
       }}
     >
       {Array.from({ length: count }, (_, i) => (
@@ -113,29 +145,130 @@ export function ListingSkeleton({ rows = 4 }: { rows?: number }) {
     <View
       accessibilityRole="progressbar"
       accessibilityLabel="Loading"
-      style={{ paddingHorizontal: space.gutter, gap: 10 }}
+      style={{ paddingHorizontal: space.gutterCompact, gap: space.space12 }}
     >
       {Array.from({ length: rows }, (_, i) => (
         <View
           key={i}
           style={{
             flexDirection: 'row',
-            gap: 12,
-            padding: 14,
-            borderRadius: radius.lg,
+            gap: space.space12,
+            padding: space.space16,
+            borderRadius: radius.radiusLarge,
             borderWidth: 1,
             borderColor: C.border,
             backgroundColor: C.surface,
           }}
         >
-          <Skeleton width={54} height={72} round={radius.sm} />
-          <View style={{ flex: 1, paddingTop: 2 }}>
+          <Skeleton width={54} height={72} round={radius.radiusSmall} />
+          <View style={{ flex: 1, paddingTop: space.space4 }}>
             <Skeleton width="72%" height={13} />
-            <Skeleton width="30%" height={16} style={{ marginTop: 8 }} />
-            <Skeleton width="56%" height={10} style={{ marginTop: 9 }} />
+            <Skeleton width="30%" height={16} style={{ marginTop: space.space8 }} />
+            <Skeleton width="56%" height={10} style={{ marginTop: space.space8 }} />
           </View>
         </View>
       ))}
+    </View>
+  );
+}
+
+/** Compact chip rows used while real category records are loading. */
+export function CategorySkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <View
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading categories"
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.space8 }}
+    >
+      {Array.from({ length: count }, (_, index) => (
+        <Skeleton key={index} width={index % 3 === 0 ? 112 : 88} height={44} round={radius.radiusMedium} />
+      ))}
+    </View>
+  );
+}
+
+/** Search suggestions/results: one field-shaped block and real-row-shaped lines. */
+export function SearchSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading search results" style={{ gap: space.space12 }}>
+      {Array.from({ length: rows }, (_, index) => (
+        <View key={index} style={{ flexDirection: 'row', alignItems: 'center', gap: space.space12, minHeight: 44 }}>
+          <Skeleton width={20} height={20} round={radius.radiusSmall} />
+          <View style={{ flex: 1, gap: space.space8 }}>
+            <Skeleton width={index % 2 === 0 ? '68%' : '52%'} height={13} />
+            <Skeleton width="36%" height={10} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Inbox rows with participant, preview, timestamp, and listing thumbnail. */
+export function ConversationSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading conversations">
+      {Array.from({ length: rows }, (_, index) => (
+        <View key={index} style={{ flexDirection: 'row', gap: space.space12, paddingVertical: space.space12, paddingHorizontal: space.gutterCompact }}>
+          <Skeleton width={44} height={44} round={radius.radiusPill} />
+          <View style={{ flex: 1, paddingTop: space.space4, gap: space.space8 }}>
+            <Skeleton width="42%" height={13} />
+            <Skeleton width="76%" height={12} />
+          </View>
+          <Skeleton width={40} height={53} round={radius.radiusSmall} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Chat transcript with alternating bubble geometry. */
+export function MessageSkeleton() {
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading messages" style={{ gap: space.space12 }}>
+      <Skeleton width="58%" height={44} round={radius.radiusXLarge} />
+      <Skeleton width="42%" height={44} round={radius.radiusXLarge} style={{ alignSelf: 'flex-end' }} />
+      <Skeleton width="66%" height={64} round={radius.radiusXLarge} />
+    </View>
+  );
+}
+
+/** Notification rows with status glyph and two text lines. */
+export function NotificationSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading notifications" style={{ paddingHorizontal: space.gutterCompact, gap: space.space16 }}>
+      {Array.from({ length: rows }, (_, index) => (
+        <View key={index} style={{ flexDirection: 'row', gap: space.space12 }}>
+          <Skeleton width={38} height={38} round={radius.radiusPill} />
+          <View style={{ flex: 1, paddingTop: space.space4, gap: space.space8 }}>
+            <Skeleton width="64%" height={13} />
+            <Skeleton width="40%" height={11} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Order-card rows, shared by the orders route and commerce loading states. */
+export function OrderSkeleton({ rows = 2 }: { rows?: number }) {
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading orders" style={{ gap: space.space12 }}>
+      {Array.from({ length: rows }, (_, index) => (
+        <Skeleton key={index} width="100%" height={96} round={radius.radiusLarge} />
+      ))}
+    </View>
+  );
+}
+
+/** Profile editor geometry: avatar followed by growing field shells. */
+export function ProfileFormSkeleton() {
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading profile" style={{ gap: space.space16 }}>
+      <Skeleton width={88} height={88} round={radius.radiusPill} style={{ alignSelf: 'center' }} />
+      <Skeleton width="100%" height={52} round={radius.radiusMedium} />
+      <Skeleton width="100%" height={88} round={radius.radiusMedium} />
+      <Skeleton width="100%" height={52} round={radius.radiusMedium} />
     </View>
   );
 }
@@ -150,36 +283,37 @@ export function ListingSkeleton({ rows = 4 }: { rows?: number }) {
  */
 export function ProfileSkeleton() {
   const { width: screen } = useWindowDimensions();
-  const tile = (screen - space.gutter * 2 - 8 * 2) / 3;
+  const gutter = screenGutter(screen);
+  const tile = (screen - gutter * 2 - space.space8 * 2) / 3;
 
   return (
     <View accessibilityRole="progressbar" accessibilityLabel="Loading profile">
-      <View style={{ flexDirection: 'row', gap: 14, padding: space.gutter }}>
-        <Skeleton width={64} height={64} round={radius.pill} />
-        <View style={{ flex: 1, paddingTop: 6 }}>
+      <View style={{ flexDirection: 'row', gap: space.space16, padding: gutter }}>
+        <Skeleton width={64} height={64} round={radius.radiusPill} />
+        <View style={{ flex: 1, paddingTop: space.space8 }}>
           <Skeleton width="58%" height={20} />
-          <Skeleton width="44%" height={12} style={{ marginTop: 10 }} />
-          <Skeleton width="66%" height={11} style={{ marginTop: 8 }} />
+          <Skeleton width="44%" height={12} style={{ marginTop: space.space8 }} />
+          <Skeleton width="66%" height={11} style={{ marginTop: space.space8 }} />
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: space.gutter, paddingBottom: space.lg }}>
-        <Skeleton width="48%" height={40} round={radius.md} />
-        <Skeleton width="48%" height={40} round={radius.md} />
+      <View style={{ flexDirection: 'row', gap: space.space8, paddingHorizontal: gutter, paddingBottom: space.space16 }}>
+        <Skeleton width="48%" height={40} round={radius.radiusMedium} />
+        <Skeleton width="48%" height={40} round={radius.radiusMedium} />
       </View>
 
       <View
         style={{
           flexDirection: 'row',
           flexWrap: 'wrap',
-          gap: 8,
-          paddingHorizontal: space.gutter,
+          gap: space.space8,
+          paddingHorizontal: gutter,
         }}
       >
         {Array.from({ length: 6 }, (_, i) => (
           <View key={i} style={{ width: tile }}>
-            <Skeleton width={tile} height={tile * (4 / 3)} round={radius.lg} />
-            <Skeleton width="52%" height={12} style={{ marginTop: 6 }} />
+            <Skeleton width={tile} height={tile * (4 / 3)} round={radius.radiusLarge} />
+            <Skeleton width="52%" height={12} style={{ marginTop: space.space8 }} />
           </View>
         ))}
       </View>
@@ -196,7 +330,7 @@ export function ProfileSkeleton() {
  */
 export function FadeIn({
   children,
-  duration = 260,
+  duration = durationToken.standard,
   delay = 0,
   /** Horizontal travel, in points, that the content slides in from. */
   x = 0,
@@ -217,28 +351,32 @@ export function FadeIn({
   scale?: number;
   style?: StyleProp<ViewStyle>;
 }) {
-  const p = useAnimatedValue(0);
+  const progress = useSharedValue(0);
+  const { reduceMotion } = useReducedMotion();
 
   useEffect(() => {
-    Animated.timing(p, {
-      toValue: 1,
-      duration,
-      delay,
-      useNativeDriver: NATIVE_DRIVER,
-    }).start();
-  }, [p, duration, delay]);
+    cancelAnimation(progress);
+    progress.set(0);
+    progress.set(withDelay(reduceMotion ? 0 : delay, withTiming(1, {
+      duration: reduceMotion ? Math.min(duration, durationToken.instant) : duration,
+      easing: Easing.bezier(...easing.standard),
+    })));
+    return () => cancelAnimation(progress);
+  }, [progress, duration, delay, reduceMotion]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [
+      { translateX: reduceMotion ? 0 : (1 - progress.value) * x },
+      { translateY: reduceMotion ? 0 : (1 - progress.value) * y },
+      { scale: reduceMotion ? 1 : scale + (1 - scale) * progress.value },
+    ],
+  }));
 
   return (
     <Animated.View
       style={[
-        {
-          opacity: p,
-          transform: [
-            { translateX: p.interpolate({ inputRange: [0, 1], outputRange: [x, 0] }) },
-            { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [y, 0] }) },
-            { scale: p.interpolate({ inputRange: [0, 1], outputRange: [scale, 1] }) },
-          ],
-        },
+        animatedStyle,
         style,
       ]}
     >

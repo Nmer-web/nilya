@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude --version)",
+      "PowerShell($c = Get-Command claude -ErrorAction SilentlyContinue; if \\($c\\) { $c.Source } else { \"not found\" })",
+      "Bash(git check-ignore *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git status *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(command -v docker psql supabase npx)",
+      "Bash(docker info *)",
+      "mcp__6c829166-8a71-4264-98aa-80191b6865bf__list_projects",
+      "mcp__6c829166-8a71-4264-98aa-80191b6865bf__get_project",
+      "mcp__6c829166-8a71-4264-98aa-80191b6865bf__list_organizations",
+      "mcp__6c829166-8a71-4264-98aa-80191b6865bf__list_tables",
+      "mcp__6c829166-8a71-4264-98aa-80191b6865bf__list_migrations",
+      "mcp__6c829166-8a71-4264-98aa-80191b6865bf__list_extensions",
+      "mcp__6c829166-8a71-4264-98aa-80191b6865bf__get_advisors"
+    ]
+  }
+}

@@ -1,36 +1,30 @@
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
+/** Events exhaustively allowed by the NILYA motion contract. */
+export type SemanticHapticEvent =
+  | 'favorite-confirmed'
+  | 'selection-committed'
+  | 'sell-entered'
+  | 'publication-confirmed'
+  | 'offer-sent'
+  | 'important-confirmation';
+
+const supported = Platform.OS === 'ios' || Platform.OS === 'android';
+
 /**
- * Subtle haptics.
- *
- * Reserved for moments that change state in a way the user committed to —
- * favouriting, switching tab, publishing, sending an offer, paying. Ordinary
- * navigation and scrolling stay silent: a device that buzzes on every tap
- * reads as broken rather than responsive.
- *
- * expo-haptics has no web implementation and older Android devices without a
- * vibrator reject, so every call is fire-and-forget and swallows its error.
- * Callers never need to await or guard.
+ * Best-effort supplementary feedback. A rejection is intentionally ignored
+ * because haptic availability never changes the real action's result.
  */
+export function haptic(event: SemanticHapticEvent): void {
+  if (!supported) return;
 
-const enabled = Platform.OS === 'ios' || Platform.OS === 'android';
+  const effect =
+    event === 'selection-committed'
+      ? Haptics.selectionAsync()
+      : event === 'favorite-confirmed' || event === 'sell-entered'
+        ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+        : Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-const run = (fn: () => Promise<void>) => {
-  if (!enabled) return;
-  void fn().catch(() => {});
-};
-
-/** Favourite, press of a primary action. */
-export const tapLight = () => run(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
-
-/** Tab change, segmented control, chip selection. */
-export const tapSelect = () => run(() => Haptics.selectionAsync());
-
-/** Published, offer sent, payment taken. */
-export const tapSuccess = () =>
-  run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
-
-/** Rejected input — a failed validation, not a caught exception. */
-export const tapWarn = () =>
-  run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
+  void effect.catch(() => {});
+}

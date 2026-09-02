@@ -3,11 +3,12 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ButtonSpinner, Field, FormError, PasswordField } from '@/components/field';
+import { Field, FormError, PasswordField } from '@/components/field';
+import { NilyaLockup } from '@/components/brand';
 import { Button, T, Tap } from '@/components/ui';
 import { emailError } from '@/lib/validate';
 import { useAuth } from '@/store/auth-store';
-import { color as C } from '@/theme/tokens';
+import { color as C, space, touch } from '@/theme/tokens';
 
 export default function SignIn() {
   const insets = useSafeAreaInsets();
@@ -55,18 +56,16 @@ export default function SignIn() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           flexGrow: 1,
-          paddingHorizontal: 22,
-          paddingTop: insets.top + 48,
-          paddingBottom: insets.bottom + 32,
+          paddingHorizontal: space.gutterRegular,
+          paddingTop: insets.top + space.space48,
+          paddingBottom: insets.bottom + space.space32,
         }}
       >
-        <T serif size={38} tracking={-0.8}>
-          SAWA
-        </T>
-        <T w={600} size={27} tracking={-0.6} lh={32.4} style={{ marginTop: 28 }}>
+        <NilyaLockup iconSize={56} showTagline />
+        <T variant="screenTitle" style={{ marginTop: space.space24 }}>
           Welcome back
         </T>
-        <T size={14.5} color={C.textSecondary} lh={22.5} style={{ marginTop: 8, marginBottom: 26 }}>
+        <T variant="body" color={C.textSecondary} style={{ marginTop: space.space8, marginBottom: space.space24 }}>
           Sign in to keep buying and selling.
         </T>
 
@@ -108,30 +107,35 @@ export default function SignIn() {
           onPress={() => router.push('/forgot-password')}
           accessibilityRole="button"
           hitSlop={6}
-          style={{ alignSelf: 'flex-start', paddingVertical: 4 }}
+          style={{ alignSelf: 'flex-start', minHeight: touch.minimum, justifyContent: 'center' }}
         >
-          <T w={600} size={13.5} color={C.text}>
+          <T variant="button" color={C.primary}>
             Forgot your password?
           </T>
         </Tap>
 
         <Button
-          label={busy ? 'Signing in…' : 'Sign in'}
+          label="Sign in"
+          loading={busy}
+          loadingLabel="Signing in…"
           onPress={submit}
           disabled={busy}
-          style={{ marginTop: 22 }}
-        >
-          {busy && <ButtonSpinner />}
-        </Button>
+          style={{ marginTop: space.space24 }}
+        />
 
         <View style={{ flex: 1 }} />
 
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 32 }}>
-          <T size={14} color={C.textSecondary}>
-            New to SAWA?
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: space.space4, marginTop: space.space32 }}>
+          <T variant="metadata" color={C.textSecondary}>
+            New to NILYA?
           </T>
-          <Tap onPress={() => router.push('/sign-up')} accessibilityRole="button" hitSlop={6}>
-            <T w={600} size={14} color={C.text}>
+          <Tap
+            onPress={() => router.push('/sign-up')}
+            accessibilityRole="button"
+            hitSlop={6}
+            style={{ minHeight: touch.minimum, justifyContent: 'center' }}
+          >
+            <T variant="button" color={C.primary}>
               Create an account
             </T>
           </Tap>

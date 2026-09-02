@@ -1,13 +1,13 @@
 import { supabase } from '@/lib/supabase';
 
 /**
- * Handling for the sawa://auth-callback deep link.
+ * Handling for the nilya://auth-callback deep link.
  *
  * Supabase can deliver a session back in two shapes and which one you get
  * depends on the client's flowType, so both are handled:
  *
- *   PKCE      sawa://auth-callback?code=<uuid>
- *   implicit  sawa://auth-callback#access_token=…&refresh_token=…&type=recovery
+ *   PKCE      nilya://auth-callback?code=<uuid>
+ *   implicit  nilya://auth-callback#access_token=…&refresh_token=…&type=recovery
  *
  * and failures arrive as ?error=…&error_description=… in either position.
  * Parsing is done by hand rather than with Linking.parse() because that only

@@ -1,282 +1,349 @@
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Animated, ScrollView, View } from 'react-native';
+import React from 'react';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useNavClearance } from '@/components/bottom-nav';
+import { NilyaLockup } from '@/components/brand';
+import { CategoryArtwork, artworkFor } from '@/components/category-artwork';
+import { SegmentedPills } from '@/components/filter-chip';
 import { Icon } from '@/components/icon';
+import { IconButton } from '@/components/icon-button';
 import { ListingFeedGrid } from '@/components/listing-feed-grid';
-import { ListingRail } from '@/components/listing-rail';
-import { Button, Chip, PressableScale, T, Tap } from '@/components/ui';
+import { NewArrivalsRail } from '@/components/new-arrivals-rail';
+import { SearchBar } from '@/components/search-bar';
+import { SectionHeader } from '@/components/section-header';
+import { Skeleton } from '@/components/skeleton';
+import { Button, InlineError, PressableScale } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { NATIVE_DRIVER, useAnimatedValue } from '@/hooks/use-animated-value';
 import { useFavorites } from '@/hooks/use-favorites';
 import { useListingFeed } from '@/hooks/use-listing-feed';
-import { fetchCategories, fetchProfile } from '@/lib/queries';
-import { filtersActive, useApp } from '@/store/app-store';
-import { useAuth } from '@/store/auth-store';
-import { color as C, radius, space } from '@/theme/tokens';
+import type { CategoryRow, ListingRow } from '@/lib/database.types';
+import { haptic } from '@/lib/haptics';
+import { coverUrl, fetchCategories, fetchListings } from '@/lib/queries';
+import { useApp } from '@/store/app-store';
+import { useCart } from '@/store/cart-store';
+import { color as C, duration, radius, scale, space, touch, type } from '@/theme/tokens';
 
-const BRAND_ROW = 44;
-const SEARCH_HEIGHT = 46;
+const EDGE = space.space16;
+const HERO_HEIGHT = 180;
+const CATEGORY_DISC = 64;
 
+/** The two audience pills. They are real category slugs, shown only if the rows exist. */
+const AUDIENCE_SLUGS = ['women', 'men'] as const;
+type AudienceSlug = (typeof AUDIENCE_SLUGS)[number];
+
+/**
+ * Home.
+ *
+ * The wordmark leads, wishlist and bag sit on the right, then the search bar,
+ * the Women / Men pills, a hero built from the newest real listing, the
+ * category discs, and a grid of the latest products. Every section reads from
+ * the database; the hero disappears rather than showing a stock photograph
+ * when there is nothing new to show.
+ */
 export default function Home() {
   const insets = useSafeAreaInsets();
   const navClearance = useNavClearance();
   const router = useRouter();
-  const { cat, setCat, sort, filters, openSheet } = useApp();
-
-  const [headerH, setHeaderH] = useState(0);
-  const scrollY = useAnimatedValue(0);
-
+  const { width } = useWindowDimensions();
+  const { setCat, setFilters, sort, filters, openSheet } = useApp();
   const favorites = useFavorites();
-  const { user } = useAuth();
+  const cart = useCart();
   const categories = useAsync(() => fetchCategories('home'), 'categories:home');
+  /* The newest live listing anywhere, for the hero. One row, read once. */
+  const newest = useAsync(async () => (await fetchListings({ sort: 'recent' }, 0)).rows[0] ?? null, 'home:newest');
 
-  /*
-   * The chip narrows the feed on top of whatever the filter sheet holds, and
-   * wins on category where the two disagree — it is the control on screen.
-   * Home's filter button opens the same sheet Explore uses, so it has to read
-   * the same state or pressing it would appear to do nothing.
-   */
-  const category = cat === 'All' ? filters.categorySlug : cat;
+  const category = filters.categorySlug;
+  const chooseCategory = (slug: string | null) => {
+    setCat(slug ?? 'All');
+    setFilters({ ...filters, categorySlug: slug });
+  };
 
-  const feed = useListingFeed(
-    {
-      category,
-      minPriceCents: filters.minCents,
-      maxPriceCents: filters.maxCents,
-      countryCode: filters.countryCode,
-      sort,
-    },
-    `home:${category}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${sort}`
+  const feedFilters = {
+    category,
+    minPriceCents: filters.minCents,
+    maxPriceCents: filters.maxCents,
+    countryCode: filters.countryCode,
+    brand: filters.brand,
+    color: filters.color,
+  };
+  const filterKey = `${category}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${filters.brand}:${filters.color}`;
+
+  /* The swipeable row is always newest first, whatever sort the grid uses:
+     "New arrivals" ordered by price would not be new arrivals. */
+  const newArrivals = useListingFeed({ ...feedFilters, sort: 'recent' }, `home:new:${filterKey}`);
+  const feed = useListingFeed({ ...feedFilters, sort }, `home:${filterKey}:${sort}`);
+
+  const activeFilterCount = Object.values(filters).filter((value) => value !== null).length;
+
+  const audiences = AUDIENCE_SLUGS.map((slug) => (categories.data ?? []).find((row) => row.slug === slug)).filter(
+    (row): row is CategoryRow => Boolean(row)
   );
+  const audience = audiences.some((row) => row.slug === category) ? (category as AudienceSlug) : null;
 
-  const hasFilters = filtersActive(filters);
+  const header = (
+    <View style={{ paddingTop: insets.top + space.space8, paddingBottom: space.space8 }}>
+      <View
+        style={{
+          height: touch.minimum,
+          marginHorizontal: EDGE,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <NilyaLockup iconSize={28} />
+        <View style={{ flexDirection: 'row', gap: space.space8 }}>
+          <IconButton icon="heart" label="Wishlist" onPress={() => router.push('/favorites')} />
+          <IconButton icon="bag" label="Bag" badge={cart.count} onPress={() => router.push('/cart')} />
+        </View>
+      </View>
 
-  /**
-   * The viewer's own country, for the "Near you" rail. It comes from their
-   * profile rather than from device location: `profiles.country_code` is a real
-   * column the person set, and SAWA asks for no location permission.
-   */
-  const myProfile = useAsync(
-    async () => (user ? fetchProfile(user.id) : null),
-    `home-profile:${user?.id ?? 'none'}`
+      <SearchBar
+        onPress={() => router.push('/search')}
+        onFilterPress={() => openSheet({ kind: 'filters' })}
+        filterActiveCount={activeFilterCount}
+        style={{ marginTop: space.space16, marginHorizontal: EDGE }}
+      />
+
+      {audiences.length === 2 ? (
+        <SegmentedPills
+          options={audiences.map((row) => ({ key: row.slug as AudienceSlug, label: row.label }))}
+          value={audience}
+          onChange={(next) => {
+            haptic('selection-committed');
+            chooseCategory(next);
+          }}
+          style={{ marginTop: space.space16, marginHorizontal: EDGE }}
+        />
+      ) : null}
+
+      <View style={{ marginTop: space.space16, marginHorizontal: EDGE }}>
+        {newest.loading ? (
+          <Skeleton width="100%" height={HERO_HEIGHT} round={radius.radiusXLarge} />
+        ) : newest.data ? (
+          <HeroBanner
+            listing={newest.data}
+            width={width - EDGE * 2}
+            onPress={() => router.push({ pathname: '/listing/[id]', params: { id: newest.data!.id } })}
+          />
+        ) : null}
+      </View>
+
+      <SectionHeader
+        title="Category"
+        onAction={() => router.push('/explore')}
+        style={{ marginTop: space.space24, marginHorizontal: EDGE }}
+      />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: space.space16, paddingHorizontal: EDGE, paddingTop: space.space12 }}
+      >
+        {categories.loading
+          ? [0, 1, 2, 3, 4].map((index) => (
+              <View key={index} style={{ alignItems: 'center', gap: space.space8 }}>
+                <Skeleton width={CATEGORY_DISC} height={CATEGORY_DISC} round={radius.radiusPill} />
+                <Skeleton width={44} height={10} />
+              </View>
+            ))
+          : (categories.data ?? []).map((row) => (
+              <CategoryDisc
+                key={row.slug}
+                category={row}
+                onPress={() => router.push({ pathname: '/category/[slug]', params: { slug: row.slug } })}
+              />
+            ))}
+      </ScrollView>
+      {categories.error ? (
+        <InlineError
+          message="Categories could not be loaded."
+          actionLabel="Retry"
+          onAction={categories.refetch}
+          style={{ marginTop: space.space12, marginHorizontal: EDGE }}
+        />
+      ) : null}
+
+      {/* "New arrivals", not "Trending": the row is ordered by publication
+          and nothing in the schema measures popularity. It swipes sideways
+          and pages, so the day's arrivals are all reachable from here. */}
+      <NewArrivalsRail
+        feed={newArrivals}
+        savedIds={favorites.saved}
+        onToggleSave={favorites.toggle}
+        onSeeAll={() => router.push('/search')}
+        edge={EDGE}
+        style={{ marginTop: space.space24 }}
+      />
+
+      <SectionHeader
+        title="All products"
+        actionLabel={activeFilterCount === 0 ? 'Filters' : `Filters (${activeFilterCount})`}
+        onAction={() => openSheet({ kind: 'filters' })}
+        style={{ marginTop: space.space24, marginHorizontal: EDGE, marginBottom: space.space4 }}
+      />
+    </View>
   );
-  const myCountry = myProfile.data?.country_code ?? null;
-
-  const headerShift = scrollY.interpolate({
-    inputRange: [0, BRAND_ROW],
-    outputRange: [0, -BRAND_ROW],
-    extrapolate: 'clamp',
-  });
-  const brandOpacity = scrollY.interpolate({
-    inputRange: [0, BRAND_ROW * 0.75],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-  const hairline = scrollY.interpolate({
-    inputRange: [BRAND_ROW, BRAND_ROW + 16],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      {/*
-        The grid is shared with Explore, Search and the seller profile. It is
-        built on Animated.FlatList rather than FlatList, which is what lets the
-        native-driven `Animated.event` below be passed straight through — see
-        the note on that component.
-      */}
       <ListingFeedGrid
-        /*
-         * Section rails, above the grid and scrolling with it.
-         *
-         * Only where the schema supplies a real signal: "From Sudan" is
-         * `country_code = 'SD'`, "Near you" is the viewer's own country from
-         * their profile. There is no Popular rail — `listings` carries neither
-         * a view count nor a favourite count, so any ordering called popular
-         * would be one this app made up.
-         *
-         * They are hidden while a filter or a category chip is active: a rail
-         * that ignores the filter the person just set reads as a bug.
-         */
-        listHeader={
-          category === null && !hasFilters ? (
-            <View>
-              <ListingRail
-                title="From Sudan"
-                subtitle="Sellers listing from Sudan"
-                filters={{ countryCode: 'SD' }}
-                cacheKey="rail:sudan"
-                savedIds={favorites.saved}
-                onToggleSave={favorites.toggle}
-              />
-              {!!myCountry && myCountry !== 'SD' && (
-                <ListingRail
-                  title="Near you"
-                  subtitle={`Listed in ${myCountry}`}
-                  filters={{ countryCode: myCountry }}
-                  cacheKey={`rail:near:${myCountry}`}
-                  savedIds={favorites.saved}
-                  onToggleSave={favorites.toggle}
-                />
-              )}
-              <T w={600} size={17} tracking={-0.3} style={{ paddingHorizontal: space.gutter, paddingTop: space.xl, paddingBottom: space.md }}>
-                New arrivals
-              </T>
-            </View>
-          ) : null
-        }
+        listHeader={header}
         feed={feed}
         savedIds={favorites.saved}
         onToggleSave={favorites.toggle}
-        contentPaddingTop={headerH + space.lg}
-        contentPaddingBottom={navClearance}
-        refreshOffset={headerH}
+        cardVariant="editorial"
+        cardHorizontalInset={EDGE}
+        contentPaddingTop={0}
+        contentPaddingBottom={navClearance + space.space8}
+        refreshOffset={insets.top}
         onRefresh={() => {
           feed.refresh();
+          newArrivals.refresh();
           favorites.refresh();
+          categories.refresh();
+          newest.refresh();
         }}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: NATIVE_DRIVER,
-        })}
-        /*
-         * The database genuinely has no listings. Nothing is invented to fill
-         * the grid; the way out is the Sell flow rather than a seeded catalog.
-         */
         empty={{
           icon: 'bag',
-          title: cat === 'All' ? 'No listings yet' : 'Nothing here yet',
+          title: activeFilterCount === 0 ? 'No products yet' : 'Nothing here yet',
           body:
-            cat === 'All'
-              ? 'Be the first to list something on SAWA.'
-              : 'Try another category, or list something here yourself.',
+            activeFilterCount === 0
+              ? 'New products will appear here as sellers publish them.'
+              : 'Try another category or adjust your filters.',
           action: (
-            <Button label="Start selling" height={48} onPress={() => router.push('/sell')} style={{ marginTop: 20 }} />
+            <View style={{ marginTop: space.space20 }}>
+              <Button label="Start selling" onPress={() => router.push('/sell')} />
+            </View>
           ),
         }}
       />
 
-      {!!favorites.error && (
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: navClearance }}>
-          <T variant="meta" color={C.error} style={{ textAlign: 'center' }}>
-            {favorites.error}
-          </T>
+      {favorites.error ? (
+        <View style={{ position: 'absolute', left: EDGE, right: EDGE, bottom: navClearance }}>
+          <InlineError message="Your wishlist change could not be saved. Try again." />
         </View>
-      )}
+      ) : null}
+    </View>
+  );
+}
 
-      <Animated.View
-        onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: 0,
-          paddingTop: insets.top,
-          backgroundColor: C.background,
-          transform: [{ translateY: headerShift }],
-        }}
-      >
-        <Animated.View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-            height: BRAND_ROW,
-            paddingHorizontal: space.gutter,
-            opacity: brandOpacity,
-          }}
-        >
-          <T w={700} size={25} tracking={-0.5} style={{ flex: 1 }}>
-            SAWA
-          </T>
+/**
+ * The hero card, built from the newest listing: its photograph bleeds to the
+ * right edge, and "Shop now" opens it. The copy is editorial, not a claim.
+ */
+function HeroBanner({ listing, width, onPress }: { listing: ListingRow; width: number; onPress: () => void }) {
+  const photo = coverUrl(listing.images);
+  const imageWidth = Math.round(width * 0.46);
 
-          <Tap
-            onPress={() => router.push('/favorites')}
-            accessibilityRole="button"
-            accessibilityLabel="Favorites"
-            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Icon name="heart" size={21} color={C.text} strokeWidth={1.8} />
-          </Tap>
+  return (
+    <PressableScale
+      onPress={onPress}
+      scale={scale.cardPressed}
+      motionRole="cardPress"
+      accessibilityRole="button"
+      accessibilityLabel={`New arrivals. ${listing.title}. Shop now`}
+      style={{
+        height: HERO_HEIGHT,
+        borderRadius: radius.radiusXLarge,
+        borderCurve: 'continuous',
+        overflow: 'hidden',
+        backgroundColor: C.heroFrom,
+      }}
+    >
+      <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
+        <Defs>
+          <LinearGradient id="nilya-hero" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={C.heroFrom} />
+            <Stop offset="1" stopColor={C.heroTo} />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#nilya-hero)" />
+      </Svg>
 
-          <Tap
-            onPress={() => router.push('/notifications')}
-            accessibilityRole="button"
-            accessibilityLabel="Notifications"
-            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Icon name="bell" size={21} color={C.text} strokeWidth={1.8} />
-          </Tap>
-        </Animated.View>
+      {photo ? (
+        <Image
+          source={{ uri: photo }}
+          contentFit="cover"
+          transition={duration.standard}
+          cachePolicy="memory-disk"
+          accessible={false}
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: imageWidth }}
+        />
+      ) : null}
 
+      <View style={{ flex: 1, justifyContent: 'space-between', padding: space.space16, paddingRight: imageWidth + space.space8 }}>
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: space.sm,
-            paddingHorizontal: space.gutter,
-            paddingBottom: space.xs,
+            alignSelf: 'flex-start',
+            minHeight: 24,
+            justifyContent: 'center',
+            paddingHorizontal: space.space12,
+            borderRadius: radius.radiusPill,
+            backgroundColor: C.surface,
           }}
         >
-          <Tap
-            onPress={() => router.push('/search')}
-            accessibilityRole="search"
-            accessibilityLabel="Search items, brands, categories"
-            style={{
-              flex: 1,
-              height: SEARCH_HEIGHT,
-              borderRadius: radius.lg,
-              backgroundColor: C.surface,
-              borderWidth: 1,
-              borderColor: C.border,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 9,
-              paddingHorizontal: 14,
-            }}
-          >
-            <Icon name="search" size={17} color={C.textSecondary} />
-            <T size={14.5} color={C.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
-              What are you looking for?
-            </T>
-          </Tap>
-
-          <PressableScale
-            onPress={() => openSheet({ kind: 'filters' })}
-            accessibilityRole="button"
-            accessibilityLabel="Filters"
-            style={{
-              width: SEARCH_HEIGHT,
-              height: SEARCH_HEIGHT,
-              borderRadius: radius.lg,
-              borderWidth: 1,
-              borderColor: hasFilters ? C.text : C.border,
-              backgroundColor: hasFilters ? C.text : C.surface,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon name="sliders" size={18} color={hasFilters ? C.primaryText : C.text} strokeWidth={1.9} />
-          </PressableScale>
+          <Text style={{ ...type.metadataMedium, fontSize: 11, lineHeight: 14, color: C.textPrimary }}>New in</Text>
         </View>
-
-        {/* Real categories, absent until they load — no placeholder chips. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 7, paddingHorizontal: space.gutter, paddingVertical: space.md }}
+        <View style={{ gap: space.space4 }}>
+          <Text style={{ ...type.productTitle, color: C.textPrimary }} numberOfLines={1}>
+            New arrivals
+          </Text>
+          <Text style={{ ...type.metadata, color: C.textSecondary }} numberOfLines={2}>
+            The latest products from Nilya sellers, starting with {listing.title.trim()}.
+          </Text>
+        </View>
+        <View
+          style={{
+            alignSelf: 'flex-start',
+            minHeight: 36,
+            justifyContent: 'center',
+            paddingHorizontal: space.space16,
+            borderRadius: radius.radiusPill,
+            backgroundColor: C.textPrimary,
+          }}
         >
-          <Chip label="All" active={cat === 'All'} onPress={() => setCat('All')} />
-          {(categories.data ?? []).map((c) => (
-            <Chip key={c.slug} label={c.label} active={cat === c.slug} onPress={() => setCat(c.slug)} />
-          ))}
-        </ScrollView>
+          <Text style={{ ...type.metadataMedium, color: C.textInverse }}>Shop now</Text>
+        </View>
+      </View>
+    </PressableScale>
+  );
+}
 
-        <Animated.View style={{ height: 1, backgroundColor: C.border, opacity: hairline }} />
-      </Animated.View>
-    </View>
+/** A 64px warm-grey disc with the category's own artwork and its label beneath. */
+function CategoryDisc({ category, onPress }: { category: CategoryRow; onPress: () => void }) {
+  const artwork = artworkFor(category.slug);
+  return (
+    <PressableScale
+      onPress={onPress}
+      scale={scale.buttonPressed}
+      motionRole="selection"
+      accessibilityRole="button"
+      accessibilityLabel={`Browse ${category.label}`}
+      style={{ alignItems: 'center', gap: space.space8, width: CATEGORY_DISC + space.space8 }}
+    >
+      <View
+        style={{
+          width: CATEGORY_DISC,
+          height: CATEGORY_DISC,
+          borderRadius: radius.radiusPill,
+          backgroundColor: C.bgMuted,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {artwork ? (
+          <CategoryArtwork kind={artwork} size={40} />
+        ) : (
+          <Icon name="bag" role="inline" color={C.textSecondary} decorative />
+        )}
+      </View>
+      <Text style={{ ...type.caption, color: C.textPrimary }} numberOfLines={1}>
+        {category.label}
+      </Text>
+    </PressableScale>
   );
 }

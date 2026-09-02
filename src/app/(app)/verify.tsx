@@ -1,36 +1,23 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
 import { ScreenHeader } from '@/components/screen-header';
-import { Button, T } from '@/components/ui';
-import { useApp } from '@/store/app-store';
-import { color as C, radius } from '@/theme/tokens';
-
-const REQUIREMENTS = [
-  { title: 'Identity verification', sub: 'Passport or national ID' },
-  { title: 'Bank account', sub: 'Where your payouts land' },
-  { title: 'Secure payouts', sub: 'Paid out 2 days after delivery' },
-];
+import { Skeleton } from '@/components/skeleton';
+import { Note, ScreenError, T } from '@/components/ui';
+import { useAsync } from '@/hooks/use-async';
+import { fetchProfile } from '@/lib/queries';
+import { useAuth } from '@/store/auth-store';
+import { color as C, radius, space } from '@/theme/tokens';
 
 export default function Verify() {
   const insets = useSafeAreaInsets();
-  const { flash } = useApp();
-  const [verifying, setVerifying] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-
-  const start = () => {
-    if (verifying) return;
-    setVerifying(true);
-    timer.current = setTimeout(() => {
-      setVerifying(false);
-      flash('Stripe onboarding would open here');
-    }, 1500);
-  };
+  const { user } = useAuth();
+  const profile = useAsync(
+    async () => (user ? fetchProfile(user.id) : null),
+    `seller-verification:${user?.id ?? 'none'}`
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
@@ -38,75 +25,78 @@ export default function Verify() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 14, paddingBottom: 120 + insets.bottom }}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{
+          paddingHorizontal: space.gutterRegular,
+          paddingTop: space.space12,
+          paddingBottom: insets.bottom + space.space40,
+        }}
       >
         <View
           style={{
             width: 56,
             height: 56,
-            borderRadius: radius.xl,
-            backgroundColor: C.text,
+            borderRadius: radius.radiusXLarge,
+            backgroundColor: profile.data?.is_verified ? C.primary : C.textPrimary,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon name="shieldCheck" size={27} color={C.primaryText} strokeWidth={1.7} />
+          <Icon name="shieldCheck" role="hero" color={C.textInverse} decorative />
         </View>
 
-        <T w={600} size={27} tracking={-0.6} lh={32.4} style={{ marginTop: 20 }}>
-          Become a verified seller
-        </T>
-        <T size={14.5} color={C.textSecondary} lh={22.5} style={{ marginTop: 10 }}>
-          To receive payouts from your sales, you&apos;ll need to complete secure seller verification. It takes about
-          three minutes.
+        <T variant="screenTitle" style={{ marginTop: space.space20 }}>
+          Seller verification
         </T>
 
-        <View style={{ marginTop: 26 }}>
-          {REQUIREMENTS.map((r) => (
-            <View
-              key={r.title}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-                paddingVertical: 13,
-                borderBottomWidth: 1,
-                borderBottomColor: C.border,
-              }}
-            >
-              <Icon name="check" size={19} color={C.success} strokeWidth={2.2} />
-              <View style={{ flex: 1 }}>
-                <T w={600} size={14.5}>
-                  {r.title}
-                </T>
-                <T size={12.5} color={C.textSecondary} style={{ marginTop: 1 }}>
-                  {r.sub}
-                </T>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        <T size={12.5} color={C.textSecondary} lh={18.75} style={{ marginTop: 22 }}>
-          Verification is handled securely by Stripe. SAWA never sees or stores your documents.
-        </T>
+        {profile.loading ? (
+          <View
+            accessibilityRole="progressbar"
+            accessibilityLabel="Loading seller verification status"
+            style={{ gap: space.space12, marginTop: space.space20 }}
+          >
+            <Skeleton width="36%" height={22} />
+            <Skeleton width="100%" height={14} />
+            <Skeleton width="84%" height={14} />
+          </View>
+        ) : profile.error || !profile.data ? (
+          <ScreenError
+            error={profile.error}
+            title="Verification status unavailable"
+            fallback="Your seller status could not be loaded."
+            onRetry={profile.refetch}
+          />
+        ) : profile.data.is_verified ? (
+          <>
+            <T variant="sectionTitle" color={C.primary} style={{ marginTop: space.space20 }}>
+              Verified
+            </T>
+            <T variant="body" color={C.textSecondary} style={{ marginTop: space.space8 }}>
+              Your seller profile is currently marked as verified.
+            </T>
+            <Note tone="success" style={{ marginTop: space.space20 }}>
+              <T variant="metadata" color={C.textSecondary}>
+                This status comes from your Nilya profile and is refreshed from the backend.
+              </T>
+            </Note>
+          </>
+        ) : (
+          <>
+            <T variant="sectionTitle" style={{ marginTop: space.space20 }}>
+              Not available yet
+            </T>
+            <T variant="body" color={C.textSecondary} style={{ marginTop: space.space8 }}>
+              Seller verification onboarding is not available in this build. Nilya will show a real action here only
+              when the existing Stripe flow can return a secure hosted onboarding session.
+            </T>
+            <Note tone="neutral" style={{ marginTop: space.space20 }}>
+              <T variant="metadata" color={C.textSecondary}>
+                No verification request has been started and your seller status has not changed.
+              </T>
+            </Note>
+          </>
+        )}
       </ScrollView>
-
-      <FrostedBar
-        edge="none"
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          paddingHorizontal: 22,
-          paddingTop: 11,
-          paddingBottom: Math.max(insets.bottom, 14),
-        }}
-      >
-        <Button label="Continue" loading={verifying} loadingLabel="Opening Stripe…" onPress={start} />
-      </FrostedBar>
     </View>
   );
 }
-

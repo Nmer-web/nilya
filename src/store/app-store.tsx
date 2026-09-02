@@ -8,6 +8,12 @@ import React, {
   useState,
 } from 'react';
 
+import {
+  mergeRecentSearches,
+  readRecentSearches,
+  writeRecentSearches,
+} from '@/lib/recent-searches';
+
 
 /*
  * The prototype's money helpers and delivery ladder are gone.
@@ -26,9 +32,9 @@ export type SortKey = 'recent' | 'price_asc' | 'price_desc';
 
 /** The sort options, in the order the sheet lists them. */
 export const SORTS: { key: SortKey; label: string }[] = [
-  { key: 'recent', label: 'Newest first' },
-  { key: 'price_asc', label: 'Price: low to high' },
-  { key: 'price_desc', label: 'Price: high to low' },
+  { key: 'recent', label: 'Newest' },
+  { key: 'price_asc', label: 'Price: Low to High' },
+  { key: 'price_desc', label: 'Price: High to Low' },
 ];
 
 /**
@@ -43,6 +49,8 @@ export type Filters = {
   minCents: number | null;
   maxCents: number | null;
   countryCode: string | null;
+  brand: string | null;
+  color: string | null;
 };
 
 export const EMPTY_FILTERS: Filters = {
@@ -50,6 +58,8 @@ export const EMPTY_FILTERS: Filters = {
   minCents: null,
   maxCents: null,
   countryCode: null,
+  brand: null,
+  color: null,
 };
 /*
  * The prototype conversation is gone from here. `msgs`, `typing` and the
@@ -114,6 +124,8 @@ type AppActions = {
   setSort: (s: SortKey) => void;
   /** Records a term in the recent list and applies it as the active query. */
   submitSearch: (q: string) => void;
+  removeRecentSearch: (q: string) => void;
+  clearRecentSearches: () => void;
 
 
   setFilters: (f: Filters) => void;
@@ -146,6 +158,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, ...(typeof p === 'function' ? p(s) : p) }));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const stored = await readRecentSearches();
+      if (cancelled || stored.length === 0) return;
+      patch((current) => {
+        const recent = mergeRecentSearches(current.recent, stored);
+        void writeRecentSearches(recent);
+        return { recent };
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [patch]);
+
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = useCallback(
     (msg: string) => {
@@ -164,11 +192,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       submitSearch: (raw) => {
         const q = raw.trim();
         if (!q) return;
-        patch((s) => ({
-          q,
-          // Most recent first, de-duplicated case-insensitively, capped at six.
-          recent: [q, ...s.recent.filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, 6),
-        }));
+        patch((s) => {
+          const recent = mergeRecentSearches([q], s.recent);
+          void writeRecentSearches(recent);
+          return { q, recent };
+        });
+      },
+      removeRecentSearch: (raw) => {
+        const q = raw.trim().toLowerCase();
+        patch((s) => {
+          const recent = s.recent.filter((r) => r.toLowerCase() !== q);
+          void writeRecentSearches(recent);
+          return { recent };
+        });
+      },
+      clearRecentSearches: () => {
+        void writeRecentSearches([]);
+        patch({ recent: [] });
       },
 
       setFilters: (filters) => patch({ filters }),

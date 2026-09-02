@@ -1,536 +1,910 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  FlatList,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { FrostedBar } from '@/components/frosted-bar';
 import { Icon } from '@/components/icon';
-import { ListingImage, formatPrice } from '@/components/listing-card';
+import { formatPrice } from '@/components/listing-card';
 import { OfferCard } from '@/components/offer-card';
-import { FadeIn, Skeleton } from '@/components/skeleton';
-import { Avatar, Button, EmptyState, PressableScale, T, Tap } from '@/components/ui';
+import { Scrim, Sheet, SheetClose, SheetGrabber } from '@/components/sheet';
+import { FadeIn, MessageSkeleton, Skeleton } from '@/components/skeleton';
+import { Button, EmptyState, InlineError, PressableScale, ScreenError, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { useConversation } from '@/hooks/use-conversation';
+import { useGoBack } from '@/hooks/use-go-back';
+import { NEW_CONDITION } from '@/lib/database.types';
+import { retryableReadMessage } from '@/lib/errors';
+import { haptic } from '@/lib/haptics';
 import { createOffer, markConversationRead, sendMessage } from '@/lib/mutations';
-import { coverUrl, fetchConversation, fetchOffers, type ConversationRow } from '@/lib/queries';
+import { coverUrl, fetchOffers, type ConversationRow, type MessageRow, type OfferRow } from '@/lib/queries';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/store/auth-store';
-import { color as C, radius, space } from '@/theme/tokens';
+import { color as C, duration, space } from '@/theme/tokens';
 
-/**
- * One conversation.
- *
- * Everything on the screen is a row: the participants come from `profiles`, the
- * item from `listings`, the transcript from `messages`. Which side a bubble
- * falls on is decided by comparing `sender_id` with the session's user — not by
- * a flag the client sets when it happens to be the one sending.
- */
-export default function Conversation() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+type ChatConversationBase = Omit<ConversationRow, 'listing'>;
+type ChatListing = NonNullable<ConversationRow['listing']>;
+type ChatListingQueryRow = ChatListing & { condition: string };
+type OfferSheetPhase = 'closed' | 'open' | 'closing';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+const CHAT_CONVERSATION_SELECT = `
+  id, listing_id, buyer_id, seller_id, last_message_at, created_at,
+  buyer:profiles!conversations_buyer_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales ),
+  seller:profiles!conversations_seller_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales )
+`;
+
+async function fetchChatConversation(id: string): Promise<ConversationRow | null> {
+  const conversationResult = await supabase
+    .from('conversations')
+    .select(CHAT_CONVERSATION_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (conversationResult.error) throw conversationResult.error;
+  if (!conversationResult.data) return null;
+
+  const conversation = conversationResult.data as unknown as ChatConversationBase;
+  const listingResult = await supabase
+    .from('listings')
+    .select('id, title, price_cents, currency, status, condition, images:listing_images ( storage_path, position )')
+    .eq('id', conversation.listing_id)
+    .eq('condition', NEW_CONDITION)
+    .maybeSingle();
+
+  if (listingResult.error) throw listingResult.error;
+  const listingRow = listingResult.data as unknown as ChatListingQueryRow | null;
+  const listing = listingRow?.condition === NEW_CONDITION
+    ? (({ condition: _condition, ...row }) => row)(listingRow)
+    : null;
+
+  return { ...conversation, listing };
+}
+
+export default function ConversationRoute() {
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const conversationId = conversationIdFromParam(id);
+
+  if (!conversationId) return <ConversationUnavailable />;
+
+  return <Conversation key={conversationId} id={conversationId} />;
+}
+
+function Conversation({ id }: { id: string }) {
   const router = useRouter();
+  const goBack = useGoBack('/inbox');
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
-  const thread = useAsync(() => fetchConversation(id), `conversation:${id}`);
+  const thread = useAsync(() => fetchChatConversation(id), `conversation:${id}`);
   const { messages, loading, error, live, retry, append } = useConversation(id);
 
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const scroller = useRef<ScrollView>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const mounted = useRef(true);
+  const sendingRef = useRef(false);
+  const offeringRef = useRef(false);
 
-  /*
-   * Offers live in their own table, not in the transcript. `offers` is in the
-   * realtime publication, but the app subscribes only to `messages` for this
-   * screen — an offer changes state on a deliberate tap by one of two people,
-   * so refetching after that tap is both sufficient and easier to reason about
-   * than a second socket.
-   */
   const offers = useAsync(() => fetchOffers(id), `offers:${id}`);
+  const refreshOffers = offers.refresh;
+  const [offerSheetPhase, setOfferSheetPhase] = useState<OfferSheetPhase>('closed');
   const [offerDraft, setOfferDraft] = useState('');
   const [offering, setOffering] = useState(false);
   const [offerError, setOfferError] = useState<string | null>(null);
 
   const conversation = thread.data;
   const me = user?.id ?? null;
-  /* The other participant is whichever of the two is not the signed-in user. */
   const other = conversation
     ? me === conversation.buyer_id
       ? conversation.seller
       : conversation.buyer
     : null;
+  const unreadSignature = messages
+    .filter((message) => message.sender_id !== me && message.read_at === null)
+    .map((message) => message.id)
+    .join(',');
 
-  /* Arriving at a thread is what marks it read; failure is not worth a banner. */
   useEffect(() => {
-    if (!conversation) return;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!conversation || !me || !unreadSignature) return;
     void markConversationRead(id).catch(() => {});
-  }, [conversation, id]);
+  }, [conversation, id, me, unreadSignature]);
 
   useEffect(() => {
-    const t = setTimeout(() => scroller.current?.scrollToEnd({ animated: true }), 60);
-    return () => clearTimeout(t);
-  }, [messages.length]);
+    if (!conversation?.id || !conversation.listing || !me) return;
+
+    const channel = supabase
+      .channel(`offers:${conversation.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'offers',
+          filter: `conversation_id=eq.${conversation.id}`,
+        },
+        () => refreshOffers()
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [conversation?.id, conversation?.listing, me, refreshOffers]);
 
   const canSend = draft.trim().length > 0 && !sending;
+  const parsedOffer = parseOfferAmount(offerDraft);
 
-  /** €12.50 → 1250. Empty or nonsense yields null and the button stays off. */
-  const offerCents = (() => {
-    const n = Number(offerDraft.replace(',', '.').trim());
-    return offerDraft.trim() && Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
-  })();
+  const closeOfferSheet = useCallback(() => {
+    if (!offering) {
+      Keyboard.dismiss();
+      setOfferSheetPhase('closing');
+    }
+  }, [offering]);
+
+  const finishOfferSheetClose = useCallback(() => {
+    setOfferSheetPhase('closed');
+    setOfferDraft('');
+    setOfferError(null);
+  }, []);
 
   const submitOffer = async () => {
-    if (offerCents === null || offering) return;
+    if (parsedOffer.amountCents === null || offeringRef.current) return;
+    offeringRef.current = true;
     setOffering(true);
     setOfferError(null);
     try {
-      await createOffer(id, offerCents);
-      setOfferDraft('');
-      offers.refetch();
-    } catch (e) {
-      setOfferError(e instanceof Error ? e.message : 'Could not send the offer');
+      await createOffer(id, parsedOffer.amountCents);
+      if (!mounted.current) return;
+      haptic('offer-sent');
+      Keyboard.dismiss();
+      offers.refresh();
+      setOfferSheetPhase('closing');
+    } catch (caught) {
+      if (mounted.current) {
+        setOfferError(retryableReadMessage(caught, 'The offer could not be sent.'));
+      }
     } finally {
-      setOffering(false);
+      offeringRef.current = false;
+      if (mounted.current) setOffering(false);
     }
   };
 
-  /* Only one offer can be live at a time; a second would leave both parties
-     guessing which one an "Accept" answers. */
-  const liveOffer = (offers.data ?? []).find((o) => o.state === 'open' || o.state === 'countered');
+  const liveOffer = conversation?.listing
+    ? (offers.data ?? []).find((offer) => offer.state === 'open' || offer.state === 'countered')
+    : undefined;
+  const acceptedOffer = conversation?.listing
+    ? (offers.data ?? []).find((offer) => offer.state === 'accepted')
+    : undefined;
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text || sendingRef.current) return;
 
+    sendingRef.current = true;
     setSending(true);
     setSendError(null);
-    /* Cleared up front so a fast second message is not typed into stale text;
-       restored below if the write is refused. */
-    setDraft('');
-
     try {
-      append(await sendMessage(id, text));
-    } catch (e) {
-      setDraft(text);
-      setSendError(e instanceof Error ? e.message : 'Message not sent');
+      const inserted = await sendMessage(id, text);
+      if (!mounted.current) return;
+      append(inserted);
+      setDraft('');
+    } catch (caught) {
+      if (mounted.current) {
+        setSendError(retryableReadMessage(caught, 'The message could not be sent.'));
+      }
     } finally {
-      setSending(false);
+      sendingRef.current = false;
+      if (mounted.current) setSending(false);
     }
   };
 
   if (thread.loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: C.background, paddingTop: insets.top + 12 }}>
-        <View style={{ flexDirection: 'row', gap: 12, padding: space.gutter }}>
-          <Skeleton width={34} height={34} round={17} />
-          <Skeleton width="46%" height={16} style={{ marginTop: 8 }} />
-        </View>
-        <View style={{ padding: space.gutter, gap: 10 }}>
-          <Skeleton width="62%" height={44} round={18} />
-          <Skeleton width="44%" height={44} round={18} />
-          <Skeleton width="70%" height={44} round={18} />
-        </View>
-      </View>
-    );
+    return <ChatLoading />;
   }
 
   if (thread.error || !conversation) {
     return (
-      <View style={{ flex: 1, backgroundColor: C.background, paddingTop: insets.top }}>
-        <Header onBack={() => router.back()} />
-        <EmptyState
-          icon="chat"
-          title={thread.error ? 'Could not open this conversation' : 'Conversation unavailable'}
-          body={
-            thread.error
-              ? thread.error.message
-              : 'It may have been removed, or it is not yours to read.'
-          }
-          style={{ paddingVertical: 44 }}
-          action={
-            thread.error ? (
-              <Button
-                label="Try again"
-                height={44}
-                size={14}
-                onPress={thread.refetch}
-                style={{ marginTop: 18 }}
-              />
-            ) : undefined
-          }
-        />
+      <View className="flex-1 bg-nilya-background">
+        <ChatHeader onBack={goBack} />
+        {thread.error ? (
+          <ScreenError error={thread.error} title="Could not open this conversation" onRetry={thread.refetch} />
+        ) : (
+          <EmptyState
+            icon="chat"
+            title="Conversation unavailable"
+            body="It may have been removed, or it is not yours to read."
+          />
+        )}
       </View>
     );
   }
 
+  const participantName = other?.display_name ?? 'Member unavailable';
+  const menuListingId = conversation.listing?.id;
+  const offerCurrency = conversation.listing?.currency;
+  const canMakeOffer = !!conversation.listing
+    && conversation.listing.status === 'active'
+    && me === conversation.buyer_id
+    && conversation.buyer_id !== conversation.seller_id
+    && !liveOffer
+    && !acceptedOffer
+    && !offers.loading
+    && !offers.error;
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: C.background }}
+      className="flex-1 bg-nilya-background"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Header
-        onBack={() => router.back()}
-        name={other?.display_name}
-        avatarUrl={other?.avatar_url ?? null}
+      <ChatHeader
+        onBack={goBack}
+        name={participantName}
         verified={other?.is_verified}
-        onPressName={
-          other ? () => router.push({ pathname: '/seller/[id]', params: { id: other.id } }) : undefined
-        }
+        onMore={other || conversation.listing ? () => setMenuOpen(true) : undefined}
       />
 
-      <ListingStrip conversation={conversation} />
+      <ListingContext conversation={conversation} />
 
-      <ScrollView
-        ref={scroller}
-        showsVerticalScrollIndicator={false}
-        keyboardDismissMode="interactive"
-        contentContainerStyle={{ padding: space.gutter, paddingBottom: 8 }}
-      >
-        {/*
-          Offers sit above the transcript rather than inside it. The schema has
-          no message row for an offer, so threading one in would mean inventing
-          a message that does not exist in the database.
-        */}
-        {(offers.data ?? []).length > 0 && (
-          <View style={{ gap: 8, paddingBottom: space.lg }}>
-            {(offers.data ?? []).map((offer) => (
-              <OfferCard
-                key={offer.id}
-                offer={offer}
-                me={me}
-                currency={conversation.listing?.currency ?? 'EUR'}
-                onChanged={offers.refetch}
-              />
-            ))}
-          </View>
-        )}
+      {loading ? (
+        <View className="flex-1 px-4 py-4">
+          <MessageSkeleton />
+        </View>
+      ) : error ? (
+        <View className="flex-1">
+          <ScreenError error={error} title="Could not load messages" onRetry={retry} />
+        </View>
+      ) : (
+        <ChatTranscript
+          messages={messages}
+          me={me}
+          otherName={participantName}
+          offers={conversation.listing ? (offers.data ?? []) : []}
+          offersError={conversation.listing ? offers.error : null}
+          offerCurrency={conversation.listing?.currency}
+          onRetryOffers={offers.refetch}
+        />
+      )}
 
-        {loading ? (
-          <View style={{ gap: 10 }}>
-            <Skeleton width="58%" height={44} round={18} />
-            <Skeleton width="42%" height={44} round={18} />
-          </View>
-        ) : error ? (
-          <EmptyState
-            icon="close"
-            title="Could not load messages"
-            body={error.message}
-            style={{ paddingVertical: 32 }}
-            action={<Button label="Try again" height={44} size={14} onPress={retry} style={{ marginTop: 18 }} />}
-          />
-        ) : messages.length === 0 ? (
-          <EmptyState
-            icon="chat"
-            title="No messages yet"
-            body={`Say hello to ${other?.display_name ?? 'them'} — ask about condition, size or collection.`}
-            style={{ paddingVertical: 40 }}
-          />
-        ) : (
-          messages.map((m, i) => {
-            const mine = m.sender_id === me;
-            const prev = messages[i - 1];
-            const next = messages[i + 1];
-            const startsRun = !prev || prev.sender_id !== m.sender_id;
-            const endsRun = !next || next.sender_id !== m.sender_id;
-
-            return (
-              /*
-               * Keyed by message id, so a bubble animates when it first
-               * arrives and not again when the list around it changes.
-               * Runs from one sender group together: 2pt apart, and only the
-               * last of a run gets the pointed corner, so a three-line reply
-               * does not read as three separate arrivals.
-               */
-              <FadeIn key={m.id} y={6} duration={200} style={{ marginTop: startsRun && i > 0 ? 8 : 2 }}>
-                <View style={{ flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-                  <View
-                    style={{
-                      maxWidth: '76%',
-                      paddingVertical: 10,
-                      paddingHorizontal: 14,
-                      backgroundColor: mine ? C.bubbleOut : C.bubbleIn,
-                      borderTopLeftRadius: 18,
-                      borderTopRightRadius: 18,
-                      borderBottomLeftRadius: mine || !endsRun ? 18 : 5,
-                      borderBottomRightRadius: mine && endsRun ? 5 : 18,
-                    }}
-                  >
-                    <T size={14.5} lh={20.3} color={mine ? C.primaryText : C.text}>
-                      {m.body}
-                    </T>
-                  </View>
-                </View>
-              </FadeIn>
-            );
-          })
-        )}
-      </ScrollView>
-
-      {/* Only shown once the history has loaded, so a normal open does not
-          flash "reconnecting" during the first subscribe. */}
       {!loading && !live && (
-        <T size={11.5} color={C.textMuted} style={{ textAlign: 'center', paddingBottom: 6 }}>
+        <Text accessibilityLiveRegion="polite" className="pb-2 text-center text-xs text-nilya-secondary">
           Reconnecting…
-        </T>
+        </Text>
       )}
 
       {!!sendError && (
-        <T size={12} color={C.error} style={{ textAlign: 'center', paddingBottom: 6 }}>
-          {sendError}
-        </T>
-      )}
-
-      {/*
-        The offer composer, shown only while the item is still for sale and no
-        offer is already awaiting an answer. Either party may open one —
-        `offers_insert_participant` allows both, which is how a seller counters.
-      */}
-      {conversation.listing?.status === 'active' && !liveOffer && (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            paddingHorizontal: 12,
-            paddingBottom: 8,
-          }}
-        >
-          <View
-            style={{
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              height: 40,
-              borderRadius: radius.pill,
-              borderWidth: 1,
-              borderColor: C.border,
-              backgroundColor: C.surface,
-              paddingHorizontal: 14,
-            }}
-          >
-            <T w={600} size={14}>
-              €
-            </T>
-            <TextInput
-              value={offerDraft}
-              onChangeText={(v) => setOfferDraft(v.replace(/[^0-9.,]/g, ''))}
-              placeholder="Make an offer"
-              placeholderTextColor={C.textSecondary}
-              keyboardType="decimal-pad"
-              editable={!offering}
-              style={{ flex: 1, minWidth: 0, fontSize: 14, color: C.text, padding: 0 }}
-            />
-          </View>
-
-          <Button
-            label={offering ? 'Sending…' : 'Send offer'}
-            height={40}
-            size={13.5}
-            disabled={offerCents === null || offering}
-            onPress={submitOffer}
-            style={{ paddingHorizontal: 16, borderRadius: radius.pill }}
-          />
+        <View className="px-3 pb-2">
+          <InlineError message={sendError} />
         </View>
       )}
 
-      {!!offerError && (
-        <T size={12} color={C.error} style={{ textAlign: 'center', paddingBottom: 6 }}>
-          {offerError}
-        </T>
+      {canMakeOffer && !!offerCurrency && (
+        <View className="px-3 pb-2">
+          <PressableScale
+            onPress={() => {
+              setOfferError(null);
+              setOfferSheetPhase('open');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Make an offer"
+            className="h-12 flex-row items-center justify-center gap-2 rounded-xl border border-nilya-primary bg-nilya-surface px-4"
+          >
+            <Icon name="offerTicket" size={18} decorative />
+            <Text className="text-sm font-semibold text-nilya-primary">Make an offer</Text>
+          </PressableScale>
+        </View>
       )}
 
-      <FrostedBar
-        edge="top"
-        style={{
-          flexDirection: 'row',
-          alignItems: 'flex-end',
-          gap: 8,
-          paddingHorizontal: 12,
-          paddingTop: 9,
-          paddingBottom: Math.max(insets.bottom, 10),
-        }}
+      <View
+        className="flex-row items-end gap-2 border-t border-nilya-border bg-nilya-background px-3 pt-2"
+        style={{ paddingBottom: Math.max(insets.bottom, space.space12) }}
       >
         <TextInput
           value={draft}
-          onChangeText={setDraft}
+          onChangeText={(value) => {
+            setDraft(value);
+            if (sendError) setSendError(null);
+          }}
           placeholder="Message…"
           placeholderTextColor={C.textSecondary}
+          selectionColor={C.primary}
           multiline
+          maxLength={2000}
           editable={!sending}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            minHeight: 38,
-            maxHeight: 108,
-            borderRadius: 19,
-            borderWidth: 1,
-            borderColor: C.border,
-            backgroundColor: C.surface,
-            paddingHorizontal: 15,
-            paddingTop: Platform.OS === 'ios' ? 10 : 8,
-            paddingBottom: Platform.OS === 'ios' ? 10 : 8,
-            fontSize: 14.5,
-            lineHeight: 19,
-            color: C.text,
-          }}
+          accessibilityLabel="Message"
+          accessibilityState={{ disabled: sending }}
+          className="min-h-11 max-h-28 min-w-0 flex-1 rounded-2xl bg-nilya-surface px-4 py-3 text-base leading-5 text-nilya-text"
+          style={{ textAlignVertical: 'top' }}
         />
 
         <PressableScale
-          scale={0.94}
           onPress={send}
           disabled={!canSend}
           accessibilityRole="button"
-          accessibilityLabel={sending ? 'Sending' : 'Send message'}
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: canSend ? C.text : C.surfaceSecondary,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          accessibilityLabel="Send message"
+          accessibilityState={{ disabled: !canSend, busy: sending }}
+          className={canSend
+            ? 'h-11 w-11 items-center justify-center rounded-full bg-nilya-primary'
+            : 'h-11 w-11 items-center justify-center rounded-full bg-nilya-surface-2'}
         >
-          <Icon name="send" size={17} color={canSend ? C.primaryText : C.textMuted} />
+          <Icon name="send" size={19} color={canSend ? C.textInverse : C.textSecondary} decorative />
         </PressableScale>
-      </FrostedBar>
+      </View>
+
+      <ConversationMenu
+        visible={menuOpen}
+        bottomInset={insets.bottom}
+        participantName={other?.display_name}
+        listingTitle={conversation.listing?.title}
+        onClose={() => setMenuOpen(false)}
+        onViewProfile={other ? () => {
+          setMenuOpen(false);
+          router.push({ pathname: '/seller/[id]', params: { id: other.id } });
+        } : undefined}
+        onViewListing={menuListingId ? () => {
+          setMenuOpen(false);
+          router.push({ pathname: '/listing/[id]', params: { id: menuListingId } });
+        } : undefined}
+      />
+
+      {!!conversation.listing && !!offerCurrency && (
+        <OfferSheet
+          phase={offerSheetPhase}
+          sellerPrice={formatPrice(conversation.listing.price_cents, offerCurrency)}
+          currency={offerCurrency}
+          value={offerDraft}
+          validationError={parsedOffer.error}
+          mutationError={offerError}
+          sending={offering}
+          onChangeValue={setOfferDraft}
+          onClose={closeOfferSheet}
+          onExited={finishOfferSheetClose}
+          onSubmit={submitOffer}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
 
-function Header({
-  onBack,
-  name,
-  avatarUrl,
-  verified,
-  onPressName,
-}: {
-  onBack: () => void;
-  name?: string;
-  avatarUrl?: string | null;
-  verified?: boolean;
-  onPressName?: () => void;
-}) {
-  const insets = useSafeAreaInsets();
-  const initials = (name ?? '?')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+function ConversationUnavailable() {
+  const goBack = useGoBack('/inbox');
 
   return (
-    <FrostedBar
-      edge="bottom"
-      style={{
-        paddingTop: insets.top,
-        paddingBottom: 10,
-        paddingHorizontal: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-      }}
-    >
-      <Tap
-        onPress={onBack}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        hitSlop={8}
-        style={{ width: 34, height: 34, alignItems: 'center', justifyContent: 'center' }}
-      >
-        <Icon name="chevronLeft" size={20} color={C.text} strokeWidth={2} />
-      </Tap>
-
-      {!!name && (
-        <Tap
-          onPress={onPressName}
-          accessibilityRole="button"
-          accessibilityLabel={`View ${name}'s profile`}
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 44 }}
-        >
-          {avatarUrl ? (
-            <Image
-              source={{ uri: avatarUrl }}
-              style={{ width: 34, height: 34, borderRadius: 17 }}
-              contentFit="cover"
-              transition={200}
-              accessible={false}
-            />
-          ) : (
-            <Avatar initials={initials} bg={C.text} size={34} fontSize={13} />
-          )}
-          <T w={600} size={15} numberOfLines={1} style={{ flexShrink: 1 }}>
-            {name}
-          </T>
-          {verified && <Icon name="badgeCheck" size={14} color={C.success} />}
-        </Tap>
-      )}
-      {!name && <View style={{ flex: 1 }} />}
-    </FrostedBar>
+    <View className="flex-1 bg-nilya-background">
+      <ChatHeader onBack={goBack} />
+      <EmptyState
+        icon="chat"
+        title="Conversation unavailable"
+        body="It may have been removed, or it is not yours to read."
+      />
+    </View>
   );
 }
 
-/**
- * The item the conversation is about.
- *
- * A conversation cannot exist without a listing — `listing_id` is NOT NULL —
- * but the row can be removed underneath it, and `listings` is readable only
- * while visible. Either way the thread survives and says so rather than
- * showing a placeholder item.
- */
-function ListingStrip({ conversation }: { conversation: ConversationRow }) {
+function conversationIdFromParam(value: string | string[] | undefined) {
+  const values = Array.isArray(value) ? value : [value];
+
+  for (const candidate of values) {
+    if (typeof candidate !== 'string') continue;
+    const normalized = candidate.trim();
+    if (UUID_PATTERN.test(normalized)) return normalized;
+  }
+
+  return null;
+}
+
+function OfferSheet({
+  phase,
+  sellerPrice,
+  currency,
+  value,
+  validationError,
+  mutationError,
+  sending,
+  onChangeValue,
+  onClose,
+  onExited,
+  onSubmit,
+}: {
+  phase: OfferSheetPhase;
+  sellerPrice: string;
+  currency: string;
+  value: string;
+  validationError: string | null;
+  mutationError: string | null;
+  sending: boolean;
+  onChangeValue: (value: string) => void;
+  onClose: () => void;
+  onExited: () => void;
+  onSubmit: () => void;
+}) {
+  const visible = phase !== 'closed';
+  const closing = phase === 'closing';
+  const canSubmit = value.trim().length > 0 && !validationError && !sending;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Scrim closing={closing} onPress={onClose} />
+        <Sheet
+          closing={closing}
+          onExited={onExited}
+          accessibilityLabel="Make an offer"
+        >
+          <SheetGrabber style={{ marginTop: space.space12 }} />
+          <View className="px-5 pb-5 pt-3">
+            <View className="flex-row items-center gap-3">
+              <Text accessibilityRole="header" className="min-w-0 flex-1 text-xl font-bold text-nilya-text">
+                Make an offer
+              </Text>
+              <SheetClose onPress={onClose} />
+            </View>
+
+            <View className="mt-6 rounded-xl bg-nilya-surface p-4">
+              <Text className="text-sm text-nilya-secondary">Seller price</Text>
+              <Text className="mt-1 text-2xl font-bold text-nilya-text">{sellerPrice}</Text>
+            </View>
+
+            <Text className="mt-6 text-sm font-semibold text-nilya-text">Your offer</Text>
+            <View className="mt-2 h-14 flex-row items-center rounded-xl border border-nilya-border bg-nilya-surface px-4 focus:border-nilya-primary">
+              <Text className="mr-2 text-lg font-semibold text-nilya-text">
+                {currencySymbol(currency)}
+              </Text>
+              <TextInput
+                value={value}
+                onChangeText={onChangeValue}
+                placeholder="0.00"
+                placeholderTextColor={C.textSecondary}
+                selectionColor={C.primary}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                editable={!sending}
+                autoFocus
+                accessibilityLabel={`Your offer in ${currency}`}
+                accessibilityState={{ disabled: sending }}
+                className="h-full min-w-0 flex-1 p-0 text-lg text-nilya-text"
+              />
+            </View>
+
+            {!!validationError && value.trim().length > 0 && (
+              <Text accessibilityRole="alert" className="mt-2 text-sm text-nilya-error-text">
+                {validationError}
+              </Text>
+            )}
+
+            {!!mutationError && (
+              <View className="mt-3">
+                <InlineError message={mutationError} />
+              </View>
+            )}
+
+            <View className="mt-6">
+              <Button
+                label="Send offer"
+                loading={sending}
+                loadingLabel="Sending offer..."
+                disabled={!canSubmit}
+                onPress={onSubmit}
+              />
+            </View>
+          </View>
+        </Sheet>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function ChatTranscript({
+  messages,
+  me,
+  otherName,
+  offers,
+  offersError,
+  offerCurrency,
+  onRetryOffers,
+}: {
+  messages: MessageRow[];
+  me: string | null;
+  otherName: string;
+  offers: OfferRow[];
+  offersError: Error | null;
+  offerCurrency?: string;
+  onRetryOffers: () => void;
+}) {
+  const [initialMessageIds] = useState(() => new Set(messages.map((message) => message.id)));
+  const scroller = useRef<FlatList<MessageRow>>(null);
+  const positionedHistory = useRef(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      scroller.current?.scrollToEnd({ animated: positionedHistory.current });
+      positionedHistory.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [messages.length]);
+
+  return (
+    <FlatList
+      ref={scroller}
+      data={messages}
+      keyExtractor={(message) => message.id}
+      renderItem={({ item, index }) => (
+        <MessageBubble
+          message={item}
+          previous={messages[index - 1]}
+          next={messages[index + 1]}
+          index={index}
+          me={me}
+          otherName={otherName}
+          animateIncoming={item.sender_id !== me && !initialMessageIds.has(item.id)}
+        />
+      )}
+      showsVerticalScrollIndicator={false}
+      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{
+        flexGrow: messages.length === 0 ? 1 : undefined,
+        paddingHorizontal: space.space16,
+        paddingTop: space.space12,
+        paddingBottom: space.space12,
+      }}
+      ListHeaderComponent={offers.length > 0 && offerCurrency ? (
+        <View className="gap-2 pb-4">
+          {offers.map((offer) => (
+            <OfferCard
+              key={offer.id}
+              offer={offer}
+              me={me}
+              currency={offerCurrency}
+              onChanged={onRetryOffers}
+            />
+          ))}
+        </View>
+      ) : offersError ? (
+        <InlineError
+          message={retryableReadMessage(offersError, 'Offers could not be refreshed.')}
+          actionLabel="Retry"
+          onAction={onRetryOffers}
+          style={{ marginBottom: space.space16 }}
+        />
+      ) : null}
+      ListEmptyComponent={<ChatEmptyState />}
+    />
+  );
+}
+
+function ChatHeader({
+  onBack,
+  name,
+  verified,
+  onMore,
+}: {
+  onBack: () => void;
+  name?: string;
+  verified?: boolean;
+  onMore?: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View className="border-b border-nilya-border bg-nilya-background" style={{ paddingTop: insets.top }}>
+      <View className="h-14 flex-row items-center px-3">
+        <Tap
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          className="h-11 w-11 items-center justify-center"
+        >
+          <Icon name="chevronLeft" role="navigation" decorative />
+        </Tap>
+
+        <View className="min-w-0 flex-1 flex-row items-center justify-center gap-1.5 px-2">
+          {!!name && (
+            <Text accessibilityRole="header" numberOfLines={1} className="max-w-[90%] text-base font-semibold text-nilya-text">
+              {name}
+            </Text>
+          )}
+          {verified && <Icon name="badgeCheck" size={16} color={C.textPrimary} decorative />}
+        </View>
+
+        {onMore ? (
+          <Tap
+            onPress={onMore}
+            accessibilityRole="button"
+            accessibilityLabel="Conversation options"
+            className="h-11 w-11 items-center justify-center"
+          >
+            <View style={{ transform: [{ rotate: '90deg' }] }}>
+              <Icon name="dotsVertical" role="navigation" decorative />
+            </View>
+          </Tap>
+        ) : (
+          <View className="h-11 w-11" />
+        )}
+      </View>
+    </View>
+  );
+}
+
+function ListingContext({ conversation }: { conversation: ConversationRow }) {
   const router = useRouter();
   const listing = conversation.listing;
 
   if (!listing) {
     return (
-      <View
-        style={{
-          paddingVertical: 10,
-          paddingHorizontal: space.gutter,
-          backgroundColor: C.surface,
-          borderBottomWidth: 1,
-          borderBottomColor: C.border,
-        }}
-      >
-        <T size={13} color={C.textSecondary}>
-          Listing unavailable
-        </T>
+      <View className="min-h-14 justify-center border-b border-nilya-border bg-nilya-background px-5 py-3">
+        <Text className="text-sm text-nilya-secondary">Listing unavailable</Text>
       </View>
     );
   }
+
+  const imageUrl = coverUrl(listing.images);
+  const price = formatPrice(listing.price_cents, listing.currency);
 
   return (
     <Tap
       onPress={() => router.push({ pathname: '/listing/[id]', params: { id: listing.id } })}
       accessibilityRole="button"
-      accessibilityLabel={`View ${listing.title}`}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 11,
-        paddingVertical: 10,
-        paddingHorizontal: space.gutter,
-        backgroundColor: C.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: C.border,
-      }}
+      accessibilityLabel={`View ${listing.title}, ${price}`}
+      className="min-h-16 flex-row items-center gap-3 border-b border-nilya-border bg-nilya-surface px-5 py-3"
     >
-      <View style={{ width: 40 }}>
-        <ListingImage url={coverUrl(listing.images)} width={40} round={radius.sm} />
-      </View>
+      {!!imageUrl && (
+        <View accessible={false} className="h-14 w-11 overflow-hidden rounded-lg bg-nilya-surface">
+          <Image
+            source={{ uri: imageUrl }}
+            style={{ width: '100%', height: '100%' }}
+            contentFit="cover"
+            transition={duration.standard}
+            cachePolicy="memory-disk"
+            accessible={false}
+          />
+        </View>
+      )}
 
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <T w={500} size={13.5} numberOfLines={1}>
+      <View className="min-w-0 flex-1">
+        <Text numberOfLines={1} className="text-sm font-medium text-nilya-text">
           {listing.title}
-        </T>
-        <T w={700} size={15} style={{ marginTop: 1 }}>
-          {formatPrice(listing.price_cents, listing.currency)}
-        </T>
+        </Text>
+        <Text className="mt-1 text-sm font-bold text-nilya-text">{price}</Text>
       </View>
-
-      <Icon name="chevronRight" size={17} color={C.textMuted} strokeWidth={1.9} />
+      <Icon name="chevronRight" size={18} color={C.textSecondary} decorative />
     </Tap>
   );
+}
+
+function MessageBubble({
+  message,
+  previous,
+  next,
+  index,
+  me,
+  otherName,
+  animateIncoming,
+}: {
+  message: MessageRow;
+  previous?: MessageRow;
+  next?: MessageRow;
+  index: number;
+  me: string | null;
+  otherName: string;
+  animateIncoming: boolean;
+}) {
+  const mine = message.sender_id === me;
+  const startsRun = !previous || previous.sender_id !== message.sender_id;
+  const endsRun = !next || next.sender_id !== message.sender_id;
+  const timestamp = messageTimeLabel(message.created_at);
+  const content = (
+    <View className={startsRun && index > 0 ? 'mt-3' : 'mt-1'}>
+      <View className={mine ? 'flex-row justify-end' : 'flex-row justify-start'}>
+        <View
+          accessible
+          accessibilityLabel={`${mine ? 'You' : otherName}: ${message.body}. ${timestamp}`}
+          className={mine
+            ? `max-w-[78%] rounded-2xl bg-nilya-primary px-3.5 py-2.5 ${endsRun ? 'rounded-br-md' : ''}`
+            : `max-w-[78%] rounded-2xl bg-nilya-surface-2 px-3.5 py-2.5 ${endsRun ? 'rounded-bl-md' : ''}`}
+        >
+          <Text selectable className={mine ? 'text-base leading-5 text-nilya-inverse' : 'text-base leading-5 text-nilya-text'}>
+            {message.body}
+          </Text>
+        </View>
+      </View>
+      {endsRun && (
+        <Text className={mine ? 'mt-1 text-right text-[11px] text-nilya-secondary' : 'mt-1 text-left text-[11px] text-nilya-secondary'}>
+          {timestamp}
+        </Text>
+      )}
+    </View>
+  );
+
+  return animateIncoming ? (
+    <FadeIn y={6} duration={duration.fast}>
+      {content}
+    </FadeIn>
+  ) : content;
+}
+
+function ChatEmptyState() {
+  return (
+    <View className="flex-1 items-center justify-center px-8 py-12">
+      <View className="h-14 w-14 items-center justify-center rounded-full bg-nilya-surface">
+        <Icon name="chat" size={24} decorative />
+      </View>
+      <Text accessibilityRole="header" className="mt-4 text-center text-lg font-semibold text-nilya-text">
+        No messages yet
+      </Text>
+      <Text className="mt-2 text-center text-sm leading-5 text-nilya-secondary">
+        Send the first message to start this conversation.
+      </Text>
+    </View>
+  );
+}
+
+function ChatLoading() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View className="flex-1 bg-nilya-background" style={{ paddingTop: insets.top }} accessibilityRole="progressbar" accessibilityLabel="Loading conversation">
+      <View className="h-14 flex-row items-center gap-4 border-b border-nilya-border px-4">
+        <Skeleton width={32} height={32} round={16} />
+        <Skeleton width="42%" height={16} />
+      </View>
+      <View className="h-20 flex-row items-center gap-3 border-b border-nilya-border px-5">
+        <Skeleton width={44} height={56} round={8} />
+        <View className="flex-1 gap-2">
+          <Skeleton width="62%" height={12} />
+          <Skeleton width="28%" height={12} />
+        </View>
+      </View>
+      <View className="gap-3 px-4 py-5">
+        <Skeleton width="62%" height={42} round={16} />
+        <Skeleton width="44%" height={42} round={16} style={{ alignSelf: 'flex-end' }} />
+        <Skeleton width="70%" height={42} round={16} />
+      </View>
+    </View>
+  );
+}
+
+function ConversationMenu({
+  visible,
+  bottomInset,
+  participantName,
+  listingTitle,
+  onClose,
+  onViewProfile,
+  onViewListing,
+}: {
+  visible: boolean;
+  bottomInset: number;
+  participantName?: string;
+  listingTitle?: string;
+  onClose: () => void;
+  onViewProfile?: () => void;
+  onViewListing?: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 justify-end">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close conversation options"
+          onPress={onClose}
+          className="absolute inset-0 bg-nilya-primary-dark/40"
+        />
+        <View
+          accessibilityViewIsModal
+          accessibilityLabel="Conversation options"
+          className="rounded-t-2xl bg-nilya-background px-5 pt-3"
+          style={{ paddingBottom: Math.max(bottomInset, space.space16) }}
+        >
+          <View accessible={false} className="mb-3 h-1 w-10 self-center rounded-full bg-nilya-border" />
+          <Text accessibilityRole="header" className="pb-3 text-lg font-semibold text-nilya-text">
+            Conversation
+          </Text>
+          {!!onViewProfile && (
+            <Tap
+              onPress={onViewProfile}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${participantName ?? 'participant'} profile`}
+              className="min-h-14 flex-row items-center gap-3 border-t border-nilya-border"
+            >
+              <Icon name="person" size={20} decorative />
+              <Text className="flex-1 text-base font-medium text-nilya-primary">View profile</Text>
+              <Icon name="chevronRight" size={18} color={C.textSecondary} decorative />
+            </Tap>
+          )}
+          {!!onViewListing && (
+            <Tap
+              onPress={onViewListing}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${listingTitle ?? 'product'}`}
+              className="min-h-14 flex-row items-center gap-3 border-t border-nilya-border"
+            >
+              <Icon name="image" size={20} decorative />
+              <Text className="flex-1 text-base font-medium text-nilya-primary">View product</Text>
+              <Icon name="chevronRight" size={18} color={C.textSecondary} decorative />
+            </Tap>
+          )}
+          <Tap
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
+            className="min-h-14 items-center justify-center border-t border-nilya-border"
+          >
+            <Text className="text-base font-semibold text-nilya-primary">Cancel</Text>
+          </Tap>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function messageTimeLabel(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const time = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (date.toDateString() === now.toDateString()) return time;
+  return `${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}, ${time}`;
+}
+
+function parseOfferAmount(value: string): { amountCents: number | null; error: string | null } {
+  const input = value.trim();
+  if (!input) return { amountCents: null, error: null };
+
+  const normalized = input.replace(',', '.');
+  if (!/^\d+(?:\.\d{0,2})?$/.test(normalized)) {
+    return { amountCents: null, error: 'Use a valid amount with up to 2 decimal places.' };
+  }
+
+  const [whole, fraction = ''] = normalized.split('.');
+  const amountCents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  if (!Number.isSafeInteger(amountCents)) {
+    return { amountCents: null, error: 'That amount is too large.' };
+  }
+  if (amountCents <= 0) {
+    return { amountCents: null, error: 'Offer must be above zero.' };
+  }
+
+  return { amountCents, error: null };
+}
+
+function currencySymbol(currency: string): string {
+  const normalizedCurrency = currency.trim().toUpperCase();
+
+  if (!normalizedCurrency) {
+    return currency;
+  }
+
+  return formatPrice(0, normalizedCurrency).replace(/0(?:\.00)?$/, '').trim() || normalizedCurrency;
 }
