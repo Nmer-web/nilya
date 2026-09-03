@@ -5,9 +5,8 @@ import { EmptyState, ErrorState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
-import { SuspendedBadge } from "@/components/status-badge";
+import { StatusBadge, SuspendedBadge } from "@/components/status-badge";
 import { UserAvatar } from "@/components/user-avatar";
-import { Badge } from "@/components/ui/badge";
 import { ROLE_LABEL, requireAdmin } from "@/lib/admin";
 import { escapeFilterValue, firstParam, formatDate, pageParam } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
@@ -174,12 +173,7 @@ const USER_COLUMNS: Column<AdminUserRow>[] = [
       row.suspended_at ? (
         <SuspendedBadge />
       ) : (
-        <Badge
-          variant="outline"
-          className="border-[#0F6E56]/20 bg-[#E7F1EE] font-medium text-[#0B5442]"
-        >
-          Active
-        </Badge>
+        <StatusBadge status="active" />
       ),
   },
 ];

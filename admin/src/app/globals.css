@@ -41,6 +41,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-label: var(--label);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -56,9 +57,14 @@
  * the single accent and never a status colour; success and error keep their own
  * semantic hues.
  *
- * The admin is a light-surface product. There is deliberately no dark theme:
- * the `.dark` class is never applied, so a half-finished dark palette would be
- * a state that ships unfinished (Principle VI) with nothing to reveal it.
+ * Every grey and surface below is a token and nothing in the components hard-
+ * codes one, so a second palette is a single block away. The two brand hues
+ * (`--nilya-green`, `--nilya-amber`) are the only literals used in components:
+ * they do not invert.
+ *
+ * There is deliberately no dark palette yet: the `.dark` class is never
+ * applied, and a half-finished dark theme would be a state that ships
+ * unfinished (Principle VI) with nothing to reveal it.
  */
 :root {
   --nilya-green: #0f6e56;
@@ -69,7 +75,8 @@
   --nilya-ink: #141413;
   --nilya-muted: #6b6b66;
 
-  --background: #fafafa;
+  /* Warm neutrals: the page ground, card surface, hairline and section labels. */
+  --background: #f7f6f3;
   --foreground: var(--nilya-ink);
   --card: #ffffff;
   --card-foreground: var(--nilya-ink);
@@ -78,10 +85,11 @@
 
   --primary: var(--nilya-green);
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
+  --secondary: #f7f6f3;
   --secondary-foreground: var(--nilya-ink);
-  --muted: #f4f4f5;
+  --muted: #f7f6f3;
   --muted-foreground: var(--nilya-muted);
+  --label: #a3a29c;
   --accent: var(--nilya-green-tint);
   --accent-foreground: var(--nilya-green);
 
@@ -89,8 +97,8 @@
   --success: #0f6e56;
   --warning: #b54708;
 
-  --border: #e4e4e7;
-  --input: #d4d4d8;
+  --border: #ebeae6;
+  --input: #d9d8d3;
   --ring: var(--nilya-green);
 
   --chart-1: var(--nilya-green);
@@ -105,9 +113,9 @@
   --sidebar-foreground: var(--nilya-ink);
   --sidebar-primary: var(--nilya-green);
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--nilya-green-tint);
-  --sidebar-accent-foreground: var(--nilya-green);
-  --sidebar-border: #e4e4e7;
+  --sidebar-accent: #f7f6f3;
+  --sidebar-accent-foreground: var(--nilya-ink);
+  --sidebar-border: #ebeae6;
   --sidebar-ring: var(--nilya-green);
 }
 

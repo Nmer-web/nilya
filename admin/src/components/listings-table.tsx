@@ -124,7 +124,7 @@ export function ListingsTable({ listings }: { listings: AdminListingRow[] }) {
             <caption className="sr-only">Listings</caption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-10 bg-zinc-50/80">
+                <TableHead className="w-10 bg-muted">
                   <Checkbox
                     checked={allSelected}
                     indeterminate={someSelected}
@@ -132,7 +132,7 @@ export function ListingsTable({ listings }: { listings: AdminListingRow[] }) {
                     aria-label="Select all listings on this page"
                   />
                 </TableHead>
-                <TableHead className="w-14 bg-zinc-50/80">
+                <TableHead className="w-14 bg-muted">
                   <span className="sr-only">Photo</span>
                 </TableHead>
                 {["Title", "Seller", "Price", "Category", "Status", "Created"].map(
@@ -140,7 +140,7 @@ export function ListingsTable({ listings }: { listings: AdminListingRow[] }) {
                     <TableHead
                       key={header}
                       className={cn(
-                        "h-11 bg-zinc-50/80 text-xs font-medium tracking-wide text-muted-foreground uppercase",
+                        "h-11 bg-muted text-xs font-medium tracking-wide text-muted-foreground uppercase",
                         header === "Price" && "text-right",
                         header === "Created" && "text-right"
                       )}
@@ -172,7 +172,7 @@ export function ListingsTable({ listings }: { listings: AdminListingRow[] }) {
                       />
                     </TableCell>
                     <TableCell className="py-3">
-                      <div className="relative size-10 overflow-hidden rounded-lg border bg-zinc-100">
+                      <div className="relative size-10 overflow-hidden rounded-lg border bg-muted">
                         {src ? (
                           <Image
                             src={src}
@@ -182,7 +182,7 @@ export function ListingsTable({ listings }: { listings: AdminListingRow[] }) {
                             className="object-cover"
                           />
                         ) : (
-                          <span className="flex size-full items-center justify-center text-zinc-400">
+                          <span className="flex size-full items-center justify-center text-label">
                             <ImageOff className="size-4" aria-hidden />
                           </span>
                         )}

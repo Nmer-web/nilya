@@ -16,7 +16,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
   const unauthorized = firstParam(searchParams.error) === "unauthorized";
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-zinc-50 p-6">
+    <main className="flex min-h-dvh items-center justify-center bg-muted p-6">
       <div className="w-full max-w-[400px]">
         <div className="flex flex-col items-center">
           <NilyaMark size={48} />

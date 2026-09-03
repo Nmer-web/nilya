@@ -22,6 +22,10 @@ export type Column<T> = {
   headerClassName?: string;
 };
 
+/** The one card shell every table sits in. */
+export const TABLE_CARD =
+  "overflow-hidden rounded-xl border border-border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.06)]";
+
 /**
  * The one table shell every list uses, so column rhythm, hover, empty state and
  * row linking behave identically across the dashboard.
@@ -47,24 +51,20 @@ export function DataTable<T>({
   caption?: string;
 }) {
   if (rows.length === 0) {
-    return <div className="rounded-xl border bg-card">{empty}</div>;
+    return <div className={TABLE_CARD}>{empty}</div>;
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
+    <div className={TABLE_CARD}>
       <div className="overflow-x-auto">
         <Table>
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
+            <TableRow className="hover:bg-muted">
               {columns.map((column) => (
                 <TableHead
                   key={column.key}
-                  className={cn(
-                    "h-11 bg-zinc-50/80 text-xs font-medium tracking-wide text-muted-foreground uppercase",
-                    column.className,
-                    column.headerClassName
-                  )}
+                  className={cn(column.className, column.headerClassName)}
                 >
                   {column.header}
                 </TableHead>
@@ -77,12 +77,16 @@ export function DataTable<T>({
               return (
                 <TableRow
                   key={rowKey(row)}
-                  className={cn("group", href && "relative cursor-pointer")}
+                  className={cn("group h-14", href && "relative cursor-pointer")}
                 >
                   {columns.map((column, index) => (
                     <TableCell
                       key={column.key}
-                      className={cn("py-3 align-middle", column.className)}
+                      className={cn(
+                        "align-middle",
+                        index === 0 && "font-medium text-foreground",
+                        column.className
+                      )}
                     >
                       {href && index === 0 ? (
                         <>
@@ -121,11 +125,11 @@ export function TableSkeleton({
   rows?: number;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
-      <div className="h-11 border-b bg-zinc-50/80" />
-      <div className="divide-y">
+    <div className={TABLE_CARD}>
+      <div className="h-11 border-b border-border bg-muted" />
+      <div className="divide-y divide-border">
         {Array.from({ length: rows }).map((_, rowIndex) => (
-          <div key={rowIndex} className="flex items-center gap-4 px-4 py-3.5">
+          <div key={rowIndex} className="flex h-14 items-center gap-4 px-4">
             {Array.from({ length: columns }).map((__, cellIndex) => (
               <Skeleton
                 key={cellIndex}

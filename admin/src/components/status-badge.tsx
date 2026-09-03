@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   DISPUTE_STATE_LABEL,
@@ -6,6 +5,7 @@ import {
   ORDER_STATUS_LABEL,
   PAYMENT_STATUS_LABEL,
   REPORT_STATUS_LABEL,
+  ROLE_LABEL,
   type AuditTargetType,
   type DisputeState,
   type ListingStatus,
@@ -16,18 +16,128 @@ import {
 } from "@/lib/types";
 
 /**
- * Status colours are semantic, never brand-amber-for-everything: green reads
- * "live", amber "needs a human", red "taken down", zinc "finished", blue
- * "not yet public" (constitution Principle VI).
+ * One pill for every status in the dashboard.
+ *
+ * Colours are semantic, never brand-amber-for-everything: green reads "live or
+ * settled", amber "needs a human", red "taken down or contested", grey
+ * "finished or not yet public", blue "in transit". Backgrounds are the colour
+ * at ~12% over the surface, text is the colour at full strength, no border
+ * (constitution Principle VI).
  */
-const LISTING_TONE: Record<ListingStatus, string> = {
-  active: "border-[#0F6E56]/20 bg-[#E7F1EE] text-[#0B5442]",
-  under_review: "border-[#EF9F27]/30 bg-[#FDF1DE] text-[#8A5A0B]",
-  removed: "border-red-200 bg-red-50 text-red-800",
-  sold: "border-zinc-200 bg-zinc-100 text-zinc-700",
-  reserved: "border-zinc-200 bg-zinc-100 text-zinc-700",
-  draft: "border-blue-200 bg-blue-50 text-blue-800",
+export type PillTone = "green" | "amber" | "red" | "gray" | "blue" | "dark";
+
+const PILL_BASE =
+  "inline-flex w-fit shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] leading-none font-medium whitespace-nowrap";
+
+const PILL_TONE: Record<PillTone, string> = {
+  green: "bg-[#0F6E56]/12 text-[#0F6E56]",
+  amber: "bg-[#EF9F27]/14 text-[#9A5B00]",
+  red: "bg-[#B42318]/10 text-[#B42318]",
+  gray: "bg-foreground/8 text-muted-foreground",
+  blue: "bg-[#1D4ED8]/10 text-[#1D4ED8]",
+  dark: "bg-[#0F6E56] text-white",
 };
+
+/** Every status string the dashboard shows, mapped to a tone. */
+const STATUS_TONE: Record<string, PillTone> = {
+  // green — live, settled, in the operator's favour
+  active: "green",
+  standing: "green",
+  resolved: "green",
+  resolved_buyer: "green",
+  resolved_seller: "green",
+  verified: "green",
+  succeeded: "green",
+  completed: "green",
+  paid: "green",
+  // amber — waiting on a human or on money
+  under_review: "amber",
+  reviewing: "amber",
+  pending: "amber",
+  pending_payment: "amber",
+  processing: "amber",
+  requires_payment_method: "amber",
+  moderator: "amber",
+  // red — taken down, contested, or failed
+  removed: "red",
+  blocked: "red",
+  suspended: "red",
+  open: "red",
+  failed: "red",
+  disputed: "red",
+  // grey — finished, withdrawn, or not yet public
+  draft: "gray",
+  sold: "gray",
+  reserved: "gray",
+  dismissed: "gray",
+  cancelled: "gray",
+  refunded: "gray",
+  partially_refunded: "gray",
+  closed: "gray",
+  support: "gray",
+  // roles and transit
+  owner: "dark",
+  admin: "blue",
+  shipped: "blue",
+  delivered: "blue",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  ...LISTING_STATUS_LABEL,
+  ...REPORT_STATUS_LABEL,
+  ...DISPUTE_STATE_LABEL,
+  ...ORDER_STATUS_LABEL,
+  ...PAYMENT_STATUS_LABEL,
+  ...ROLE_LABEL,
+  verified: "Verified",
+  standing: "Standing",
+  suspended: "Suspended",
+  blocked: "Blocked",
+  pending: "Pending",
+};
+
+function humanize(status: string) {
+  const spaced = status.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+export function StatusBadge({
+  status,
+  label,
+  tone,
+  className,
+}: {
+  status: string;
+  /** Overrides the label looked up from the status enums. */
+  label?: string;
+  /** Overrides the tone looked up from the status. */
+  tone?: PillTone;
+  className?: string;
+}) {
+  const resolvedTone = tone ?? STATUS_TONE[status] ?? "gray";
+  return (
+    <span className={cn(PILL_BASE, PILL_TONE[resolvedTone], className)}>
+      {label ?? STATUS_LABEL[status] ?? humanize(status)}
+    </span>
+  );
+}
+
+/** A plain pill for labels that are not statuses (types, counts). */
+export function Pill({
+  tone = "gray",
+  className,
+  children,
+}: {
+  tone?: PillTone;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className={cn(PILL_BASE, PILL_TONE[tone], className)}>{children}</span>
+  );
+}
+
+// ───────────── typed wrappers, so call sites keep their enum safety ─────────────
 
 export function ListingStatusBadge({
   status,
@@ -36,22 +146,8 @@ export function ListingStatusBadge({
   status: ListingStatus;
   className?: string;
 }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn("font-medium", LISTING_TONE[status], className)}
-    >
-      {LISTING_STATUS_LABEL[status]}
-    </Badge>
-  );
+  return <StatusBadge status={status} className={className} />;
 }
-
-const REPORT_TONE: Record<ReportStatus, string> = {
-  open: "border-red-200 bg-red-50 text-red-800",
-  reviewing: "border-[#EF9F27]/30 bg-[#FDF1DE] text-[#8A5A0B]",
-  resolved: "border-[#0F6E56]/20 bg-[#E7F1EE] text-[#0B5442]",
-  dismissed: "border-zinc-200 bg-zinc-100 text-zinc-700",
-};
 
 export function ReportStatusBadge({
   status,
@@ -60,14 +156,7 @@ export function ReportStatusBadge({
   status: ReportStatus;
   className?: string;
 }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn("font-medium", REPORT_TONE[status], className)}
-    >
-      {REPORT_STATUS_LABEL[status]}
-    </Badge>
-  );
+  return <StatusBadge status={status} className={className} />;
 }
 
 const TARGET_LABEL: Record<ReportTargetType, string> = {
@@ -77,90 +166,33 @@ const TARGET_LABEL: Record<ReportTargetType, string> = {
 };
 
 export function TargetTypeBadge({ type }: { type: ReportTargetType }) {
-  return (
-    <Badge variant="outline" className="border-zinc-200 bg-white font-medium text-zinc-700">
-      {TARGET_LABEL[type] ?? type}
-    </Badge>
-  );
+  return <Pill tone="gray">{TARGET_LABEL[type] ?? type}</Pill>;
 }
 
 export function SuspendedBadge() {
-  return (
-    <Badge variant="outline" className="border-red-200 bg-red-50 font-medium text-red-800">
-      Suspended
-    </Badge>
-  );
+  return <StatusBadge status="suspended" />;
 }
-
-// ───────────────────────── operations ─────────────────────────
-
-const GREEN = "border-[#0F6E56]/20 bg-[#E7F1EE] text-[#0B5442]";
-const AMBER = "border-[#EF9F27]/30 bg-[#FDF1DE] text-[#8A5A0B]";
-const RED = "border-red-200 bg-red-50 text-red-800";
-const ZINC = "border-zinc-200 bg-zinc-100 text-zinc-700";
-const BLUE = "border-blue-200 bg-blue-50 text-blue-800";
-const PURPLE = "border-purple-200 bg-purple-50 text-purple-800";
-
-const DISPUTE_TONE: Record<DisputeState, string> = {
-  open: RED,
-  under_review: AMBER,
-  resolved_buyer: GREEN,
-  resolved_seller: GREEN,
-  closed: ZINC,
-};
 
 export function DisputeStateBadge({ state }: { state: DisputeState }) {
-  return (
-    <Badge variant="outline" className={cn("font-medium", DISPUTE_TONE[state])}>
-      {DISPUTE_STATE_LABEL[state]}
-    </Badge>
-  );
+  return <StatusBadge status={state} />;
 }
-
-const ORDER_TONE: Record<OrderStatus, string> = {
-  pending_payment: AMBER,
-  paid: GREEN,
-  shipped: BLUE,
-  delivered: BLUE,
-  completed: GREEN,
-  cancelled: ZINC,
-  refunded: ZINC,
-  disputed: RED,
-};
 
 export function OrderStatusBadge({ status }: { status: OrderStatus }) {
-  return (
-    <Badge variant="outline" className={cn("font-medium", ORDER_TONE[status])}>
-      {ORDER_STATUS_LABEL[status]}
-    </Badge>
-  );
+  return <StatusBadge status={status} />;
 }
-
-const PAYMENT_TONE: Record<PaymentStatus, string> = {
-  requires_payment_method: AMBER,
-  processing: AMBER,
-  succeeded: GREEN,
-  failed: RED,
-  refunded: ZINC,
-  partially_refunded: ZINC,
-};
 
 export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
-  return (
-    <Badge variant="outline" className={cn("font-medium", PAYMENT_TONE[status])}>
-      {PAYMENT_STATUS_LABEL[status]}
-    </Badge>
-  );
+  return <StatusBadge status={status} />;
 }
 
-const AUDIT_TARGET_TONE: Record<AuditTargetType, string> = {
-  listing: BLUE,
-  user: PURPLE,
-  report: RED,
-  dispute: AMBER,
-  category: GREEN,
-  review: ZINC,
-  admin_user: PURPLE,
+const AUDIT_TARGET_TONE: Record<AuditTargetType, PillTone> = {
+  listing: "blue",
+  user: "gray",
+  report: "red",
+  dispute: "amber",
+  category: "green",
+  review: "gray",
+  admin_user: "dark",
 };
 
 const AUDIT_TARGET_LABEL: Record<AuditTargetType, string> = {
@@ -176,19 +208,12 @@ const AUDIT_TARGET_LABEL: Record<AuditTargetType, string> = {
 export function AuditTargetBadge({ type }: { type: string }) {
   const known = (type in AUDIT_TARGET_TONE ? type : null) as AuditTargetType | null;
   return (
-    <Badge
-      variant="outline"
-      className={cn("font-medium", known ? AUDIT_TARGET_TONE[known] : ZINC)}
-    >
+    <Pill tone={known ? AUDIT_TARGET_TONE[known] : "gray"}>
       {known ? AUDIT_TARGET_LABEL[known] : type}
-    </Badge>
+    </Pill>
   );
 }
 
 export function RemovedBadge() {
-  return (
-    <Badge variant="outline" className={cn("font-medium", RED)}>
-      Removed
-    </Badge>
-  );
+  return <StatusBadge status="removed" />;
 }

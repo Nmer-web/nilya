@@ -30,7 +30,7 @@ export function TabPanels({
           <TabsTrigger key={panel.value} value={panel.value}>
             {panel.label}
             {typeof panel.count === "number" ? (
-              <span className="tabular ml-1.5 rounded-full bg-zinc-200/70 px-1.5 text-[11px] font-semibold text-zinc-700">
+              <span className="tabular ml-1.5 rounded-full bg-border px-1.5 text-[11px] font-semibold text-foreground">
                 {panel.count}
               </span>
             ) : null}

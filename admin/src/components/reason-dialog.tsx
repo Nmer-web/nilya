@@ -120,7 +120,7 @@ function ReasonForm({
                     "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors",
                     choice === option.value
                       ? "border-[#0F6E56] bg-[#E7F1EE] text-[#0B5442]"
-                      : "hover:bg-zinc-50"
+                      : "hover:bg-muted"
                   )}
                 >
                   <input

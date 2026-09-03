@@ -29,7 +29,7 @@ export function StarRating({
             dimension,
             index < clamped
               ? "fill-[#EF9F27] text-[#EF9F27]"
-              : "fill-transparent text-zinc-300"
+              : "fill-transparent text-label"
           )}
         />
       ))}

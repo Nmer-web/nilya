@@ -95,7 +95,7 @@ export function AuditLogTable({ rows }: { rows: AdminAuditRow[] }) {
                       <TableHead
                         key={index}
                         className={cn(
-                          "h-11 bg-zinc-50/80 text-xs font-medium tracking-wide text-muted-foreground uppercase",
+                          "h-11 bg-muted text-xs font-medium tracking-wide text-muted-foreground uppercase",
                           index === 0 && "w-8",
                           index === 6 && "w-40 text-right"
                         )}
@@ -156,7 +156,7 @@ function RowPair({
             }}
             aria-expanded={isOpen}
             aria-label={isOpen ? "Hide details" : "Show details"}
-            className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-zinc-100 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <ChevronRight
               className={cn("size-4 transition-transform", isOpen && "rotate-90")}
@@ -170,7 +170,7 @@ function RowPair({
           </span>
         </TableCell>
         <TableCell className="py-3">
-          <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs text-foreground">
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
             {row.action}
           </code>
         </TableCell>
@@ -204,7 +204,7 @@ function RowPair({
       </TableRow>
 
       {isOpen ? (
-        <TableRow className="bg-zinc-50/60 hover:bg-zinc-50/60">
+        <TableRow className="bg-muted hover:bg-muted">
           <TableCell />
           <TableCell colSpan={6} className="py-3">
             <div className="grid gap-4 sm:grid-cols-2">

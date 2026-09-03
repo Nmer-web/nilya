@@ -5,14 +5,8 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/page-header";
 import { ReportActions } from "@/components/report-actions";
-import {
-  ListingStatusBadge,
-  ReportStatusBadge,
-  SuspendedBadge,
-  TargetTypeBadge,
-} from "@/components/status-badge";
+import { ListingStatusBadge, Pill, ReportStatusBadge, SuspendedBadge, TargetTypeBadge } from "@/components/status-badge";
 import { UserAvatar } from "@/components/user-avatar";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/admin";
 import {
@@ -136,7 +130,7 @@ export default async function ReportDetailPage(
                 Their description
               </p>
               {report.detail ? (
-                <p className="rounded-lg bg-zinc-50 p-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                <p className="rounded-lg bg-muted p-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
                   {report.detail}
                 </p>
               ) : (
@@ -161,7 +155,7 @@ export default async function ReportDetailPage(
                 href={`/listings/${listing.id}`}
                 className="flex items-start gap-4 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               >
-                <span className="relative size-20 shrink-0 overflow-hidden rounded-lg border bg-zinc-100">
+                <span className="relative size-20 shrink-0 overflow-hidden rounded-lg border bg-muted">
                   {coverSrc ? (
                     <Image
                       src={coverSrc}
@@ -171,7 +165,7 @@ export default async function ReportDetailPage(
                       className="object-cover"
                     />
                   ) : (
-                    <span className="flex size-full items-center justify-center text-zinc-400">
+                    <span className="flex size-full items-center justify-center text-label">
                       <ImageOff className="size-5" aria-hidden />
                     </span>
                   )}
@@ -216,10 +210,10 @@ export default async function ReportDetailPage(
                   </span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {user.suspended_at ? <SuspendedBadge /> : null}
-                    <Badge variant="outline" className="font-medium">
+                    <Pill>
                       {user.listings_count} listing
                       {user.listings_count === 1 ? "" : "s"}
-                    </Badge>
+                    </Pill>
                     <span className="text-xs text-muted-foreground">
                       Joined {formatDate(user.created_at)}
                     </span>

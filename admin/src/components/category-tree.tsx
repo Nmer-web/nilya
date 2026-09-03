@@ -53,7 +53,7 @@ export function CategoryTree({ departments }: { departments: CategoryNode[] }) {
       </div>
 
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="flex h-11 items-center gap-4 border-b bg-zinc-50/80 px-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        <div className="flex h-11 items-center gap-4 border-b bg-muted px-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           <span className="flex-1">Category</span>
           <span className="hidden w-56 sm:block">Slug</span>
           <span className="w-24 text-right">Listings</span>
@@ -85,7 +85,7 @@ export function CategoryTree({ departments }: { departments: CategoryNode[] }) {
                   onAddChild={() => setCreatingUnder(department)}
                 />
                 {open && department.children.length > 0 ? (
-                  <ul className="divide-y border-t bg-zinc-50/40">
+                  <ul className="divide-y border-t bg-muted">
                     {department.children.map((child) => (
                       <li key={child.id}>
                         <CategoryRow
@@ -196,7 +196,7 @@ function CategoryRow({
             type="button"
             onClick={onToggleExpand}
             aria-expanded={expanded}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <ChevronRight
               className={cn("size-4 transition-transform", expanded && "rotate-90")}
@@ -211,7 +211,7 @@ function CategoryRow({
         )}
 
         <span
-          className="flex size-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 font-mono text-[10px] text-zinc-500"
+          className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-[10px] text-muted-foreground"
           title={node.icon_key ? `Icon key: ${node.icon_key}` : "No icon key"}
           aria-hidden
         >

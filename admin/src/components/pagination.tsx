@@ -38,13 +38,10 @@ export function Pagination({
 
   return (
     <nav
-      className="mt-4 flex items-center justify-between gap-4"
+      className="mt-5 flex flex-col items-center gap-2"
       aria-label="Pagination"
     >
-      <p className="tabular text-sm text-muted-foreground">
-        {from}–{to} of {total.toLocaleString("en-GB")}
-      </p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <PageLink
           href={hrefFor(page - 1)}
           disabled={page <= 1}
@@ -53,6 +50,9 @@ export function Pagination({
           <ChevronLeft className="size-4" />
           Previous
         </PageLink>
+        <p className="tabular text-sm font-medium text-foreground">
+          Page {page} of {lastPage}
+        </p>
         <PageLink
           href={hrefFor(page + 1)}
           disabled={page >= lastPage}
@@ -62,6 +62,9 @@ export function Pagination({
           <ChevronRight className="size-4" />
         </PageLink>
       </div>
+      <p className="tabular text-xs text-muted-foreground">
+        {from}–{to} of {total.toLocaleString("en-GB")}
+      </p>
     </nav>
   );
 }
@@ -78,10 +81,10 @@ function PageLink({
   children: React.ReactNode;
 }) {
   const className = cn(
-    "inline-flex h-8 items-center gap-1 rounded-lg border bg-card px-2.5 text-sm font-medium transition-colors",
+    "inline-flex h-9 items-center gap-1 rounded-lg border border-border bg-card px-3 text-sm font-medium transition-colors",
     disabled
       ? "cursor-not-allowed text-muted-foreground/50"
-      : "text-foreground hover:bg-zinc-50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      : "text-foreground hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
   );
 
   if (disabled) {

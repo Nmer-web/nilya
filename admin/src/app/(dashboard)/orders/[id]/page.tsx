@@ -207,7 +207,7 @@ export default async function OrderDetailPage(props: PageProps<"/orders/[id]">) 
                   <li key={dispute.id}>
                     <Link
                       href={`/disputes/${dispute.id}`}
-                      className="block rounded-lg border p-3 transition-colors hover:bg-zinc-50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                      className="block rounded-lg border p-3 transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-foreground">

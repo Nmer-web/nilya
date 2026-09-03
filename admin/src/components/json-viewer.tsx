@@ -30,7 +30,7 @@ export function JsonViewer({
       <summary className="cursor-pointer select-none rounded font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {label}
       </summary>
-      <pre className="mt-1.5 max-h-[200px] overflow-auto rounded-lg border bg-zinc-50 p-3 font-mono text-[12px] leading-relaxed text-foreground">
+      <pre className="mt-1.5 max-h-[200px] overflow-auto rounded-lg border bg-muted p-3 font-mono text-[12px] leading-relaxed text-foreground">
         {JSON.stringify(value, null, 2)}
       </pre>
     </details>

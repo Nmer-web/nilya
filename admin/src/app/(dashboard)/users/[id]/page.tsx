@@ -5,15 +5,10 @@ import { notFound } from "next/navigation";
 import { DataTable, type Column } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import {
-  ListingStatusBadge,
-  ReportStatusBadge,
-  SuspendedBadge,
-} from "@/components/status-badge";
+import { ListingStatusBadge, ReportStatusBadge, StatusBadge, SuspendedBadge } from "@/components/status-badge";
 import { SuspendControl } from "@/components/suspend-dialog";
 import { TabPanels } from "@/components/tab-panels";
 import { UserAvatar } from "@/components/user-avatar";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ROLE_LABEL, requireAdmin } from "@/lib/admin";
 import {
@@ -110,17 +105,10 @@ export default async function UserDetailPage(props: PageProps<"/users/[id]">) {
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {user.suspended_at ? <SuspendedBadge /> : null}
                 {user.admin_role ? (
-                  <Badge
-                    variant="outline"
-                    className="border-[#0F6E56]/20 bg-[#E7F1EE] font-medium text-[#0B5442]"
-                  >
-                    {ROLE_LABEL[user.admin_role]}
-                  </Badge>
+                  <StatusBadge status={user.admin_role} />
                 ) : null}
                 {user.is_verified ? (
-                  <Badge variant="outline" className="font-medium">
-                    Verified
-                  </Badge>
+                  <StatusBadge status="verified" />
                 ) : null}
                 {user.city || user.country_code ? (
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">

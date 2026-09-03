@@ -19,17 +19,10 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { StarRating } from "@/components/star-rating";
 import { StatCard } from "@/components/stat-card";
-import {
-  DisputeStateBadge,
-  ListingStatusBadge,
-  OrderStatusBadge,
-  RemovedBadge,
-  SuspendedBadge,
-} from "@/components/status-badge";
+import { DisputeStateBadge, ListingStatusBadge, OrderStatusBadge, RemovedBadge, StatusBadge, SuspendedBadge } from "@/components/status-badge";
 import { SuspendControl } from "@/components/suspend-dialog";
 import { TabPanels } from "@/components/tab-panels";
 import { UserAvatar } from "@/components/user-avatar";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/admin";
 import { formatDate, formatDateTime, formatMoney, formatRelative, shortId, truncate } from "@/lib/format";
@@ -107,7 +100,7 @@ export default async function SellerDetailPage(props: PageProps<"/sellers/[id]">
         actions={
           <a
             href={`nilya://seller/${seller.profile_id}`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-zinc-50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             title="Opens the seller's public profile in the Nilya app on this device"
           >
             <ExternalLink className="size-4" aria-hidden />
@@ -132,7 +125,7 @@ export default async function SellerDetailPage(props: PageProps<"/sellers/[id]">
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {seller.suspended_at ? <SuspendedBadge /> : null}
             {seller.is_verified ? (
-              <Badge variant="outline" className="font-medium">Verified</Badge>
+              <StatusBadge status="verified" />
             ) : null}
             {seller.rating_count && seller.rating_count > 0 && seller.rating_avg !== null ? (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -157,20 +150,15 @@ export default async function SellerDetailPage(props: PageProps<"/sellers/[id]">
       </Card>
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total listings" value={seller.listings_count} icon={Package} tone="zinc" />
-        <StatCard label="Active listings" value={seller.active_listings_count} icon={ShoppingBag} tone="green" />
-        <StatCard label="Orders" value={seller.orders_count} icon={Receipt} tone="blue" />
-        <Card className="flex flex-row items-center gap-4 p-5">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#E7F1EE] text-[#0F6E56]" aria-hidden>
-            <Wallet className="size-5" strokeWidth={2} />
-          </span>
-          <span className="flex min-w-0 flex-col">
-            <span className="tabular text-2xl leading-none font-semibold text-foreground">
-              {formatMoney(seller.paid_revenue_cents, seller.default_currency)}
-            </span>
-            <span className="mt-1.5 truncate text-sm text-muted-foreground">Paid revenue</span>
-          </span>
-        </Card>
+        <StatCard label="Total listings" value={seller.listings_count} icon={Package} />
+        <StatCard label="Active listings" value={seller.active_listings_count} icon={ShoppingBag} accent="green" />
+        <StatCard label="Orders" value={seller.orders_count} icon={Receipt} accent="blue" />
+        <StatCard
+          label="Paid revenue"
+          value={formatMoney(seller.paid_revenue_cents, seller.default_currency)}
+          icon={Wallet}
+          accent="green"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -301,7 +289,7 @@ function Flag({ label, on }: { label: string; on: boolean }) {
         {on ? (
           <CheckCircle2 className="size-4 text-[#0F6E56]" aria-hidden />
         ) : (
-          <XCircle className="size-4 text-zinc-400" aria-hidden />
+          <XCircle className="size-4 text-label" aria-hidden />
         )}
         {on ? "Yes" : "No"}
       </dd>

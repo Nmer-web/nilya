@@ -6,9 +6,8 @@ import { EmptyState, ErrorState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
 import { StarRating } from "@/components/star-rating";
-import { RemovedBadge } from "@/components/status-badge";
+import { RemovedBadge, StatusBadge } from "@/components/status-badge";
 import { UserAvatar } from "@/components/user-avatar";
-import { Badge } from "@/components/ui/badge";
 import { requireAdmin } from "@/lib/admin";
 import { firstParam, formatDate, pageParam, truncate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
@@ -79,7 +78,7 @@ export default async function ReviewsPage(props: PageProps<"/reviews">) {
                 "flex h-8 items-center rounded-lg px-3 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                 active
                   ? "bg-[#0F6E56] text-white"
-                  : "text-muted-foreground hover:bg-zinc-100 hover:text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               {FILTER_LABEL[value]}
@@ -176,9 +175,7 @@ const COLUMNS: Column<AdminReviewRow>[] = [
       row.removed_at ? (
         <RemovedBadge />
       ) : (
-        <Badge variant="outline" className="border-[#0F6E56]/20 bg-[#E7F1EE] font-medium text-[#0B5442]">
-          Standing
-        </Badge>
+        <StatusBadge status="standing" />
       ),
   },
 ];

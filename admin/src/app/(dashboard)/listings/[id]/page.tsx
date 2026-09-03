@@ -5,9 +5,8 @@ import { notFound } from "next/navigation";
 
 import { ListingActions } from "@/components/listing-actions";
 import { PageHeader } from "@/components/page-header";
-import { ListingStatusBadge, SuspendedBadge } from "@/components/status-badge";
+import { ListingStatusBadge, StatusBadge, SuspendedBadge } from "@/components/status-badge";
 import { UserAvatar } from "@/components/user-avatar";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { requireAdmin } from "@/lib/admin";
@@ -103,7 +102,7 @@ export default async function ListingDetailPage(
                   return (
                     <div
                       key={image.storage_path}
-                      className="relative aspect-square bg-zinc-100"
+                      className="relative aspect-square bg-muted"
                     >
                       {src ? (
                         <Image
@@ -196,12 +195,7 @@ export default async function ListingDetailPage(
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {listing.seller.suspended_at ? <SuspendedBadge /> : null}
                   {listing.seller.is_verified ? (
-                    <Badge
-                      variant="outline"
-                      className="border-[#0F6E56]/20 bg-[#E7F1EE] font-medium text-[#0B5442]"
-                    >
-                      Verified
-                    </Badge>
+                    <StatusBadge status="verified" />
                   ) : null}
                 </div>
 

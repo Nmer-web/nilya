@@ -80,14 +80,14 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
                 "flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                 active
                   ? "bg-[#0F6E56] text-white"
-                  : "text-muted-foreground hover:bg-zinc-100 hover:text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               {REPORT_STATUS_LABEL[value]}
               <span
                 className={cn(
                   "tabular rounded-full px-1.5 text-[11px] font-semibold",
-                  active ? "bg-white/20 text-white" : "bg-zinc-100 text-zinc-600"
+                  active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
                 )}
               >
                 {count}

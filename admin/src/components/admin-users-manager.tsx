@@ -6,7 +6,6 @@ import { useId, useState } from "react";
 
 import { ReasonDialog } from "@/components/reason-dialog";
 import { UserAvatar } from "@/components/user-avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,6 +42,7 @@ import {
   type AssignableRole,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/status-badge";
 
 export type AdminUserRecord = {
   user_id: string;
@@ -52,13 +52,6 @@ export type AdminUserRecord = {
   display_name: string | null;
   avatar_url: string | null;
   avatar_color: string | null;
-};
-
-const ROLE_TONE: Record<AdminRole, string> = {
-  owner: "border-[#0F6E56]/20 bg-[#E7F1EE] text-[#0B5442]",
-  admin: "border-blue-200 bg-blue-50 text-blue-800",
-  moderator: "border-[#EF9F27]/30 bg-[#FDF1DE] text-[#8A5A0B]",
-  support: "border-zinc-200 bg-zinc-100 text-zinc-700",
 };
 
 /**
@@ -99,7 +92,7 @@ export function AdminUsersManager({
                   <TableHead
                     key={index}
                     className={cn(
-                      "h-11 bg-zinc-50/80 text-xs font-medium tracking-wide text-muted-foreground uppercase",
+                      "h-11 bg-muted text-xs font-medium tracking-wide text-muted-foreground uppercase",
                       index === 4 && "w-28 text-right"
                     )}
                   >
@@ -140,12 +133,7 @@ export function AdminUsersManager({
                       {row.email ?? "—"}
                     </TableCell>
                     <TableCell className="py-3">
-                      <Badge
-                        variant="outline"
-                        className={cn("font-medium", ROLE_TONE[row.role])}
-                      >
-                        {ROLE_LABEL[row.role]}
-                      </Badge>
+                      <StatusBadge status={row.role} />
                     </TableCell>
                     <TableCell className="py-3 text-muted-foreground">
                       {formatDate(row.added_at)}

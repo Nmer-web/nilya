@@ -112,7 +112,7 @@ export default async function DisputeDetailPage(props: PageProps<"/disputes/[id]
               Reason: {DISPUTE_REASON_LABEL[dispute.reason] ?? dispute.reason}
             </p>
             {dispute.body ? (
-              <p className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+              <p className="mt-3 rounded-lg bg-muted p-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
                 {dispute.body}
               </p>
             ) : (
