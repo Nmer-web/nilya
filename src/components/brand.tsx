@@ -71,7 +71,6 @@ export function NilyaLockup({
   const clearSpace = Math.ceil(resolvedSize * ICON_CORNER_RATIO);
   const wordmarkColor = onDark ? C.textInverse : C.textPrimary;
   const wordmarkSize = resolvedSize * (72 / 140);
-  const wordmarkTracking = resolvedSize * (-2 / 140);
 
   return (
     <View
@@ -83,7 +82,6 @@ export function NilyaLockup({
           alignSelf: 'flex-start',
           flexDirection: 'row',
           alignItems: 'center',
-          flexShrink: 0,
           gap: resolvedSize * (36 / 140),
           padding: clearSpace,
         },
@@ -93,32 +91,26 @@ export function NilyaLockup({
       <NilyaIcon size={resolvedSize} mono={mono} decorative />
       <View style={{ justifyContent: 'center' }}>
         <Text
-          allowFontScaling={false}
-          numberOfLines={1}
           style={{
             color: wordmarkColor,
             fontFamily: font.wordmark,
             fontSize: wordmarkSize,
-            lineHeight: Math.ceil(wordmarkSize * 1.15),
+            lineHeight: wordmarkSize * 1.05,
             fontWeight: '500',
-            includeFontPadding: false,
-            letterSpacing: wordmarkTracking,
+            letterSpacing: -2,
           }}
         >
           nilya
         </Text>
         {withTagline ? (
           <Text
-            allowFontScaling={false}
-            numberOfLines={1}
             style={{
               color: onDark ? C.textInverse : C.textSecondary,
               fontFamily: font.tagline,
               fontSize: Math.max(8, resolvedSize * (15 / 140)),
               lineHeight: Math.max(11, resolvedSize * (24 / 140)),
               fontWeight: '400',
-              includeFontPadding: false,
-              letterSpacing: resolvedSize * (8 / 140),
+              letterSpacing: Math.max(3, resolvedSize * (8 / 140)),
               marginLeft: resolvedSize * (4 / 140),
             }}
           >

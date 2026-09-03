@@ -112,15 +112,3 @@ export function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
-
-/** The first block of a uuid — enough to recognise a row, short enough to scan. */
-export function shortId(id: string) {
-  return id.split("-")[0] ?? id.slice(0, 8);
-}
-
-/** Truncates to `max` characters with an ellipsis; never splits a surrogate pair. */
-export function truncate(value: string | null | undefined, max: number) {
-  if (!value) return "";
-  const chars = Array.from(value);
-  return chars.length <= max ? value : chars.slice(0, max).join("").trimEnd() + "…";
-}

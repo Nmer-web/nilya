@@ -88,14 +88,14 @@ export default function Home() {
     <View style={{ paddingTop: insets.top + space.space8, paddingBottom: space.space8 }}>
       <View
         style={{
-          height: touch.large,
+          height: touch.minimum,
           marginHorizontal: EDGE,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
         }}
       >
-        <NilyaLockup iconSize={32} />
+        <NilyaLockup iconSize={28} />
         <View style={{ flexDirection: 'row', gap: space.space8 }}>
           <IconButton icon="heart" label="Wishlist" onPress={() => router.push('/favorites')} />
           <IconButton icon="bag" label="Bag" badge={cart.count} onPress={() => router.push('/cart')} />

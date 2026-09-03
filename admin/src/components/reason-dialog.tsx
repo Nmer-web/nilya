@@ -31,8 +31,6 @@ type ReasonDialogProps = {
   noteLabel?: string;
   notePlaceholder?: string;
   noteRequired?: boolean;
-  /** Minimum characters for the typed note; the spec asks for 10 on destructive work. */
-  minLength?: number;
   onConfirm: (reason: string) => Promise<ActionResult>;
 };
 
@@ -72,7 +70,6 @@ function ReasonForm({
   noteLabel = "Reason",
   notePlaceholder,
   noteRequired = true,
-  minLength = 0,
   onConfirm,
 }: ReasonDialogProps) {
   const noteId = useId();
@@ -82,11 +79,7 @@ function ReasonForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const trimmedLength = note.trim().length;
-  const noteSatisfied = options
-    ? trimmedLength === 0 || trimmedLength >= minLength
-    : (!noteRequired && trimmedLength === 0) || trimmedLength >= Math.max(minLength, 1);
-  const showMinimum = minLength > 0 && trimmedLength > 0 && trimmedLength < minLength;
+  const noteSatisfied = options ? true : !noteRequired || note.trim().length > 0;
 
   async function confirm() {
     setPending(true);
@@ -154,9 +147,7 @@ function ReasonForm({
             aria-invalid={error ? true : undefined}
           />
           <p className="text-xs text-muted-foreground">
-            {showMinimum
-              ? `${minLength - trimmedLength} more character${minLength - trimmedLength === 1 ? "" : "s"} needed.`
-              : "This is written to the audit log against your account."}
+            This is written to the audit log against your account.
           </p>
         </div>
 

@@ -55,4 +55,9 @@ export async function requireAdmin(): Promise<AdminSession> {
   return session;
 }
 
-export { ROLE_LABEL } from "@/lib/types";
+export const ROLE_LABEL: Record<AdminRole, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  moderator: "Moderator",
+  support: "Support",
+};
