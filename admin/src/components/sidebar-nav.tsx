@@ -3,10 +3,16 @@
 import {
   Flag,
   Grid3x3,
+  History,
   LayoutDashboard,
   LogOut,
   Menu,
+  Receipt,
+  Scale,
+  ShieldCheck,
   ShoppingBag,
+  Star,
+  Store,
   Users,
   X,
 } from "lucide-react";
@@ -20,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import type { AdminRole } from "@/lib/types";
+import { ROLE_LABEL, type AdminRole } from "@/lib/types";
 
 const NAV = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
@@ -28,14 +34,13 @@ const NAV = [
   { href: "/listings", label: "Listings", icon: ShoppingBag },
   { href: "/reports", label: "Reports", icon: Flag },
   { href: "/categories", label: "Categories", icon: Grid3x3 },
+  { href: "/disputes", label: "Disputes", icon: Scale },
+  { href: "/orders", label: "Orders", icon: Receipt },
+  { href: "/audit-log", label: "Audit Log", icon: History },
+  { href: "/reviews", label: "Reviews", icon: Star },
+  { href: "/sellers", label: "Sellers", icon: Store },
+  { href: "/admin-users", label: "Admin Users", icon: ShieldCheck, ownerOnly: true },
 ] as const;
-
-const ROLE_LABEL: Record<AdminRole, string> = {
-  owner: "Owner",
-  admin: "Admin",
-  moderator: "Moderator",
-  support: "Support",
-};
 
 export function SidebarNav({
   email,
@@ -96,7 +101,9 @@ export function SidebarNav({
         </div>
 
         <nav className="flex-1 space-y-0.5 p-3 lg:px-3 lg:py-2" aria-label="Primary">
-          {NAV.map((item) => {
+          {NAV.filter(
+            (item) => !("ownerOnly" in item && item.ownerOnly) || role === "owner"
+          ).map((item) => {
             const active =
               item.href === "/"
                 ? pathname === "/"

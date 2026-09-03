@@ -6,7 +6,12 @@ import { useState } from "react";
 
 import { ReasonDialog } from "@/components/reason-dialog";
 import { Button } from "@/components/ui/button";
-import { reinstateUser, suspendUser } from "@/app/actions";
+import {
+  reinstateSeller,
+  reinstateUser,
+  suspendSeller,
+  suspendUser,
+} from "@/app/actions";
 
 /**
  * Suspension writes `profiles.suspended_at` and `profiles.suspended_reason`
@@ -22,12 +27,18 @@ export function SuspendControl({
   displayName,
   suspendedAt,
   disabledReason,
+  subject = "user",
 }: {
   userId: string;
   displayName: string;
   suspendedAt: string | null;
   disabledReason?: string;
+  /** Which pair of actions to call; both hit the same RPC and audit row. */
+  subject?: "user" | "seller";
 }) {
+  const suspend = subject === "seller" ? suspendSeller : suspendUser;
+  const reinstate = subject === "seller" ? reinstateSeller : reinstateUser;
+  const noun = subject === "seller" ? "seller" : "account";
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -47,7 +58,7 @@ export function SuspendControl({
           onClick={async () => {
             setPending(true);
             setError(null);
-            const result = await reinstateUser(userId);
+            const result = await reinstate(userId);
             setPending(false);
             if (!result.success) {
               setError(result.error ?? "Could not reinstate the account");
@@ -62,7 +73,7 @@ export function SuspendControl({
           ) : (
             <ShieldCheck className="size-4" aria-hidden />
           )}
-          Reinstate account
+          Reinstate {noun}
         </Button>
         {error ? (
           <p role="alert" className="flex items-start gap-2 text-sm text-destructive">
@@ -82,7 +93,7 @@ export function SuspendControl({
         onClick={() => setOpen(true)}
       >
         <ShieldBan className="size-4" aria-hidden />
-        Suspend account
+        Suspend {noun}
       </Button>
 
       <ReasonDialog
@@ -90,12 +101,13 @@ export function SuspendControl({
         onOpenChange={setOpen}
         title={`Suspend ${displayName}?`}
         description="The account is marked suspended and the reason is recorded against your account. You can reinstate it from this page."
-        confirmLabel="Suspend account"
+        confirmLabel={`Suspend ${noun}`}
         noteLabel="Reason"
         notePlaceholder="Why is this account being suspended?"
         noteRequired
+        minLength={10}
         onConfirm={async (reason) => {
-          const result = await suspendUser(userId, reason);
+          const result = await suspend(userId, reason);
           if (result.success) router.refresh();
           return result;
         }}
