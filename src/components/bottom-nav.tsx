@@ -52,13 +52,13 @@ export function BottomNav({ pathname }: { pathname: string }) {
   const insets = useSafeAreaInsets();
 
   /** Pushed utility screens leave every tab grey; the Sell wizard's steps all light Sell. */
-  const activeHref = TABS.some((t) => t.href === pathname)
+  const activeHref = TABS.some((tab) => tab.href === pathname)
     ? pathname
     : pathname.startsWith('/category/')
       ? '/explore'
-    : pathname.startsWith('/sell/')
-      ? '/sell'
-      : null;
+      : pathname.startsWith('/sell/')
+        ? '/sell'
+        : null;
 
   /**
    * `dismissTo` pops back to the destination when it is already in the stack,

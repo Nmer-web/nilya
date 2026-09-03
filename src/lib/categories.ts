@@ -102,6 +102,7 @@ const CATEGORY_ICON_MAP: Readonly<Record<string, IconName>> = {
   clothing: 'clothing',
   collectables: 'star',
   computers: 'computer',
+  cookware: 'cookware',
   crafts: 'palette',
   decor: 'decor',
   education: 'book',
