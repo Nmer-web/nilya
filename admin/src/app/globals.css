@@ -27,6 +27,8 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -48,73 +50,65 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * Nilya brand, canonical values from `assets/brand/brand.md` (constitution
+ * Principle VI). Green carries primary actions, selection and focus; amber is
+ * the single accent and never a status colour; success and error keep their own
+ * semantic hues.
+ *
+ * The admin is a light-surface product. There is deliberately no dark theme:
+ * the `.dark` class is never applied, so a half-finished dark palette would be
+ * a state that ships unfinished (Principle VI) with nothing to reveal it.
+ */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+  --nilya-green: #0f6e56;
+  --nilya-green-hover: #0c5a46;
+  --nilya-green-tint: #e7f1ee;
+  --nilya-amber: #ef9f27;
+  --nilya-amber-tint: #fdf1de;
+  --nilya-ink: #141413;
+  --nilya-muted: #6b6b66;
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #fafafa;
+  --foreground: var(--nilya-ink);
+  --card: #ffffff;
+  --card-foreground: var(--nilya-ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--nilya-ink);
+
+  --primary: var(--nilya-green);
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: var(--nilya-ink);
+  --muted: #f4f4f5;
+  --muted-foreground: var(--nilya-muted);
+  --accent: var(--nilya-green-tint);
+  --accent-foreground: var(--nilya-green);
+
+  --destructive: #b42318;
+  --success: #0f6e56;
+  --warning: #b54708;
+
+  --border: #e4e4e7;
+  --input: #d4d4d8;
+  --ring: var(--nilya-green);
+
+  --chart-1: var(--nilya-green);
+  --chart-2: var(--nilya-amber);
+  --chart-3: #3f7d8c;
+  --chart-4: #8c6d3f;
+  --chart-5: #71717a;
+
+  --radius: 0.625rem;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: var(--nilya-ink);
+  --sidebar-primary: var(--nilya-green);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--nilya-green-tint);
+  --sidebar-accent-foreground: var(--nilya-green);
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: var(--nilya-green);
 }
 
 @layer base {
@@ -123,8 +117,13 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
   }
   html {
-    @apply font-sans;
+    @apply font-sans antialiased;
+  }
+  /* Tabular figures keep count columns from jittering between renders. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }
