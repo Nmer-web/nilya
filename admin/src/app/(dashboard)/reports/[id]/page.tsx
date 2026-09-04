@@ -12,9 +12,9 @@ import { requireAdmin } from "@/lib/admin";
 import {
   formatDate,
   formatDateTime,
-  formatMoney,
   listingImageUrl,
 } from "@/lib/format";
+import { listingPriceText } from "@/lib/marketplace";
 import { createClient } from "@/lib/supabase/server";
 import {
   REPORT_REASON_LABEL,
@@ -45,10 +45,13 @@ export default async function ReportDetailPage(
       ? supabase
           .from("listings")
           .select(
-            `id,title,brand,price_cents,currency,status,category_slug,created_at,published_at,seller_id,
+            `id,title,brand,price_cents,currency,listing_type,status,category_slug,created_at,published_at,seller_id,
              seller:profiles!listings_seller_id_fkey(id,display_name,avatar_url,avatar_color),
-             category:categories!listings_category_slug_fkey(slug,label),
-             images:listing_images(storage_path,position)`
+             category:categories!listings_category_slug_fkey(slug,label,listing_type,requires_perfume_details),
+             images:listing_images(storage_path,position),
+             food_details(price_unit,quantity),
+             job_details(employer,salary_min_cents,salary_max_cents,salary_currency),
+             service_details(pricing_mode)`
           )
           .eq("id", report.target_id)
           .maybeSingle()
@@ -175,7 +178,7 @@ export default async function ReportDetailPage(
                     {listing.title}
                   </span>
                   <span className="tabular mt-0.5 block text-sm text-muted-foreground">
-                    {formatMoney(listing.price_cents, listing.currency)}
+                    {listingPriceText(listing)}
                     {" · "}
                     {listing.category?.label ?? listing.category_slug}
                   </span>

@@ -47,6 +47,16 @@ export type ListingCondition = "new" | "very_good" | "good";
 /** The only condition Nilya sells (constitution Principle I). */
 export const NEW_CONDITION: ListingCondition = "new";
 
+export const LISTING_TYPES = ["product", "food", "job", "service"] as const;
+export type ListingType = (typeof LISTING_TYPES)[number];
+
+export const LISTING_TYPE_LABEL: Record<ListingType, string> = {
+  product: "Product",
+  food: "Food & groceries",
+  job: "Job",
+  service: "Service",
+};
+
 export const REPORT_REASON_LABEL: Record<ReportReason, string> = {
   prohibited_item: "Prohibited item",
   counterfeit: "Counterfeit",
@@ -162,25 +172,114 @@ export type ListingSeller = {
   lifetime_sales: number;
 };
 
+export type FoodDetails = {
+  listing_id: string;
+  price_unit: "item" | "kg" | "g" | "litre" | "ml" | "pack" | "dozen";
+  quantity: number;
+  ingredients: string;
+  allergens: string;
+  expiry_date: string;
+  halal_status: "halal" | "not_halal" | "not_specified";
+  preparation_type: "homemade" | "packaged";
+  storage_requirements: string;
+  delivery_requirements: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PerfumeDetails = {
+  listing_id: string;
+  brand: string;
+  fragrance_name: string;
+  fragrance_type:
+    | "parfum"
+    | "eau_de_parfum"
+    | "eau_de_toilette"
+    | "cologne"
+    | "perfume_oil"
+    | "attar"
+    | "oud"
+    | "incense"
+    | "bakhoor"
+    | "other";
+  volume_ml: number;
+  sealed: boolean;
+  authenticity_declared: boolean;
+  fragrance_notes: string;
+  target_audience: "women" | "men" | "unisex" | "kids";
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobDetails = {
+  listing_id: string;
+  employer: string;
+  sector: string;
+  contract_type:
+    | "full_time"
+    | "part_time"
+    | "fixed_term"
+    | "temporary"
+    | "freelance"
+    | "internship";
+  schedule: string;
+  work_mode: "onsite" | "hybrid" | "remote";
+  location: string;
+  salary_min_cents: number;
+  salary_max_cents: number;
+  salary_currency: string;
+  required_experience: string;
+  application_method: "in_app" | "external_url" | "email" | "phone";
+  application_value: string | null;
+  application_deadline: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ServiceDetails = {
+  listing_id: string;
+  pricing_mode: "fixed" | "hourly" | "daily" | "quote";
+  service_area: string;
+  delivery_mode: "onsite" | "remote" | "either";
+  availability: string;
+  experience: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminListingCategory = {
+  slug: string;
+  label: string;
+  listing_type: ListingType;
+  requires_perfume_details: boolean;
+};
+
 export type AdminListingRow = {
   id: string;
   title: string;
   brand: string | null;
-  price_cents: number;
+  price_cents: number | null;
   currency: string;
+  listing_type: ListingType;
   status: ListingStatus;
   category_slug: string;
   created_at: string;
   published_at: string | null;
   seller_id: string;
   seller: Pick<ListingSeller, "id" | "display_name" | "avatar_url" | "avatar_color"> | null;
-  category: { slug: string; label: string } | null;
+  category: AdminListingCategory | null;
   images: ListingImage[];
+  food_details: Pick<FoodDetails, "price_unit" | "quantity"> | null;
+  job_details: Pick<
+    JobDetails,
+    "employer" | "salary_min_cents" | "salary_max_cents" | "salary_currency"
+  > | null;
+  service_details: Pick<ServiceDetails, "pricing_mode"> | null;
 };
 
 export type AdminListingDetail = AdminListingRow & {
   description: string | null;
-  condition: ListingCondition;
+  condition: ListingCondition | null;
   original_price_cents: number | null;
   size: string | null;
   color: string | null;
@@ -189,6 +288,10 @@ export type AdminListingDetail = AdminListingRow & {
   tagline: string | null;
   updated_at: string;
   seller: ListingSeller | null;
+  food_details: FoodDetails | null;
+  perfume_details: PerfumeDetails | null;
+  job_details: JobDetails | null;
+  service_details: ServiceDetails | null;
 };
 
 export type CategoryRow = {
@@ -199,7 +302,59 @@ export type CategoryRow = {
   icon_key: string | null;
   sort_order: number;
   is_active: boolean;
+  listing_type: ListingType;
+  requires_perfume_details: boolean;
   created_at: string;
+};
+
+export type MarketplaceActor = {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  avatar_color: string | null;
+};
+
+export type MarketplaceActivityListing = {
+  id: string;
+  title: string;
+  listing_type: ListingType;
+  status: ListingStatus;
+};
+
+export type AdminJobApplication = {
+  id: string;
+  listing_id: string;
+  applicant_id: string;
+  status: "submitted";
+  created_at: string;
+  updated_at: string;
+  listing: MarketplaceActivityListing | null;
+  applicant: MarketplaceActor | null;
+};
+
+export type AdminServiceQuoteRequest = {
+  id: string;
+  listing_id: string;
+  requester_id: string;
+  message: string | null;
+  status: "requested";
+  created_at: string;
+  updated_at: string;
+  listing: MarketplaceActivityListing | null;
+  requester: MarketplaceActor | null;
+};
+
+export type AdminServiceBooking = {
+  id: string;
+  listing_id: string;
+  customer_id: string;
+  requested_for: string | null;
+  note: string | null;
+  status: "requested";
+  created_at: string;
+  updated_at: string;
+  listing: MarketplaceActivityListing | null;
+  customer: MarketplaceActor | null;
 };
 
 export type CategoryStats = {
@@ -324,6 +479,10 @@ export type AdminOrderRow = {
   buyer_id: string;
   seller_id: string;
   offer_id: string | null;
+  item_count: number;
+  list_subtotal_cents: number;
+  bundle_discount_percent: number | null;
+  bundle_discount_cents: number;
   item_price_cents: number;
   shipping_cents: number;
   protection_fee_cents: number;
@@ -346,6 +505,19 @@ export type AdminOrderRow = {
   seller_name: string | null;
   seller_avatar_url: string | null;
   seller_avatar_color: string | null;
+};
+
+export type AdminOrderItem = {
+  order_id: string;
+  listing_id: string;
+  position: number;
+  list_price_cents: number;
+  item_price_cents: number;
+  listing: {
+    id: string;
+    title: string;
+    status: ListingStatus;
+  } | null;
 };
 
 /** `public.admin_dispute_feed`. `resolved_by` comes from the audit log. */

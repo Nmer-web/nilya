@@ -91,7 +91,10 @@ export default function Orders() {
 function OrderCard({ order, me, onPress }: { order: OrderRow; me: string | null; onPress: () => void }) {
   const sold = me === order.seller_id;
   const counterparty = sold ? order.buyer : order.seller;
-  const item = order.listing?.title ?? 'Listing unavailable';
+  const firstItem = order.items[0]?.listing ?? order.listing;
+  const item = order.item_count > 1
+    ? `${order.item_count}-item bundle`
+    : firstItem?.title ?? 'Listing unavailable';
   const counterpartyName = counterparty?.display_name ?? 'a member';
 
   return (
@@ -102,7 +105,7 @@ function OrderCard({ order, me, onPress }: { order: OrderRow; me: string | null;
     >
       <Card style={{ flexDirection: 'row', gap: space.space12, padding: space.space16 }}>
         <View style={{ width: 54 }}>
-          <ListingImage url={coverUrl(order.listing?.images ?? null)} width={54} round={radius.radiusSmall} />
+          <ListingImage url={coverUrl(firstItem?.images ?? null)} width={54} round={radius.radiusSmall} />
         </View>
 
         <View style={{ flex: 1, minWidth: 0 }}>

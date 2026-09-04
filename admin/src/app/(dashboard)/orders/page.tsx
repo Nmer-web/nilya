@@ -105,10 +105,19 @@ const COLUMNS: Column<AdminOrderRow>[] = [
   },
   {
     key: "listing",
-    header: "Listing",
+    header: "Purchase",
     cell: (row) => (
-      <span className="block truncate font-medium text-foreground">
-        {row.listing_title ?? <span className="text-muted-foreground italic">Listing gone</span>}
+      <span className="block min-w-0">
+        <span className="block truncate font-medium text-foreground">
+          {row.item_count > 1
+            ? `${row.item_count}-item Nilya bundle`
+            : row.listing_title ?? <span className="text-muted-foreground italic">Listing gone</span>}
+        </span>
+        {row.item_count > 1 && row.bundle_discount_percent ? (
+          <span className="block text-xs text-emerald-700">
+            {row.bundle_discount_percent}% seller discount
+          </span>
+        ) : null}
       </span>
     ),
   },
@@ -124,7 +133,7 @@ const COLUMNS: Column<AdminOrderRow>[] = [
   },
   {
     key: "amount",
-    header: "Amount",
+    header: "Subtotal",
     className: "w-28 text-right",
     cell: (row) => (
       <Currency cents={row.item_price_cents} currency={row.currency} className="font-medium" />

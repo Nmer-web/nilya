@@ -57,6 +57,8 @@ const STATUS_TONE: Record<string, PillTone> = {
   pending_payment: "amber",
   processing: "amber",
   requires_payment_method: "amber",
+  requested: "amber",
+  submitted: "amber",
   moderator: "amber",
   // red — taken down, contested, or failed
   removed: "red",
@@ -94,6 +96,8 @@ const STATUS_LABEL: Record<string, string> = {
   suspended: "Suspended",
   blocked: "Blocked",
   pending: "Pending",
+  requested: "Requested",
+  submitted: "Submitted",
 };
 
 function humanize(status: string) {

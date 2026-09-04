@@ -21,7 +21,8 @@ export default function OnboardingWelcome() {
         paddingHorizontal: space.gutterRegular,
       }}
     >
-      <NilyaLockup iconSize={56} showTagline />
+      {/* Icon and wordmark only, as the design draws it: the tagline is reserved for sign-in. */}
+      <NilyaLockup iconSize={56} />
 
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.space12 }}>
         <T variant="display" align="center">

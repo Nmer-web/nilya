@@ -26,6 +26,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { Card } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/admin";
 import { formatDate, formatDateTime, formatMoney, formatRelative, shortId, truncate } from "@/lib/format";
+import { listingPriceText } from "@/lib/marketplace";
 import { createClient } from "@/lib/supabase/server";
 import {
   DISPUTE_REASON_LABEL,
@@ -47,8 +48,11 @@ export default async function SellerDetailPage(props: PageProps<"/sellers/[id]">
       supabase
         .from("listings")
         .select(
-          `id,title,brand,price_cents,currency,status,category_slug,created_at,published_at,seller_id,
-           category:categories!listings_category_slug_fkey(slug,label)`
+          `id,title,brand,price_cents,currency,listing_type,status,category_slug,created_at,published_at,seller_id,
+           category:categories!listings_category_slug_fkey(slug,label,listing_type,requires_perfume_details),
+           food_details(price_unit,quantity),
+           job_details(employer,salary_min_cents,salary_max_cents,salary_currency),
+           service_details(pricing_mode)`
         )
         .eq("seller_id", id)
         .order("created_at", { ascending: false }),
@@ -300,14 +304,14 @@ function Flag({ label, on }: { label: string; on: boolean }) {
 const LISTING_COLUMNS: Column<AdminListingRow>[] = [
   { key: "title", header: "Title", cell: (row) => <span className="font-medium text-foreground">{row.title}</span> },
   { key: "category", header: "Category", cell: (row) => <span className="text-muted-foreground">{row.category?.label ?? row.category_slug}</span> },
-  { key: "price", header: "Price", className: "w-28 text-right", cell: (row) => <Currency cents={row.price_cents} currency={row.currency} className="font-medium" /> },
+  { key: "price", header: "Price / pay", className: "w-36 text-right", cell: (row) => <span className="tabular font-medium">{listingPriceText(row)}</span> },
   { key: "status", header: "Status", className: "w-32", cell: (row) => <ListingStatusBadge status={row.status} /> },
   { key: "created", header: "Created", className: "w-32 text-right", cell: (row) => <span className="text-muted-foreground">{formatDate(row.created_at)}</span> },
 ];
 
 const ORDER_COLUMNS: Column<AdminOrderRow>[] = [
   { key: "id", header: "Order", className: "w-28", cell: (row) => <span className="font-mono text-xs">{shortId(row.id)}</span> },
-  { key: "listing", header: "Listing", cell: (row) => <span className="block truncate font-medium text-foreground">{row.listing_title ?? "—"}</span> },
+  { key: "listing", header: "Purchase", cell: (row) => <span className="block truncate font-medium text-foreground">{row.item_count > 1 ? `${row.item_count}-item bundle` : row.listing_title ?? "—"}</span> },
   { key: "buyer", header: "Buyer", cell: (row) => <span className="truncate">{row.buyer_name ?? "—"}</span> },
   { key: "amount", header: "Amount", className: "w-28 text-right", cell: (row) => <Currency cents={row.item_price_cents} currency={row.currency} className="font-medium" /> },
   { key: "status", header: "Status", className: "w-36", cell: (row) => <OrderStatusBadge status={row.status} /> },

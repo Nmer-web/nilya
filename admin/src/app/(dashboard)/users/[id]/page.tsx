@@ -14,9 +14,9 @@ import { ROLE_LABEL, requireAdmin } from "@/lib/admin";
 import {
   formatDate,
   formatDateTime,
-  formatMoney,
   formatRelative,
 } from "@/lib/format";
+import { listingPriceText } from "@/lib/marketplace";
 import { createClient } from "@/lib/supabase/server";
 import {
   REPORT_REASON_LABEL,
@@ -36,8 +36,11 @@ export default async function UserDetailPage(props: PageProps<"/users/[id]">) {
     supabase
       .from("listings")
       .select(
-        `id,title,brand,price_cents,currency,status,category_slug,created_at,published_at,seller_id,
-         category:categories!listings_category_slug_fkey(slug,label)`
+        `id,title,brand,price_cents,currency,listing_type,status,category_slug,created_at,published_at,seller_id,
+         category:categories!listings_category_slug_fkey(slug,label,listing_type,requires_perfume_details),
+         food_details(price_unit,quantity),
+         job_details(employer,salary_min_cents,salary_max_cents,salary_currency),
+         service_details(pricing_mode)`
       )
       .eq("seller_id", id)
       .order("created_at", { ascending: false }),
@@ -257,7 +260,7 @@ const LISTING_COLUMNS: Column<AdminListingRow>[] = [
     className: "w-28 text-right",
     cell: (row) => (
       <span className="tabular font-medium">
-        {formatMoney(row.price_cents, row.currency)}
+        {listingPriceText(row)}
       </span>
     ),
   },

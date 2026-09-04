@@ -39,6 +39,8 @@ const db = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 type CheckoutRequest = {
   listingId?: string;
+  /** Two to twenty unique listings from one seller for bundle checkout. */
+  listingIds?: string[];
   deliveryKey?: string;
   /** Optional: an accepted offer whose amount replaces the list price. */
   offerId?: string;
@@ -70,14 +72,8 @@ Deno.serve(async (req) => {
     return json({ error: 'Expected a JSON body' }, 400);
   }
 
-  const listingId = typeof body.listingId === 'string' ? body.listingId.trim() : '';
   const deliveryKey = typeof body.deliveryKey === 'string' ? body.deliveryKey.trim() : '';
-  if (!listingId || !deliveryKey) {
-    return json({ error: 'listingId and deliveryKey are required' }, 400);
-  }
-  if (!UUID_PATTERN.test(listingId)) {
-    return json({ error: 'That listing reference is not valid' }, 400);
-  }
+  if (!deliveryKey) return json({ error: 'deliveryKey is required' }, 400);
 
   if (body.offerId !== undefined && typeof body.offerId !== 'string') {
     return json({ error: 'offerId must be a valid identifier' }, 400);
@@ -86,6 +82,41 @@ Deno.serve(async (req) => {
   const offerId = body.offerId?.trim() || null;
   if (offerId && !UUID_PATTERN.test(offerId)) {
     return json({ error: 'That offer reference is not valid' }, 400);
+  }
+
+  if (body.listingIds !== undefined) {
+    if (!Array.isArray(body.listingIds)) {
+      return json({ error: 'listingIds must be an array' }, 400);
+    }
+    if (body.listingId !== undefined || offerId) {
+      return json({ error: 'A bundle cannot be combined with a single listing or offer' }, 400);
+    }
+
+    const listingIds = body.listingIds.map((value) =>
+      typeof value === 'string' ? value.trim() : ''
+    );
+    if (
+      listingIds.length < 2 ||
+      listingIds.length > 20 ||
+      listingIds.some((id) => !UUID_PATTERN.test(id)) ||
+      new Set(listingIds).size !== listingIds.length
+    ) {
+      return json({ error: 'A bundle needs 2 to 20 unique valid listing references' }, 400);
+    }
+
+    try {
+      return await createBundleCheckout(buyerId, listingIds, deliveryKey);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Bundle checkout failed';
+      console.error('bundle checkout failed', { itemCount: listingIds.length, message });
+      return json({ error: message }, 400);
+    }
+  }
+
+  const listingId = typeof body.listingId === 'string' ? body.listingId.trim() : '';
+  if (!listingId) return json({ error: 'listingId is required' }, 400);
+  if (!UUID_PATTERN.test(listingId)) {
+    return json({ error: 'That listing reference is not valid' }, 400);
   }
 
   try {
@@ -115,6 +146,164 @@ async function authenticate(req: Request): Promise<string> {
   return data.user.id;
 }
 
+type BundleItemSnapshot = {
+  listing_id: string;
+  title: string;
+  list_price_cents: number;
+  item_price_cents: number;
+  position: number;
+};
+
+type BundleOrderRecord = {
+  order_id: string;
+  seller_id: string;
+  item_count: number;
+  list_subtotal_cents: number;
+  item_price_cents: number;
+  bundle_discount_percent: number;
+  bundle_discount_cents: number;
+  shipping_cents: number;
+  protection_fee_cents: number;
+  total_cents: number;
+  currency: string;
+  delivery_kind: string;
+  delivery_name: string;
+  items: BundleItemSnapshot[];
+};
+
+/**
+ * Creates one real order containing several listings from one seller.
+ * PostgreSQL owns validation, locking, tier selection and price snapshots;
+ * this trusted function only turns that persisted result into a Stripe session.
+ */
+async function createBundleCheckout(
+  buyerId: string,
+  listingIds: string[],
+  deliveryKey: string
+): Promise<Response> {
+  const { data, error } = await db
+    .rpc('create_bundle_order', {
+      p_buyer_id: buyerId,
+      p_listing_ids: listingIds,
+      p_delivery_key: deliveryKey,
+    })
+    .single();
+
+  if (error) throw new Error(error.message);
+  const bundle = data as BundleOrderRecord | null;
+  if (!bundle || !UUID_PATTERN.test(bundle.order_id)) {
+    throw new Error('Bundle checkout did not return a valid order');
+  }
+  if (!Array.isArray(bundle.items) || bundle.items.length !== bundle.item_count) {
+    throw new Error('Bundle checkout returned inconsistent items');
+  }
+
+  const amounts = [
+    bundle.list_subtotal_cents,
+    bundle.item_price_cents,
+    bundle.bundle_discount_percent,
+    bundle.bundle_discount_cents,
+    bundle.shipping_cents,
+    bundle.protection_fee_cents,
+    bundle.total_cents,
+  ];
+  if (amounts.some((amount) => !Number.isSafeInteger(amount) || amount < 0)) {
+    throw new Error('Bundle checkout returned invalid pricing');
+  }
+  if (
+    bundle.item_count < 2 ||
+    bundle.item_count > 20 ||
+    bundle.bundle_discount_percent < 1 ||
+    bundle.bundle_discount_percent > 50 ||
+    bundle.list_subtotal_cents - bundle.item_price_cents !==
+      bundle.bundle_discount_cents ||
+    bundle.item_price_cents + bundle.shipping_cents +
+      bundle.protection_fee_cents !== bundle.total_cents ||
+    bundle.items.some(
+      (item) =>
+        !UUID_PATTERN.test(item.listing_id) ||
+        typeof item.title !== 'string' ||
+        !Number.isSafeInteger(item.item_price_cents) ||
+        item.item_price_cents <= 0 ||
+        !Number.isSafeInteger(item.list_price_cents) ||
+        item.list_price_cents < item.item_price_cents
+    ) ||
+    bundle.items.reduce((total, item) => total + item.item_price_cents, 0) !==
+      bundle.item_price_cents
+  ) {
+    throw new Error('Bundle checkout returned inconsistent pricing');
+  }
+
+  const currency = String(bundle.currency).trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new Error('That bundle currency is not supported for checkout');
+  }
+
+  const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] =
+    bundle.items.map((item) => ({
+      quantity: 1,
+      price_data: {
+        currency: currency.toLowerCase(),
+        unit_amount: item.item_price_cents,
+        product_data: { name: item.title },
+      },
+    }));
+
+  if (bundle.shipping_cents > 0) {
+    lineItems.push({
+      quantity: 1,
+      price_data: {
+        currency: currency.toLowerCase(),
+        unit_amount: bundle.shipping_cents,
+        product_data: { name: bundle.delivery_name || 'Delivery' },
+      },
+    });
+  }
+
+  if (bundle.protection_fee_cents > 0) {
+    lineItems.push({
+      quantity: 1,
+      price_data: {
+        currency: currency.toLowerCase(),
+        unit_amount: bundle.protection_fee_cents,
+        product_data: { name: 'Buyer protection' },
+      },
+    });
+  }
+
+  const base = `${SUPABASE_URL}/functions/v1/create-checkout/return`;
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: 'payment',
+      line_items: lineItems,
+      success_url: `${base}?status=success`,
+      cancel_url: `${base}?status=cancelled`,
+      client_reference_id: bundle.order_id,
+      payment_intent_data: {
+        metadata: { order_id: bundle.order_id, purchase_kind: 'bundle' },
+      },
+      metadata: { order_id: bundle.order_id, purchase_kind: 'bundle' },
+    },
+    { idempotencyKey: `checkout:${bundle.order_id}` }
+  );
+
+  if (!session.url) throw new Error('Stripe did not return a checkout URL');
+
+  return json({
+    orderId: bundle.order_id,
+    checkoutUrl: session.url,
+    itemCount: bundle.item_count,
+    listSubtotalCents: bundle.list_subtotal_cents,
+    itemPriceCents: bundle.item_price_cents,
+    bundleDiscountPercent: bundle.bundle_discount_percent,
+    bundleDiscountCents: bundle.bundle_discount_cents,
+    shippingCents: bundle.shipping_cents,
+    protectionFeeCents: bundle.protection_fee_cents,
+    totalCents: bundle.total_cents,
+    currency,
+  });
+}
+
 async function createCheckout(
   buyerId: string,
   listingId: string,
@@ -124,13 +313,16 @@ async function createCheckout(
   /* ── the item, as the database has it ── */
   const { data: listing, error: listingError } = await db
     .from('listings')
-    .select('id, seller_id, title, price_cents, currency, condition, status, country_code')
+    .select('id, seller_id, title, price_cents, currency, condition, listing_type, status, country_code')
     .eq('id', listingId)
     .maybeSingle();
 
   if (listingError) throw new Error(listingError.message);
   if (!listing) throw new Error('That listing no longer exists');
   if (listing.status !== 'active') throw new Error('That listing is no longer available');
+  if (listing.listing_type !== 'product' && listing.listing_type !== 'food') {
+    throw new Error('Only Nilya products and food listings can enter checkout');
+  }
   if (listing.condition !== 'new') throw new Error('That listing is not available on NILYA');
   if (listing.seller_id === buyerId) throw new Error('You cannot buy your own listing');
   if (!Number.isSafeInteger(listing.price_cents) || listing.price_cents <= 0) {

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   ExternalLink,
   Flag,
   Grid3x3,
@@ -47,6 +48,7 @@ const SECTIONS: readonly NavSection[] = [
       { href: "/listings", label: "Listings", icon: ShoppingBag },
       { href: "/reports", label: "Reports", icon: Flag },
       { href: "/categories", label: "Categories", icon: Grid3x3 },
+      { href: "/marketplace-activity", label: "Marketplace activity", icon: Activity },
     ],
   },
   {

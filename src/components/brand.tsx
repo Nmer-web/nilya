@@ -47,6 +47,50 @@ export function NilyaIcon({
   );
 }
 
+type NilyaMarkProps = {
+  /** Height in px; the width follows the symbol's own 436:508 box. */
+  size?: number;
+  decorative?: boolean;
+  accessibilityLabel?: string;
+};
+
+/**
+ * The bare symbol without its tile — the N stroke and the amber dot — as the
+ * onboarding stories draw it in their header. Same path and dot as the icon,
+ * so the geometry stays canonical; only the tile is left out, because a
+ * 30px green tile on white reads as a button rather than a mark. On ink the
+ * stories use the standard icon on its green tile instead, as the brand
+ * rules require for dark surfaces.
+ */
+export function NilyaMark({
+  size = 30,
+  decorative = true,
+  accessibilityLabel = 'Nilya',
+}: NilyaMarkProps) {
+  const height = Math.max(size, MIN_ICON_SIZE);
+  const width = Math.round(height * (436 / 508));
+
+  return (
+    <Svg
+      width={width}
+      height={height}
+      viewBox="294 252 436 508"
+      accessible={decorative ? undefined : true}
+      accessibilityLabel={decorative ? undefined : accessibilityLabel}
+    >
+      <Path
+        d="M354 700V370L670 700V370"
+        fill="none"
+        stroke={C.primary}
+        strokeWidth={80}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Circle cx={670} cy={315} r={43} fill={C.accent} />
+    </Svg>
+  );
+}
+
 type NilyaLockupProps = {
   iconSize?: number;
   showTagline?: boolean;

@@ -10,9 +10,18 @@ import { Button, EmptyState, InlineError, PressableScale, ScreenError, T, Tap } 
 import { useAsync } from '@/hooks/use-async';
 import { useFavorites } from '@/hooks/use-favorites';
 import { useGoBack } from '@/hooks/use-go-back';
-import type { ListingRow } from '@/lib/database.types';
+import {
+  calculateBundlePricing,
+  type BundlePricing,
+} from '@/lib/bundle-discounts';
+import type { BundleDiscountSettingsRow, ListingRow } from '@/lib/database.types';
 import { isCommerceListing } from '@/lib/listing-types';
-import { coverUrl, fetchListingsByIds, fetchOrders } from '@/lib/queries';
+import {
+  coverUrl,
+  fetchListingsByIds,
+  fetchOrders,
+  fetchPublicBundleDiscountSettingsForSellers,
+} from '@/lib/queries';
 import { useAuth } from '@/store/auth-store';
 import { getCartIds, removeManyFromCart, useCart } from '@/store/cart-store';
 import { color as C, elevation, radius, scale, space, touch, type } from '@/theme/tokens';
@@ -55,13 +64,27 @@ export default function Cart() {
   const items = useAsync(
     async () => {
       const ids = cart.hydrated ? getCartIds() : [];
-      if (ids.length === 0) return { rows: [] as ListingRow[], bought: [] as string[] };
+      if (ids.length === 0) {
+        return {
+          rows: [] as ListingRow[],
+          bought: [] as string[],
+          bundleSettings: [] as BundleDiscountSettingsRow[],
+        };
+      }
       const [rows, orders] = await Promise.all([fetchListingsByIds(ids), fetchOrders()]);
+      const bundleSettings = await fetchPublicBundleDiscountSettingsForSellers(
+        rows.flatMap((row) => (row.seller?.id ? [row.seller.id] : []))
+      );
       const inCart = new Set(ids);
       const bought = orders
-        .filter((o) => o.buyer_id === user?.id && LIVE_ORDER_STATUSES.has(o.status) && inCart.has(o.listing_id))
-        .map((o) => o.listing_id);
-      return { rows, bought };
+        .filter((order) => order.buyer_id === user?.id && LIVE_ORDER_STATUSES.has(order.status))
+        .flatMap((order) =>
+          order.items.length > 0
+            ? order.items.map((item) => item.listing_id)
+            : [order.listing_id]
+        )
+        .filter((listingId) => inCart.has(listingId));
+      return { rows, bought, bundleSettings };
     },
     `cart:${cart.hydrated}`
   );
@@ -77,16 +100,19 @@ export default function Cart() {
   const available = cart.ids.map((id) => rowsById.get(id)).filter((row): row is CommerceListingRow => Boolean(row));
   const unavailableIds = items.data ? cart.ids.filter((id) => !rowsById.has(id)) : [];
 
-  /* One subtotal per currency; listings carry their own and nothing converts. */
-  const subtotals = useMemo(() => {
-    const byCurrency = new Map<string, number>();
-    available.forEach((row) => byCurrency.set(row.currency, (byCurrency.get(row.currency) ?? 0) + row.price_cents));
-    return [...byCurrency.entries()];
-  }, [available]);
-
+  const bundle = useMemo(
+    () => findFirstBundle(available, items.data?.bundleSettings ?? []),
+    [available, items.data?.bundleSettings]
+  );
   const first = available[0] ?? null;
-  const checkoutLabel =
-    available.length > 1 ? `Checkout 1 of ${available.length}` : 'Checkout';
+  const checkoutRows = bundle?.rows ?? (first ? [first] : []);
+  const checkoutSubtotal = bundle?.pricing.listSubtotalCents ?? first?.price_cents ?? 0;
+  const checkoutCurrency = checkoutRows[0]?.currency ?? 'EUR';
+  const checkoutLabel = bundle
+    ? `Checkout ${bundle.rows.length}-item bundle`
+    : available.length > 1
+      ? `Checkout 1 of ${available.length}`
+      : 'Checkout';
 
   const header = (
     <View
@@ -194,12 +220,24 @@ export default function Cart() {
 
               {available.length > 0 ? (
                 <OrderSummary
-                  count={available.length}
-                  subtotals={subtotals}
+                  count={checkoutRows.length}
+                  currency={checkoutCurrency}
+                  subtotalCents={checkoutSubtotal}
+                  bundlePricing={bundle?.pricing ?? null}
+                  remainingCount={available.length - checkoutRows.length}
                   checkoutLabel={checkoutLabel}
                   onCheckout={
-                    first
-                      ? () => router.push({ pathname: '/checkout', params: { id: first.id } })
+                    checkoutRows.length > 0
+                      ? () =>
+                          bundle
+                            ? router.push({
+                                pathname: '/checkout',
+                                params: { ids: bundle.rows.map((row) => row.id).join(',') },
+                              })
+                            : router.push({
+                                pathname: '/checkout',
+                                params: { id: checkoutRows[0]!.id },
+                              })
                       : undefined
                   }
                 />
@@ -387,12 +425,18 @@ function SummaryLine({ label, value, strong = false }: { label: string; value: s
 
 function OrderSummary({
   count,
-  subtotals,
+  currency,
+  subtotalCents,
+  bundlePricing,
+  remainingCount,
   checkoutLabel,
   onCheckout,
 }: {
   count: number;
-  subtotals: [string, number][];
+  currency: string;
+  subtotalCents: number;
+  bundlePricing: BundlePricing | null;
+  remainingCount: number;
   checkoutLabel: string;
   onCheckout?: () => void;
 }) {
@@ -413,24 +457,74 @@ function OrderSummary({
         Order Summary
       </T>
 
-      {subtotals.map(([currency, cents]) => (
-        <SummaryLine
-          key={currency}
-          label={subtotals.length > 1 ? `Subtotal (${currency})` : `Subtotal · ${count} ${count === 1 ? 'item' : 'items'}`}
-          value={formatPrice(cents, currency)}
-          strong
-        />
-      ))}
+      <SummaryLine
+        label={`Subtotal · ${count} ${count === 1 ? 'item' : 'items'}`}
+        value={formatPrice(subtotalCents, currency)}
+        strong={!bundlePricing}
+      />
+      {bundlePricing ? (
+        <>
+          <SummaryLine
+            label={`Bundle discount · ${bundlePricing.discountPercent}%`}
+            value={`−${formatPrice(bundlePricing.discountCents, currency)}`}
+          />
+          <SummaryLine
+            label="After discount"
+            value={formatPrice(bundlePricing.discountedSubtotalCents, currency)}
+            strong
+          />
+        </>
+      ) : null}
       <SummaryLine label="Shipping" value="Chosen at checkout" />
       <SummaryLine label="Buyer protection" value="Added at checkout" />
 
       <T variant="caption" color={C.textSecondary}>
-        Each product is paid for on its own. Your cart is kept on this device only.
+        {bundlePricing
+          ? `This seller's discount is applied to this bundle by Nilya at checkout.`
+          : 'This product is paid for on its own.'}
+        {remainingCount > 0
+          ? ` ${remainingCount} other ${remainingCount === 1 ? 'item stays' : 'items stay'} in your bag.`
+          : ''}
       </T>
 
       <Button label={checkoutLabel} onPress={onCheckout} style={{ marginTop: space.space4 }} />
     </View>
   );
+}
+
+type BundleCandidate = {
+  rows: CommerceListingRow[];
+  pricing: BundlePricing;
+};
+
+function findFirstBundle(
+  rows: readonly CommerceListingRow[],
+  settingsRows: readonly BundleDiscountSettingsRow[]
+): BundleCandidate | null {
+  const settings = new Map(settingsRows.map((row) => [row.seller_id, row]));
+  const groups = new Map<string, CommerceListingRow[]>();
+
+  for (const row of rows) {
+    const sellerId = row.seller?.id;
+    if (!sellerId) continue;
+    const key = `${sellerId}:${row.currency.trim().toUpperCase()}:${row.country_code}`;
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+
+  for (const group of groups.values()) {
+    const sellerId = group[0]?.seller?.id;
+    if (!sellerId) continue;
+    const limited = group.slice(0, 20);
+    const pricing = calculateBundlePricing(
+      limited.map((row) => row.price_cents),
+      settings.get(sellerId) ?? null
+    );
+    if (pricing) return { rows: limited, pricing };
+  }
+
+  return null;
 }
 
 function CartSkeleton() {

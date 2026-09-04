@@ -8,10 +8,13 @@ import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { requireAdmin } from "@/lib/admin";
 import { escapeFilterValue, firstParam, pageParam } from "@/lib/format";
+import { isListingType } from "@/lib/marketplace";
 import { createClient } from "@/lib/supabase/server";
 import {
   LISTING_STATUSES,
   LISTING_STATUS_LABEL,
+  LISTING_TYPES,
+  LISTING_TYPE_LABEL,
   type AdminListingRow,
   type CategoryRow,
   type ListingStatus,
@@ -24,6 +27,11 @@ const PAGE_SIZE = 25;
 const STATUS_OPTIONS = LISTING_STATUSES.map((status) => ({
   value: status,
   label: LISTING_STATUS_LABEL[status],
+}));
+
+const TYPE_OPTIONS = LISTING_TYPES.map((type) => ({
+  value: type,
+  label: LISTING_TYPE_LABEL[type],
 }));
 
 export default async function ListingsPage(
@@ -41,6 +49,8 @@ export default async function ListingsPage(
     ? (statusParam as ListingStatus)
     : undefined;
   const category = firstParam(searchParams.category);
+  const typeParam = firstParam(searchParams.type);
+  const listingType = isListingType(typeParam) ? typeParam : undefined;
 
   const supabase = await createClient();
 
@@ -48,28 +58,37 @@ export default async function ListingsPage(
   // because a listing can sit on either.
   const { data: categoryRows } = await supabase
     .from("categories")
-    .select("slug,label,parent_id,is_active")
+    .select("slug,label,parent_id,is_active,listing_type,requires_perfume_details")
     .order("sort_order", { ascending: true })
     .order("label", { ascending: true });
 
   const categories = (categoryRows ?? []) as Pick<
     CategoryRow,
-    "slug" | "label" | "parent_id" | "is_active"
+    | "slug"
+    | "label"
+    | "parent_id"
+    | "is_active"
+    | "listing_type"
+    | "requires_perfume_details"
   >[];
 
   let listingQuery = supabase
     .from("listings")
     .select(
-      `id,title,brand,price_cents,currency,status,category_slug,created_at,published_at,seller_id,
+      `id,title,brand,price_cents,currency,listing_type,status,category_slug,created_at,published_at,seller_id,
        seller:profiles!listings_seller_id_fkey(id,display_name,avatar_url,avatar_color),
-       category:categories!listings_category_slug_fkey(slug,label),
-       images:listing_images(storage_path,position)`,
+       category:categories!listings_category_slug_fkey(slug,label,listing_type,requires_perfume_details),
+       images:listing_images(storage_path,position),
+       food_details(price_unit,quantity),
+       job_details(employer,salary_min_cents,salary_max_cents,salary_currency),
+       service_details(pricing_mode)`,
       { count: "exact" }
     )
     .order("created_at", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
   if (status) listingQuery = listingQuery.eq("status", status);
+  if (listingType) listingQuery = listingQuery.eq("listing_type", listingType);
   if (category) listingQuery = listingQuery.eq("category_slug", category);
   if (query) {
     const safe = escapeFilterValue(query);
@@ -112,6 +131,12 @@ export default async function ListingsPage(
           options={STATUS_OPTIONS}
         />
         <FilterSelect
+          paramName="type"
+          ariaLabel="Filter by listing type"
+          allLabel="All listing types"
+          options={TYPE_OPTIONS}
+        />
+        <FilterSelect
           paramName="category"
           ariaLabel="Filter by category"
           allLabel="All categories"
@@ -135,9 +160,9 @@ export default async function ListingsPage(
         <div className="rounded-xl border bg-card">
           <EmptyState
             icon={ShoppingBag}
-            title={query || status || category ? "No matching listings" : "No listings yet"}
+            title={query || status || listingType || category ? "No matching listings" : "No listings yet"}
             description={
-              query || status || category
+              query || status || listingType || category
                 ? "Try a broader search or clear the filters."
                 : "Listings published from the app will appear here."
             }
@@ -151,7 +176,7 @@ export default async function ListingsPage(
             pageSize={PAGE_SIZE}
             total={total}
             basePath="/listings"
-            params={{ q: query || undefined, status, category }}
+            params={{ q: query || undefined, status, type: listingType, category }}
           />
         </>
       )}

@@ -19,5 +19,9 @@
       "mcp__6c829166-8a71-4264-98aa-80191b6865bf__list_extensions",
       "mcp__6c829166-8a71-4264-98aa-80191b6865bf__get_advisors"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "supabase"
+  ],
+  "enableAllProjectMcpServers": true
 }

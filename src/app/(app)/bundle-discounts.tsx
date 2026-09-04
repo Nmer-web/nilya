@@ -16,6 +16,7 @@ import { Button, InlineError, ScreenError, T, Toggle } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import {
   BUNDLE_DISCOUNT_TIER_COUNT,
+  MAX_BUNDLE_ITEMS,
   MAX_BUNDLE_DISCOUNT_PERCENT,
   bundleDiscountDraftsEqual,
   bundleDiscountSettingsToDraft,
@@ -215,7 +216,7 @@ function BundleDiscountEditor({ initial }: { initial: BundleDiscountDraft }) {
           title="Discount tiers"
           footer={
             <T variant="caption" color={C.textSecondary} selectable>
-              Use whole numbers. Each later item count must be higher, and discounts can be up to {MAX_BUNDLE_DISCOUNT_PERCENT}%.
+              Use whole numbers. Nilya bundles contain up to {MAX_BUNDLE_ITEMS} items. Each later item count must be higher, and discounts can be up to {MAX_BUNDLE_DISCOUNT_PERCENT}%.
             </T>
           }
         >

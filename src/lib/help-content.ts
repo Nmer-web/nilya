@@ -167,7 +167,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     slug: "setting-bundle-discounts",
     title: "Setting bundle discounts",
     summary:
-      "Save seller bundle tiers and understand where they currently appear.",
+      "Offer automatic seller discounts on eligible multi-item purchases.",
     category: "selling",
     keywords: ["bundle", "discount", "tiers", "seller settings"],
     sections: [
@@ -180,9 +180,9 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
         ],
       },
       {
-        heading: "Current checkout behaviour",
+        heading: "How checkout works",
         paragraphs: [
-          "Saved bundle discounts can be shown with your seller information. They are informational and are not automatically applied at checkout.",
+          "When a buyer's bag contains enough eligible new products or food listings from you, Nilya applies the highest matching tier to one bundle checkout. Nilya recalculates the discount from your saved rules and live listing prices before opening Stripe.",
         ],
       },
     ],

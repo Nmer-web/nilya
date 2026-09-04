@@ -89,22 +89,72 @@ export default function OrderDetail() {
           </T>
         </View>
 
-        <Card style={{ flexDirection: 'row', gap: space.space12, padding: space.space16 }}>
-          <View style={{ width: 54 }}>
-            <ListingImage url={coverUrl(row.listing?.images ?? null)} width={54} round={radius.radiusSmall} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <T variant="cardTitle" numberOfLines={2}>
-              {row.listing?.title ?? 'Listing unavailable'}
-            </T>
-            <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space4 }}>
-              {sold ? 'Bought by' : 'Sold by'} {counterparty?.display_name ?? 'a member'}
-            </T>
-          </View>
+        <Card style={{ padding: space.space16, gap: space.space12 }}>
+          {row.item_count > 1 ? (
+            <T variant="cardTitle">Bundle · {row.item_count} items</T>
+          ) : null}
+          {(row.items.length > 0
+            ? row.items
+            : [{
+                listing_id: row.listing_id,
+                position: 0,
+                list_price_cents: row.item_price_cents,
+                item_price_cents: row.item_price_cents,
+                listing: row.listing,
+              }]
+          ).map((item, index) => (
+            <View
+              key={item.listing_id}
+              style={{
+                flexDirection: 'row',
+                gap: space.space12,
+                paddingTop: index === 0 ? 0 : space.space12,
+                borderTopWidth: index === 0 ? 0 : 1,
+                borderTopColor: C.border,
+              }}
+            >
+              <View style={{ width: 54 }}>
+                <ListingImage
+                  url={coverUrl(item.listing?.images ?? null)}
+                  width={54}
+                  round={radius.radiusSmall}
+                />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <T variant="bodyMedium" numberOfLines={2}>
+                  {item.listing?.title ?? 'Listing unavailable'}
+                </T>
+                <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space4 }}>
+                  {formatPrice(item.item_price_cents, row.currency)}
+                  {item.list_price_cents > item.item_price_cents
+                    ? ` · was ${formatPrice(item.list_price_cents, row.currency)}`
+                    : ''}
+                </T>
+              </View>
+            </View>
+          ))}
+          <T variant="metadata" color={C.textSecondary}>
+            {sold ? 'Bought by' : 'Sold by'} {counterparty?.display_name ?? 'a member'}
+          </T>
         </Card>
 
         <Card style={{ padding: space.space16, gap: space.space8 }}>
-          <Line label="Item" value={formatPrice(row.item_price_cents, row.currency)} />
+          <Line
+            label={row.item_count > 1 ? 'Items' : 'Item'}
+            value={formatPrice(row.list_subtotal_cents, row.currency)}
+          />
+          {row.bundle_discount_percent ? (
+            <Line
+              label={`Bundle discount · ${row.bundle_discount_percent}%`}
+              value={`−${formatPrice(row.bundle_discount_cents, row.currency)}`}
+            />
+          ) : null}
+          {row.item_count > 1 ? (
+            <Line
+              label="Discounted subtotal"
+              value={formatPrice(row.item_price_cents, row.currency)}
+            />
+          ) : null}
           <Line
             label="Delivery"
             value={row.shipping_cents === 0 ? 'Free' : formatPrice(row.shipping_cents, row.currency)}

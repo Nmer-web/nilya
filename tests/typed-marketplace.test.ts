@@ -11,6 +11,10 @@ import {
   detailKindForCategory,
   isCanonicalListing,
 } from '../src/lib/listing-types.ts';
+import {
+  calculateBundlePricing,
+  resolveBundleDiscountPercent,
+} from '../src/lib/bundle-discounts.ts';
 
 function loadLocalEnv(): void {
   const contents = fs.readFileSync('.env', 'utf8');
@@ -66,6 +70,80 @@ test('specialised CTA matrices never put commerce controls on jobs or services',
   assert.deepEqual(actionsForListingType('service'), ['request_quote', 'book_service', 'message_provider']);
   assert.equal(actionsForListingType('job').includes('buy_now'), false);
   assert.equal(actionsForListingType('service').includes('buy_now'), false);
+});
+
+test('bundle discounts select the highest qualified persisted tier', () => {
+  const settings = {
+    seller_id: '00000000-0000-0000-0000-000000000001',
+    is_enabled: true,
+    min_items_1: 2,
+    discount_percent_1: 10,
+    min_items_2: 3,
+    discount_percent_2: 15,
+    min_items_3: 5,
+    discount_percent_3: 25,
+    updated_at: '2026-09-04T00:00:00.000Z',
+  } as const;
+
+  assert.equal(resolveBundleDiscountPercent(settings, 1), null);
+  assert.equal(resolveBundleDiscountPercent(settings, 2), 10);
+  assert.equal(resolveBundleDiscountPercent(settings, 4), 15);
+  assert.equal(resolveBundleDiscountPercent(settings, 5), 25);
+});
+
+test('bundle price preview mirrors server floor rounding without trusting a client total', () => {
+  const settings = {
+    seller_id: '00000000-0000-0000-0000-000000000001',
+    is_enabled: true,
+    min_items_1: 2,
+    discount_percent_1: 10,
+    min_items_2: null,
+    discount_percent_2: null,
+    min_items_3: null,
+    discount_percent_3: null,
+    updated_at: '2026-09-04T00:00:00.000Z',
+  } as const;
+
+  assert.deepEqual(calculateBundlePricing([999, 501], settings), {
+    itemCount: 2,
+    discountPercent: 10,
+    listSubtotalCents: 1500,
+    discountedSubtotalCents: 1349,
+    discountCents: 151,
+    itemPricesCents: [899, 450],
+  });
+  assert.equal(calculateBundlePricing([999], settings), null);
+  assert.equal(
+    calculateBundlePricing([999, 501], { ...settings, is_enabled: false }),
+    null
+  );
+  assert.equal(calculateBundlePricing(Array(21).fill(100), settings), null);
+});
+
+test('live bundle settings are public-safe while order creation and snapshots stay private', async () => {
+  const client = publicClient();
+  const impossibleBuyer = '00000000-0000-0000-0000-000000000001';
+  const impossibleListings = [
+    '00000000-0000-0000-0000-000000000002',
+    '00000000-0000-0000-0000-000000000003',
+  ];
+
+  const settings = await client
+    .from('seller_bundle_discounts')
+    .select('seller_id,is_enabled')
+    .limit(1);
+  assert.ifError(settings.error);
+
+  const snapshots = await client.from('order_items').select('order_id').limit(1);
+  assert.ok(snapshots.error, 'anonymous order item reads must be denied');
+
+  const order = await client.rpc('create_bundle_order', {
+    p_buyer_id: impossibleBuyer,
+    p_listing_ids: impossibleListings,
+    p_delivery_key: 'home',
+  });
+  assert.ok(order.error, 'anonymous bundle order creation must be denied');
+  assert.equal(order.error.code, '42501');
 });
 
 test('the live Supabase taxonomy contains every Nilya root and typed children', async () => {

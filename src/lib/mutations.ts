@@ -770,6 +770,13 @@ export type CheckoutResult = {
   currency: string;
 };
 
+export type BundleCheckoutResult = CheckoutResult & {
+  itemCount: number;
+  listSubtotalCents: number;
+  bundleDiscountPercent: number;
+  bundleDiscountCents: number;
+};
+
 const CHECKOUT_UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 function isStripeCheckoutUrl(value: string): boolean {
@@ -812,6 +819,29 @@ function validateCheckoutResult(data: CheckoutResult | null): CheckoutResult {
     throw new Error('Checkout returned an invalid currency');
   }
 
+  return data;
+}
+
+function validateBundleCheckoutResult(
+  data: BundleCheckoutResult | null
+): BundleCheckoutResult {
+  validateCheckoutResult(data);
+  if (
+    !data ||
+    !Number.isSafeInteger(data.itemCount) ||
+    data.itemCount < 2 ||
+    data.itemCount > 20 ||
+    !Number.isSafeInteger(data.listSubtotalCents) ||
+    data.listSubtotalCents <= data.itemPriceCents ||
+    !Number.isSafeInteger(data.bundleDiscountPercent) ||
+    data.bundleDiscountPercent < 1 ||
+    data.bundleDiscountPercent > 50 ||
+    !Number.isSafeInteger(data.bundleDiscountCents) ||
+    data.bundleDiscountCents <= 0 ||
+    data.listSubtotalCents - data.itemPriceCents !== data.bundleDiscountCents
+  ) {
+    throw new Error('Checkout returned invalid bundle pricing');
+  }
   return data;
 }
 
@@ -860,6 +890,47 @@ export async function startCheckout(input: {
   }
 
   return validateCheckoutResult(data);
+}
+
+/** Starts one server-priced checkout for 2–20 eligible listings from one seller. */
+export async function startBundleCheckout(input: {
+  listingIds: readonly string[];
+  deliveryKey: string;
+}): Promise<BundleCheckoutResult> {
+  const listingIds = [...new Set(input.listingIds)];
+  if (
+    listingIds.length !== input.listingIds.length ||
+    listingIds.length < 2 ||
+    listingIds.length > 20 ||
+    listingIds.some((id) => !CHECKOUT_UUID_PATTERN.test(id))
+  ) {
+    throw new Error('Choose between 2 and 20 unique products for a bundle.');
+  }
+
+  const { data, error } = await supabase.functions.invoke<BundleCheckoutResult>(
+    'create-checkout',
+    {
+      body: {
+        listingIds,
+        deliveryKey: input.deliveryKey,
+      },
+    }
+  );
+
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === 'function') {
+      try {
+        const body = (await context.json()) as { error?: string };
+        if (body?.error) throw new Error(body.error);
+      } catch (parsed) {
+        if (parsed instanceof Error && parsed.message) throw parsed;
+      }
+    }
+    throw error;
+  }
+
+  return validateBundleCheckoutResult(data);
 }
 
 /**

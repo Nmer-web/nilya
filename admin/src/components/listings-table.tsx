@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { ReasonDialog } from "@/components/reason-dialog";
-import { ListingStatusBadge } from "@/components/status-badge";
+import { ListingStatusBadge, Pill } from "@/components/status-badge";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,8 +20,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { approveListings, removeListings } from "@/app/actions";
-import { formatDate, formatMoney, listingImageUrl } from "@/lib/format";
-import { REMOVAL_REASONS, type AdminListingRow } from "@/lib/types";
+import { formatDate, listingImageUrl } from "@/lib/format";
+import { listingPriceText } from "@/lib/marketplace";
+import {
+  LISTING_TYPE_LABEL,
+  REMOVAL_REASONS,
+  type AdminListingRow,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -135,13 +140,13 @@ export function ListingsTable({ listings }: { listings: AdminListingRow[] }) {
                 <TableHead className="w-14 bg-muted">
                   <span className="sr-only">Photo</span>
                 </TableHead>
-                {["Title", "Seller", "Price", "Category", "Status", "Created"].map(
+                {["Title", "Seller", "Price / pay", "Category", "Status", "Created"].map(
                   (header) => (
                     <TableHead
                       key={header}
                       className={cn(
                         "h-11 bg-muted text-xs font-medium tracking-wide text-muted-foreground uppercase",
-                        header === "Price" && "text-right",
+                        header === "Price / pay" && "text-right",
                         header === "Created" && "text-right"
                       )}
                     >
@@ -195,7 +200,16 @@ export function ListingsTable({ listings }: { listings: AdminListingRow[] }) {
                       >
                         {listing.title}
                       </Link>
-                      {listing.brand ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Pill className="px-2 py-1 text-[10px]">
+                          {LISTING_TYPE_LABEL[listing.listing_type]}
+                        </Pill>
+                      </div>
+                      {listing.listing_type === "job" && listing.job_details ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {listing.job_details.employer}
+                        </p>
+                      ) : listing.brand ? (
                         <p className="text-xs text-muted-foreground">
                           {listing.brand}
                         </p>
@@ -222,7 +236,7 @@ export function ListingsTable({ listings }: { listings: AdminListingRow[] }) {
                       )}
                     </TableCell>
                     <TableCell className="tabular py-3 text-right font-medium">
-                      {formatMoney(listing.price_cents, listing.currency)}
+                      {listingPriceText(listing)}
                     </TableCell>
                     <TableCell className="py-3 text-muted-foreground">
                       {listing.category?.label ?? listing.category_slug}

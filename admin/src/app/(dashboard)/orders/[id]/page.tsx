@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   DISPUTE_REASON_LABEL,
   type AdminDisputeRow,
+  type AdminOrderItem,
   type AdminOrderRow,
   type PaymentRow,
 } from "@/lib/types";
@@ -29,7 +30,7 @@ export default async function OrderDetailPage(props: PageProps<"/orders/[id]">) 
   const { id } = await props.params;
 
   const supabase = await createClient();
-  const [orderResult, disputesResult, paymentResult] = await Promise.all([
+  const [orderResult, disputesResult, paymentResult, itemsResult] = await Promise.all([
     supabase.from("admin_order_feed").select("*").eq("id", id).maybeSingle(),
     supabase
       .from("admin_dispute_feed")
@@ -37,12 +38,32 @@ export default async function OrderDetailPage(props: PageProps<"/orders/[id]">) 
       .eq("order_id", id)
       .order("created_at", { ascending: false }),
     supabase.from("payments").select("*").eq("order_id", id).maybeSingle(),
+    supabase
+      .from("order_items")
+      .select("order_id, listing_id, position, list_price_cents, item_price_cents, listing:listings(id, title, status)")
+      .eq("order_id", id)
+      .order("position", { ascending: true }),
   ]);
 
   if (!orderResult.data) notFound();
   const order = orderResult.data as AdminOrderRow;
   const disputes = (disputesResult.data ?? []) as AdminDisputeRow[];
   const payment = paymentResult.data as PaymentRow | null;
+  const items = (itemsResult.data ?? []) as unknown as AdminOrderItem[];
+  const displayItems = items.length > 0
+    ? items
+    : order.item_count === 1
+      ? [{
+          order_id: order.id,
+          listing_id: order.listing_id,
+          position: 0,
+          list_price_cents: order.list_subtotal_cents,
+          item_price_cents: order.item_price_cents,
+          listing: order.listing_title && order.listing_status
+            ? { id: order.listing_id, title: order.listing_title, status: order.listing_status }
+            : null,
+        }]
+      : [];
 
   const timeline: [string, string | null][] = [
     ["Placed", order.placed_at],
@@ -81,23 +102,35 @@ export default async function OrderDetailPage(props: PageProps<"/orders/[id]">) 
         <div className="flex flex-col gap-6">
           <div className="grid gap-6 sm:grid-cols-3">
             <Card className="p-5">
-              <h2 className="mb-3 text-sm font-semibold text-foreground">Listing</h2>
-              <Link
-                href={`/listings/${order.listing_id}`}
-                className="block rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-              >
-                <span className="block font-medium text-foreground underline-offset-4 hover:underline">
-                  {order.listing_title ?? "Listing no longer exists"}
-                </span>
-              </Link>
-              <p className="mt-1 text-sm text-muted-foreground">
-                <Currency cents={order.item_price_cents} currency={order.currency} />
-              </p>
-              {order.listing_status ? (
-                <div className="mt-2">
-                  <ListingStatusBadge status={order.listing_status} />
-                </div>
+              <h2 className="mb-3 text-sm font-semibold text-foreground">
+                {order.item_count > 1 ? `Nilya bundle · ${order.item_count} items` : "Listing"}
+              </h2>
+              {itemsResult.error ? (
+                <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  Bundle items could not be loaded: {itemsResult.error.message}
+                </p>
               ) : null}
+              <ul className="space-y-3">
+                {displayItems.map((item) => (
+                  <li key={item.listing_id} className="border-b pb-3 last:border-b-0 last:pb-0">
+                    <Link
+                      href={`/listings/${item.listing_id}`}
+                      className="block rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      <span className="block truncate font-medium text-foreground underline-offset-4 hover:underline">
+                        {item.listing?.title ?? "Listing no longer exists"}
+                      </span>
+                    </Link>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                      {item.list_price_cents > item.item_price_cents ? (
+                        <Currency cents={item.list_price_cents} currency={order.currency} className="line-through" />
+                      ) : null}
+                      <Currency cents={item.item_price_cents} currency={order.currency} />
+                      {item.listing?.status ? <ListingStatusBadge status={item.listing.status} /> : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </Card>
 
             <PartyCard
@@ -119,9 +152,25 @@ export default async function OrderDetailPage(props: PageProps<"/orders/[id]">) 
           <Card className="p-5">
             <h2 className="text-sm font-semibold text-foreground">Amount</h2>
             <dl className="mt-3 space-y-1.5 text-sm">
-              <Line label="Item">
-                <Currency cents={order.item_price_cents} currency={order.currency} />
-              </Line>
+              {order.item_count > 1 ? (
+                <>
+                  <Line label={`Items · ${order.item_count}`}>
+                    <Currency cents={order.list_subtotal_cents} currency={order.currency} />
+                  </Line>
+                  <Line label={`Bundle discount · ${order.bundle_discount_percent}%`}>
+                    <span className="text-emerald-700">
+                      −<Currency cents={order.bundle_discount_cents} currency={order.currency} />
+                    </span>
+                  </Line>
+                  <Line label="Discounted subtotal">
+                    <Currency cents={order.item_price_cents} currency={order.currency} />
+                  </Line>
+                </>
+              ) : (
+                <Line label="Item">
+                  <Currency cents={order.item_price_cents} currency={order.currency} />
+                </Line>
+              )}
               <Line label={`Shipping · ${DELIVERY_LABEL[order.delivery_kind] ?? order.delivery_kind}`}>
                 <Currency cents={order.shipping_cents} currency={order.currency} />
               </Line>

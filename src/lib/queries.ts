@@ -90,7 +90,7 @@ const LISTING_BASE_SELECT = `
 const LISTING_SELECT = `
   ${LISTING_BASE_SELECT},
   seller:profiles!listings_seller_id_fkey!inner (
-    id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales
+    id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales, holiday_mode
   )
 `;
 
@@ -103,7 +103,7 @@ const SIMILAR_LISTING_SELECT = `
   category_slug, size, color, city, country_code, tagline, published_at,
   category:categories ( slug, label, listing_type, requires_perfume_details ),
   seller:profiles!listings_seller_id_fkey!inner (
-    id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales
+    id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales, holiday_mode
   ),
   images:listing_images!inner ( storage_path, position ),
   food_details ( listing_id, price_unit, quantity, ingredients, allergens, expiry_date, halal_status, preparation_type, storage_requirements, delivery_requirements, created_at, updated_at ),
@@ -972,6 +972,23 @@ export async function fetchPublicBundleDiscountSettings(
   return (data as BundleDiscountSettingsRow | null) ?? null;
 }
 
+/** Enabled public bundle rules for the real sellers represented in a cart. */
+export async function fetchPublicBundleDiscountSettingsForSellers(
+  sellerIds: readonly string[]
+): Promise<BundleDiscountSettingsRow[]> {
+  const unique = [...new Set(sellerIds.filter(Boolean))];
+  if (unique.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('seller_bundle_discounts')
+    .select(BUNDLE_DISCOUNT_SELECT)
+    .in('seller_id', unique)
+    .eq('is_enabled', true);
+
+  if (error) throw error;
+  return (data ?? []) as BundleDiscountSettingsRow[];
+}
+
 /* ─────────────────────────── referrals ─────────────────────────── */
 
 export type ReferralSummary = {
@@ -1686,6 +1703,10 @@ export type OrderRow = {
   buyer_id: string;
   seller_id: string;
   offer_id: string | null;
+  item_count: number;
+  list_subtotal_cents: number;
+  bundle_discount_percent: number | null;
+  bundle_discount_cents: number;
   item_price_cents: number;
   shipping_cents: number;
   protection_fee_cents: number;
@@ -1706,6 +1727,13 @@ export type OrderRow = {
   placed_at: string;
   paid_at: string | null;
   listing: { id: string; title: string; images: ListingImageRow[] } | null;
+  items: {
+    listing_id: string;
+    position: number;
+    list_price_cents: number;
+    item_price_cents: number;
+    listing: { id: string; title: string; images: ListingImageRow[] } | null;
+  }[];
   buyer: ProfileSummary | null;
   seller: ProfileSummary | null;
   payment: {
@@ -1724,11 +1752,16 @@ export type OrderRow = {
 
 const ORDER_SELECT = `
   id, listing_id, buyer_id, seller_id, offer_id,
+  item_count, list_subtotal_cents, bundle_discount_percent, bundle_discount_cents,
   item_price_cents, shipping_cents, protection_fee_cents, total_cents, currency,
   delivery_kind, delivery_key, status, placed_at, paid_at,
   listing:listings ( id, title, images:listing_images ( storage_path, position ) ),
-  buyer:profiles!orders_buyer_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales ),
-  seller:profiles!orders_seller_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales ),
+  items:order_items (
+    listing_id, position, list_price_cents, item_price_cents,
+    listing:listings ( id, title, images:listing_images ( storage_path, position ) )
+  ),
+  buyer:profiles!orders_buyer_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales, holiday_mode ),
+  seller:profiles!orders_seller_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales, holiday_mode ),
   payment:payments ( status, amount_cents, amount_refunded_cents, last_error )
 `;
 
@@ -1746,7 +1779,7 @@ export async function fetchOrders(): Promise<OrderRow[]> {
     .limit(100);
 
   if (error) throw error;
-  return (data ?? []) as unknown as OrderRow[];
+  return ((data ?? []) as unknown as OrderRow[]).map(normalizeOrder);
 }
 
 /** One order, or null when it is not the caller's. */
@@ -1758,7 +1791,16 @@ export async function fetchOrder(id: string): Promise<OrderRow | null> {
     .maybeSingle();
 
   if (error) throw error;
-  return (data as unknown as OrderRow) ?? null;
+  return data ? normalizeOrder(data as unknown as OrderRow) : null;
+}
+
+function normalizeOrder(order: OrderRow): OrderRow {
+  return {
+    ...order,
+    items: [...(order.items ?? [])].sort(
+      (left, right) => left.position - right.position
+    ),
+  };
 }
 
 /** The single-row platform configuration. Readable, never guessed at. */

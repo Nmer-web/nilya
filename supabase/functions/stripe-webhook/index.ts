@@ -111,8 +111,9 @@ async function handle(event: Stripe.Event): Promise<void> {
 
       await upsertPayment(pi, 'succeeded');
 
-      // Order and listing move together: a paid order marks the item sold, and
-      // orders_one_live_per_listing guarantees no second order can claim it.
+      // Order and every persisted order item move together. Single-item orders
+      // also have one order_items row, so this path does not infer a bundle
+      // from mutable client metadata.
       const paidAt = new Date(event.created * 1000).toISOString();
       await update('orders', { status: 'paid', paid_at: paidAt }, (q) =>
         q.eq('id', orderId).eq('status', 'pending_payment')
@@ -120,12 +121,23 @@ async function handle(event: Stripe.Event): Promise<void> {
 
       const { data: order } = await db
         .from('orders')
-        .select('listing_id')
+        .select('listing_id, items:order_items(listing_id)')
         .eq('id', orderId)
         .single();
 
-      if (order?.listing_id) {
-        await update('listings', { status: 'sold' }, (q) => q.eq('id', order.listing_id));
+      const itemIds = Array.isArray(order?.items)
+        ? order.items
+            .map((item) => item.listing_id)
+            .filter((id): id is string => typeof id === 'string')
+        : [];
+      const listingIds = itemIds.length > 0
+        ? [...new Set(itemIds)]
+        : order?.listing_id
+          ? [order.listing_id]
+          : [];
+
+      if (listingIds.length > 0) {
+        await update('listings', { status: 'sold' }, (q) => q.in('id', listingIds));
       }
       break;
     }

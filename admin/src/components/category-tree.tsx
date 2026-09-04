@@ -12,6 +12,7 @@ import { useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Pill } from "@/components/status-badge";
 import {
   Dialog,
   DialogClose,
@@ -30,7 +31,7 @@ import {
 } from "@/components/ui/tooltip";
 import { createCategory, updateCategory, type CategoryInput } from "@/app/actions";
 import { slugify } from "@/lib/format";
-import type { CategoryNode } from "@/lib/types";
+import { LISTING_TYPE_LABEL, type CategoryNode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function CategoryTree({ departments }: { departments: CategoryNode[] }) {
@@ -56,6 +57,7 @@ export function CategoryTree({ departments }: { departments: CategoryNode[] }) {
         <div className="flex h-11 items-center gap-4 border-b bg-muted px-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           <span className="flex-1">Category</span>
           <span className="hidden w-56 sm:block">Slug</span>
+          <span className="hidden w-36 md:block">Listing type</span>
           <span className="w-24 text-right">Listings</span>
           <span className="w-20 text-center">Active</span>
           <span className="w-20 text-right">Edit</span>
@@ -242,6 +244,12 @@ function CategoryRow({
         {node.slug}
       </span>
 
+      <span className="hidden w-36 md:block">
+        <Pill className="px-2 py-1 text-[10px]">
+          {categoryTypeLabel(node)}
+        </Pill>
+      </span>
+
       <span className="tabular w-24 text-right text-sm">
         {node.total_listings > 0 ? (
           <>
@@ -377,11 +385,19 @@ function CategoryDialog({
               ? "Changes take effect in the app immediately."
               : parent
                 ? `A subcategory under ${parent.label}.`
-                : "A new top-level department."}
+                : "A new top-level product department."}
           </DialogDescription>
         </DialogHeader>
 
         <form id="category-form" onSubmit={submit} className="flex flex-col gap-4">
+          <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+            Nilya listing type: <span className="font-medium text-foreground">
+              {categoryTypeLabel(node ?? parent)}
+            </span>
+            {mode === "create" && parent
+              ? ". New subcategories inherit this from their parent."
+              : ". This contract is managed by the marketplace schema."}
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={labelId}>Label</Label>
             <Input
@@ -478,4 +494,12 @@ function CategoryDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function categoryTypeLabel(
+  node: Pick<CategoryNode, "listing_type" | "requires_perfume_details"> | null | undefined
+): string {
+  if (!node) return LISTING_TYPE_LABEL.product;
+  if (node.requires_perfume_details) return "Perfume & incense";
+  return LISTING_TYPE_LABEL[node.listing_type];
 }

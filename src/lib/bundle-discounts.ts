@@ -2,7 +2,7 @@ import type { BundleDiscountSettingsRow } from '@/lib/database.types';
 
 export const BUNDLE_DISCOUNT_TIER_COUNT = 3;
 export const MAX_BUNDLE_DISCOUNT_PERCENT = 50;
-const MAX_BUNDLE_ITEM_THRESHOLD = 32767;
+export const MAX_BUNDLE_ITEMS = 20;
 
 export type BundleDiscountTierDraft = {
   minItems: string;
@@ -111,9 +111,9 @@ export function validateBundleDiscountDraft(
     if (!minText) {
       errors[index].minItems = 'Enter a minimum item count.';
     } else {
-      const minItems = parseWholeNumber(minText, MAX_BUNDLE_ITEM_THRESHOLD);
+      const minItems = parseWholeNumber(minText, MAX_BUNDLE_ITEMS);
       if (minItems === null) {
-        errors[index].minItems = 'Enter a valid whole number.';
+        errors[index].minItems = `Enter a whole number up to ${MAX_BUNDLE_ITEMS}.`;
       } else if (minItems < 2) {
         errors[index].minItems = 'Minimum is 2 items.';
       } else {
@@ -186,12 +186,85 @@ export function hasActiveBundleDiscount(
   return validateBundleDiscountDraft(bundleDiscountSettingsToDraft(settings)).values !== null;
 }
 
+export type BundlePricing = {
+  itemCount: number;
+  discountPercent: number;
+  listSubtotalCents: number;
+  discountedSubtotalCents: number;
+  discountCents: number;
+  itemPricesCents: number[];
+};
+
+/** Highest persisted seller tier whose minimum is met by this item count. */
+export function resolveBundleDiscountPercent(
+  settings: BundleDiscountSettingsRow | null,
+  itemCount: number
+): number | null {
+  if (!Number.isSafeInteger(itemCount) || itemCount < 2) return null;
+  if (!hasActiveBundleDiscount(settings) || !settings) return null;
+
+  const tiers = [
+    [settings.min_items_1, settings.discount_percent_1],
+    [settings.min_items_2, settings.discount_percent_2],
+    [settings.min_items_3, settings.discount_percent_3],
+  ] as const;
+
+  for (let index = tiers.length - 1; index >= 0; index -= 1) {
+    const [minimum, percent] = tiers[index]!;
+    if (minimum !== null && percent !== null && minimum <= itemCount) {
+      return percent;
+    }
+  }
+  return null;
+}
+
 /**
- * DEFERRED PAYMENT INTEGRATION
+ * Client preview of the database's bundle calculation.
  *
- * These settings are informational only until checkout accepts a real bundle.
- * The future server-side checkout path must verify that every listing belongs
- * to one seller, is active and NEW, select a persisted tier, and compute the
- * discount itself. A client-supplied percentage or discounted total must never
- * be authoritative.
+ * The trusted checkout repeats this calculation from locked listing rows and
+ * saved seller settings. No amount or percentage from this result is sent to
+ * Stripe, so changing JavaScript cannot change what a buyer is charged.
  */
+export function calculateBundlePricing(
+  listPricesCents: readonly number[],
+  settings: BundleDiscountSettingsRow | null
+): BundlePricing | null {
+  if (
+    listPricesCents.length < 2 ||
+    listPricesCents.length > 20 ||
+    listPricesCents.some(
+      (price) => !Number.isSafeInteger(price) || price <= 0
+    )
+  ) {
+    return null;
+  }
+
+  const discountPercent = resolveBundleDiscountPercent(
+    settings,
+    listPricesCents.length
+  );
+  if (discountPercent === null) return null;
+
+  const itemPricesCents = listPricesCents.map((price) =>
+    Math.max(1, Math.floor((price * (100 - discountPercent)) / 100))
+  );
+  const listSubtotalCents = listPricesCents.reduce(
+    (total, price) => total + price,
+    0
+  );
+  const discountedSubtotalCents = itemPricesCents.reduce(
+    (total, price) => total + price,
+    0
+  );
+  const discountCents = listSubtotalCents - discountedSubtotalCents;
+
+  if (discountCents <= 0) return null;
+  return {
+    itemCount: listPricesCents.length,
+    discountPercent,
+    listSubtotalCents,
+    discountedSubtotalCents,
+    discountCents,
+    itemPricesCents,
+  };
+}

@@ -16,7 +16,9 @@ export default async function CategoriesPage() {
   const [categoriesResult, statsResult] = await Promise.all([
     supabase
       .from("categories")
-      .select("id,slug,label,parent_id,icon_key,sort_order,is_active,created_at")
+      .select(
+        "id,slug,label,parent_id,icon_key,sort_order,is_active,listing_type,requires_perfume_details,created_at"
+      )
       .order("sort_order", { ascending: true })
       .order("label", { ascending: true }),
     supabase.from("admin_category_stats").select("*"),

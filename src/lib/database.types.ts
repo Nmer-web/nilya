@@ -42,6 +42,7 @@ export type ProfileSummary = {
   rating_avg: number | null;
   rating_count: number;
   lifetime_sales: number;
+  holiday_mode?: boolean;
 };
 
 /** Public-safe seller configuration stored by the bundle-discount migration. */

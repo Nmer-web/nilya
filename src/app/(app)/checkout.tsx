@@ -10,12 +10,26 @@ import { ScreenHeader } from '@/components/screen-header';
 import { Skeleton } from '@/components/skeleton';
 import { Button, Card, EmptyState, InlineError, ScreenError, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { NEW_CONDITION } from '@/lib/database.types';
+import { calculateBundlePricing } from '@/lib/bundle-discounts';
+import { NEW_CONDITION, type ListingRow } from '@/lib/database.types';
 import { isCommerceListing } from '@/lib/listing-types';
 import { retryableReadMessage } from '@/lib/errors';
-import { fetchDeliveryOptions, startCheckout, type DeliveryOptionRow } from '@/lib/mutations';
-import { coverUrl, fetchAcceptedOffer, fetchListing, fetchPlatformSettings } from '@/lib/queries';
+import {
+  fetchDeliveryOptions,
+  startBundleCheckout,
+  startCheckout,
+  type DeliveryOptionRow,
+} from '@/lib/mutations';
+import {
+  coverUrl,
+  fetchAcceptedOffer,
+  fetchListing,
+  fetchListingsByIds,
+  fetchPlatformSettings,
+  fetchPublicBundleDiscountSettings,
+} from '@/lib/queries';
 import { useAuth } from '@/store/auth-store';
+import { removeManyFromCart } from '@/store/cart-store';
 import { color as C, elevation, radius, space, touch } from '@/theme/tokens';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -34,7 +48,20 @@ const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
  * nothing, so this screen refetches rather than assuming.
  */
 export default function CheckoutRoute() {
-  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const { id, ids } = useLocalSearchParams<{
+    id?: string | string[];
+    ids?: string | string[];
+  }>();
+
+  if (ids !== undefined) {
+    const listingIds = uuidsFromParam(ids);
+    return listingIds ? (
+      <BundleCheckout key={listingIds.join(':')} listingIds={listingIds} />
+    ) : (
+      <CheckoutUnavailable />
+    );
+  }
+
   const listingId = uuidFromParam(id);
 
   if (!listingId) return <CheckoutUnavailable />;
@@ -349,6 +376,381 @@ function Checkout({ listingId }: { listingId: string }) {
   );
 }
 
+type BundleListing = ListingRow & { price_cents: number };
+
+function BundleCheckout({ listingIds }: { listingIds: string[] }) {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const selection = useAsync(
+    () => loadBundleSelection(listingIds),
+    `bundle-checkout:${listingIds.join(':')}`
+  );
+  const platform = useAsync(fetchPlatformSettings, 'platform-settings');
+  const first = selection.data?.rows[0] ?? null;
+  const options = useAsync(
+    async () => (first ? fetchDeliveryOptions(first.country_code) : []),
+    `bundle-delivery:${first?.country_code ?? 'none'}`
+  );
+
+  const [deliveryKey, setDeliveryKey] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  const startingRef = useRef(false);
+  const checkoutRequest = useRef(0);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      startingRef.current = false;
+      checkoutRequest.current += 1;
+    };
+  }, []);
+
+  if (selection.loading || platform.loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background }}>
+        <ScreenHeader title="Bundle checkout" />
+        <View style={{ padding: space.gutterCompact, gap: space.space12 }}>
+          <Skeleton width="100%" height={150} round={radius.radiusLarge} />
+          <Skeleton width="100%" height={140} round={radius.radiusLarge} />
+          <Skeleton width="100%" height={150} round={radius.radiusLarge} />
+        </View>
+      </View>
+    );
+  }
+
+  if (selection.error || platform.error || !selection.data || !platform.data) {
+    const source = selection.error ?? platform.error;
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background }}>
+        <ScreenHeader title="Bundle checkout" />
+        <ScreenError
+          error={source}
+          title="Could not prepare this bundle"
+          fallback="The bundle listings or pricing could not be confirmed."
+          onRetry={selection.error ? selection.refetch : platform.refetch}
+        />
+      </View>
+    );
+  }
+
+  const { rows, settings } = selection.data;
+  const pricing = calculateBundlePricing(
+    rows.map((row) => row.price_cents),
+    settings
+  );
+
+  if (!pricing) {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background }}>
+        <ScreenHeader title="Bundle checkout" />
+        <EmptyState
+          icon="offerTicket"
+          title="Bundle discount unavailable"
+          body="The seller's bundle offer changed or these items no longer meet a discount tier."
+          style={{ paddingVertical: touch.minimum }}
+          action={
+            <Button
+              label="Back to bag"
+              onPress={() => router.dismissTo('/cart')}
+              style={{ marginTop: space.space20 }}
+            />
+          }
+        />
+      </View>
+    );
+  }
+
+  const sellerId = rows[0]!.seller!.id;
+  const sellerAway = rows[0]!.seller!.holiday_mode;
+  const isMine = user?.id === sellerId;
+  const signedOut = !user;
+  const ladder = options.data ?? [];
+  const selected = ladder.find((option) => option.key === deliveryKey) ?? null;
+  const shippingCents = selected?.price_cents ?? 0;
+  const protectionFeeCents =
+    selected && !selected.waives_protection_fee
+      ? platform.data.protection_fee_cents
+      : 0;
+  const totalCents =
+    pricing.discountedSubtotalCents + shippingCents + protectionFeeCents;
+  const currency = rows[0]!.currency;
+
+  const pay = async () => {
+    if (!selected || startingRef.current || signedOut || isMine || sellerAway) return;
+
+    const request = checkoutRequest.current + 1;
+    checkoutRequest.current = request;
+    startingRef.current = true;
+    setStarting(true);
+    setError(null);
+
+    let handedOff = false;
+    try {
+      const result = await startBundleCheckout({
+        listingIds,
+        deliveryKey: selected.key,
+      });
+      if (!mounted.current || checkoutRequest.current !== request) return;
+
+      await WebBrowser.openBrowserAsync(result.checkoutUrl);
+      if (!mounted.current || checkoutRequest.current !== request) return;
+
+      await removeManyFromCart(listingIds);
+      handedOff = true;
+      router.replace({ pathname: '/order/[id]', params: { id: result.orderId } });
+    } catch (caught) {
+      if (mounted.current && checkoutRequest.current === request) {
+        setError(retryableReadMessage(caught, 'Bundle checkout could not be started.'));
+      }
+    } finally {
+      if (checkoutRequest.current === request && !handedOff) {
+        startingRef.current = false;
+        if (mounted.current) setStarting(false);
+      }
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.background }}>
+      <ScreenHeader title="Bundle checkout" />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          padding: space.gutterCompact,
+          paddingBottom: insets.bottom + 120,
+          gap: space.space12,
+        }}
+      >
+        <Card style={{ padding: space.space16, gap: space.space12, ...elevation.raised }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.space8 }}>
+            <Icon name="offerTicket" role="metadata" color={C.primary} decorative />
+            <View style={{ flex: 1 }}>
+              <T variant="bodyMedium">
+                {pricing.discountPercent}% bundle discount
+              </T>
+              <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space4 }}>
+                {rows.length} items from {rows[0]!.seller!.display_name}
+              </T>
+            </View>
+          </View>
+
+          {rows.map((row, index) => (
+            <View
+              key={row.id}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: space.space12,
+                paddingTop: index === 0 ? 0 : space.space12,
+                borderTopWidth: index === 0 ? 0 : 1,
+                borderTopColor: C.border,
+              }}
+            >
+              <ListingImage
+                url={coverUrl(row.images)}
+                width={52}
+                round={radius.radiusSmall}
+                label={`${row.title} product photo`}
+              />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <T variant="bodyMedium" numberOfLines={2}>
+                  {row.title}
+                </T>
+                <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space4 }}>
+                  <T variant="metadata" color={C.textSecondary} style={{ textDecorationLine: 'line-through' }}>
+                    {formatPrice(row.price_cents, currency)}
+                  </T>
+                  {'  '}
+                  {formatPrice(pricing.itemPricesCents[index]!, currency)}
+                </T>
+              </View>
+            </View>
+          ))}
+        </Card>
+
+        {sellerAway ? (
+          <View
+            accessibilityRole="alert"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: space.space8,
+              borderTopWidth: 1,
+              borderBottomWidth: 1,
+              borderColor: C.border,
+              paddingVertical: space.space16,
+            }}
+          >
+            <Icon name="info" role="metadata" color={C.textSecondary} decorative />
+            <View style={{ flex: 1 }}>
+              <T variant="bodyMedium">Seller is currently away</T>
+              <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space4 }}>
+                Checkout is paused for this bundle.
+              </T>
+            </View>
+          </View>
+        ) : null}
+
+        <T variant="sectionTitle" style={{ marginTop: space.space8 }}>
+          Delivery
+        </T>
+        {options.loading ? (
+          <Skeleton width="100%" height={140} round={radius.radiusLarge} />
+        ) : options.error ? (
+          <InlineError
+            message={retryableReadMessage(options.error, 'Delivery options could not be loaded.')}
+            actionLabel="Retry"
+            onAction={options.refetch}
+          />
+        ) : ladder.length === 0 ? (
+          <T variant="metadata" color={C.textSecondary}>
+            No delivery options are configured for this country yet.
+          </T>
+        ) : (
+          <View accessibilityRole="radiogroup" style={{ gap: space.space8 }}>
+            {ladder.map((option) => (
+              <DeliveryChoice
+                key={option.key}
+                option={option}
+                currency={currency}
+                selected={deliveryKey === option.key}
+                onPress={() => setDeliveryKey(option.key)}
+              />
+            ))}
+          </View>
+        )}
+
+        <T variant="sectionTitle" style={{ marginTop: space.space8 }}>
+          Order summary
+        </T>
+        <Card style={{ padding: space.space16, gap: space.space8, ...elevation.raised }}>
+          <Line label="Items" value={formatPrice(pricing.listSubtotalCents, currency)} />
+          <Line
+            label={`Bundle discount · ${pricing.discountPercent}%`}
+            value={`−${formatPrice(pricing.discountCents, currency)}`}
+          />
+          <Line
+            label="Discounted subtotal"
+            value={formatPrice(pricing.discountedSubtotalCents, currency)}
+          />
+          <Line
+            label={selected ? selected.name : 'Delivery'}
+            value={selected ? formatPrice(shippingCents, currency) : '—'}
+          />
+          <Line
+            label="Buyer protection"
+            value={
+              !selected
+                ? '—'
+                : protectionFeeCents === 0
+                  ? 'Waived'
+                  : formatPrice(protectionFeeCents, currency)
+            }
+          />
+          <View style={{ height: 1, backgroundColor: C.border, marginVertical: space.space4 }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <T variant="price">Total</T>
+            <T variant="price">
+              {selected ? formatPrice(totalCents, currency) : '—'}
+            </T>
+          </View>
+        </Card>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.space8 }}>
+          <Icon name="shieldSolid" role="metadata" color={C.textSecondary} decorative />
+          <T variant="caption" color={C.textSecondary} style={{ flex: 1 }}>
+            Nilya recalculates this bundle from live seller rules before Stripe
+            receives the payment amount.
+          </T>
+        </View>
+        {error ? <InlineError message={error} /> : null}
+      </ScrollView>
+
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          padding: space.gutterCompact,
+          paddingBottom: Math.max(insets.bottom, space.space12) + space.space8,
+          backgroundColor: C.background,
+          borderTopWidth: 1,
+          borderTopColor: C.border,
+          ...elevation.sheet,
+        }}
+      >
+        <Button
+          style={{ minHeight: touch.large }}
+          label={
+            isMine
+              ? 'These are your listings'
+              : signedOut
+                ? 'Sign in to check out'
+                : sellerAway
+                  ? 'Seller is currently away'
+                  : starting
+                    ? 'Opening Stripe…'
+                    : selected
+                      ? `Pay ${formatPrice(totalCents, currency)}`
+                      : 'Choose a delivery option'
+          }
+          disabled={signedOut || isMine || sellerAway || !selected || starting}
+          loading={starting}
+          loadingLabel="Opening Stripe…"
+          onPress={pay}
+        />
+      </View>
+    </View>
+  );
+}
+
+async function loadBundleSelection(listingIds: readonly string[]): Promise<{
+  rows: BundleListing[];
+  settings: Awaited<ReturnType<typeof fetchPublicBundleDiscountSettings>>;
+}> {
+  const fetched = await fetchListingsByIds(listingIds);
+  const byId = new Map(fetched.map((row) => [row.id, row]));
+  const ordered = listingIds.map((id) => byId.get(id));
+  if (ordered.some((row) => !row)) {
+    throw new Error('One or more bundle items are no longer available.');
+  }
+  if (
+    ordered.some(
+      (row) =>
+        !row ||
+        !isCommerceListing(row.listing_type) ||
+        row.condition !== NEW_CONDITION ||
+        row.price_cents == null
+    )
+  ) {
+    throw new Error('Only active new Nilya products and food can form a bundle.');
+  }
+
+  const rows = ordered as BundleListing[];
+  const first = rows[0]!;
+  const sellerId = first.seller?.id;
+  if (
+    !sellerId ||
+    rows.some(
+      (row) =>
+        row.seller?.id !== sellerId ||
+        row.currency.trim().toUpperCase() !== first.currency.trim().toUpperCase() ||
+        row.country_code !== first.country_code
+    )
+  ) {
+    throw new Error('Bundle items must come from one seller, currency and country.');
+  }
+
+  const settings = await fetchPublicBundleDiscountSettings(sellerId);
+  return { rows, settings };
+}
+
 function uuidFromParam(value: string | string[] | undefined): string | null {
   const values = Array.isArray(value) ? value : [value];
 
@@ -358,6 +760,25 @@ function uuidFromParam(value: string | string[] | undefined): string | null {
   }
 
   return null;
+}
+
+function uuidsFromParam(
+  value: string | string[] | undefined
+): string[] | null {
+  const listingIds = (Array.isArray(value) ? value : [value])
+    .flatMap((part) => part?.split(',') ?? [])
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (
+    listingIds.length < 2 ||
+    listingIds.length > 20 ||
+    new Set(listingIds).size !== listingIds.length ||
+    listingIds.some((id) => !UUID_PATTERN.test(id))
+  ) {
+    return null;
+  }
+  return listingIds;
 }
 
 function CheckoutUnavailable() {
