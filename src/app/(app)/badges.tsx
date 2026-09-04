@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -15,8 +15,11 @@ import {
 } from '@/lib/badges';
 import type { SellerBadgeRow } from '@/lib/database.types';
 import { fetchOwnSellerBadges } from '@/lib/queries';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/store/auth-store';
-import { color as C, radius, space } from '@/theme/tokens';
+import { color as C, elevation, radius, space } from '@/theme/tokens';
+
+type BadgeRealtimeState = 'connecting' | 'live' | 'paused';
 
 export default function BadgesRoute() {
   const { user } = useAuth();
@@ -26,11 +29,14 @@ export default function BadgesRoute() {
 
 function BadgesScreen({ userId }: { userId: string }) {
   const insets = useSafeAreaInsets();
-  const badges = useAsync(fetchOwnSellerBadges, `seller-badges:${userId}`);
+  const badges = useLiveSellerBadges(userId);
 
   return (
     <View className="flex-1 bg-nilya-background">
-      <ScreenHeader title="Badges" />
+      <ScreenHeader
+        title="Seller badges"
+        right={<RealtimeStatus state={badges.realtimeState} />}
+      />
 
       {badges.loading ? (
         <BadgesSkeleton />
@@ -46,8 +52,89 @@ function BadgesScreen({ userId }: { userId: string }) {
           refreshing={badges.refreshing}
           onRefresh={badges.refresh}
           bottomInset={insets.bottom}
+          realtimeState={badges.realtimeState}
         />
       )}
+    </View>
+  );
+}
+
+/**
+ * Reads the trusted current-user badge RPC and keeps it current from the
+ * private `user_badges` INSERT stream. The database remains the only awarder:
+ * a realtime event is only a signal to refetch the authoritative joined view.
+ */
+function useLiveSellerBadges(userId: string) {
+  const badges = useAsync(fetchOwnSellerBadges, `seller-badges:${userId}`);
+  const [realtimeState, setRealtimeState] = useState<BadgeRealtimeState>('connecting');
+  const refreshRef = useRef(badges.refresh);
+
+  useEffect(() => {
+    refreshRef.current = badges.refresh;
+  }, [badges.refresh]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`seller-badges:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'user_badges',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => refreshRef.current()
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setRealtimeState('live');
+          // Close the fetch-to-subscribe race without mutating badge state locally.
+          refreshRef.current();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setRealtimeState('paused');
+        } else {
+          setRealtimeState('connecting');
+        }
+      });
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  return { ...badges, realtimeState };
+}
+
+function RealtimeStatus({ state }: { state: BadgeRealtimeState }) {
+  const label = state === 'live' ? 'Live' : state === 'paused' ? 'Reconnecting' : 'Connecting';
+
+  return (
+    <View
+      accessible
+      accessibilityLabel={`Badge updates: ${label}`}
+      style={{
+        minHeight: 32,
+        marginRight: space.space8,
+        paddingHorizontal: space.space12,
+        borderRadius: radius.radiusPill,
+        backgroundColor: state === 'live' ? C.successSurface : C.bgMuted,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.space8,
+      }}
+    >
+      <View
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: radius.radiusPill,
+          backgroundColor: state === 'live' ? C.success : C.warning,
+        }}
+      />
+      <T variant="metadataMedium" color={state === 'live' ? C.success : C.textSecondary}>
+        {label}
+      </T>
     </View>
   );
 }
@@ -57,13 +144,16 @@ function BadgeList({
   refreshing,
   onRefresh,
   bottomInset,
+  realtimeState,
 }: {
   badges: SellerBadgeRow[];
   refreshing: boolean;
   onRefresh: () => void;
   bottomInset: number;
+  realtimeState: BadgeRealtimeState;
 }) {
   const earnedCount = earnedSellerBadgeCount(badges);
+  const earnedRatio = badges.length === 0 ? 0 : earnedCount / badges.length;
 
   return (
     <ScrollView
@@ -78,48 +168,140 @@ function BadgeList({
       }
       contentContainerStyle={{ paddingBottom: bottomInset + space.space40 }}
     >
-      <View className="px-5 pb-5 pt-6">
-        <T variant="sectionTitle" accessibilityRole="header">
-          Your badges
-        </T>
-        <T
-          variant="display"
-          className="mt-2"
-          selectable
-          accessibilityLabel={`${earnedCount} ${earnedCount === 1 ? 'badge' : 'badges'} earned`}
-          style={{ fontVariant: ['tabular-nums'] }}
+      <View
+        style={{
+          minHeight: 210,
+          marginHorizontal: space.gutterCompact,
+          marginTop: space.space20,
+          overflow: 'hidden',
+          borderRadius: radius.radiusXLarge,
+          borderCurve: 'continuous',
+          backgroundColor: C.primary,
+          padding: space.space20,
+          ...elevation.card,
+        }}
+      >
+        <View
+          accessible={false}
+          style={{
+            position: 'absolute',
+            width: 190,
+            height: 190,
+            right: -78,
+            top: -92,
+            borderRadius: radius.radiusPill,
+            backgroundColor: C.accent,
+            opacity: 0.18,
+          }}
+        />
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: radius.radiusPill,
+            backgroundColor: C.accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          {earnedCount} earned
+          <Icon name="badgeCheck" role="navigation" color={C.textPrimary} decorative />
+        </View>
+        <T
+          variant="caption"
+          color={`${C.surface}C7`}
+          style={{ marginTop: space.space16, letterSpacing: 1.5, textTransform: 'uppercase' }}
+        >
+          Nilya seller achievements
         </T>
-        <T variant="body" color={C.textSecondary} className="mt-2" selectable>
-          Achievements are awarded from your real profile, products, seller reviews,
-          and confirmed referrals.
+        <View
+          style={{
+            marginTop: space.space4,
+            flexDirection: 'row',
+            alignItems: 'baseline',
+            gap: space.space8,
+          }}
+        >
+          <T
+            variant="display"
+            color={C.textInverse}
+            selectable
+            accessibilityLabel={`${earnedCount} of ${badges.length} badges earned`}
+            style={{ fontVariant: ['tabular-nums'] }}
+          >
+            {earnedCount}
+          </T>
+          <T variant="body" color={`${C.surface}D9`}>
+            of {badges.length} earned
+          </T>
+        </View>
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityValue={
+            badges.length > 0
+              ? { min: 0, max: badges.length, now: earnedCount }
+              : { text: 'No active badge definitions' }
+          }
+          style={{
+            height: 6,
+            marginTop: space.space16,
+            overflow: 'hidden',
+            borderRadius: radius.radiusPill,
+            backgroundColor: `${C.surface}38`,
+          }}
+        >
+          <View
+            style={{
+              width: `${Math.round(earnedRatio * 100)}%`,
+              height: '100%',
+              borderRadius: radius.radiusPill,
+              backgroundColor: C.accent,
+            }}
+          />
+        </View>
+        <T variant="metadata" color={`${C.surface}D9`} style={{ marginTop: space.space12 }}>
+          {realtimeState === 'live'
+            ? 'New achievements appear here as soon as Nilya awards them.'
+            : 'Your saved achievements remain available while live updates reconnect.'}
         </T>
       </View>
 
-      {earnedCount === 0 ? (
-        <View className="mx-5 border-y border-nilya-border py-5">
-          <T variant="bodyMedium">No badges yet</T>
-          <T variant="body" color={C.textSecondary} className="mt-1" selectable>
-            Continue selling and completing your profile to unlock achievements.
+      {badges.length === 0 ? (
+        <View
+          style={{
+            marginHorizontal: space.gutterCompact,
+            marginTop: space.space20,
+            borderRadius: radius.radiusLarge,
+            backgroundColor: C.bgMuted,
+            padding: space.space20,
+          }}
+        >
+          <T variant="bodyMedium">No seller achievements available</T>
+          <T variant="body" color={C.textSecondary} style={{ marginTop: space.space4 }} selectable>
+            Nilya has not published any active badge definitions yet. Pull down to check again.
           </T>
         </View>
       ) : null}
 
-      <View className="px-5 pt-7">
-        <T variant="sectionTitle" accessibilityRole="header">
-          Achievements
-        </T>
-        <View className="mt-3">
-          {badges.map((badge, index) => (
-            <SellerBadge
-              key={badge.badge_key}
-              badge={badge}
-              last={index === badges.length - 1}
-            />
-          ))}
+      {badges.length > 0 ? (
+        <View className="px-5 pt-7">
+          <T variant="sectionTitle" accessibilityRole="header">
+            Badge collection
+          </T>
+          <T variant="body" color={C.textSecondary} style={{ marginTop: space.space4 }}>
+            Earned automatically from your real Nilya seller activity.
+          </T>
+          <View className="mt-4">
+            {badges.map((badge, index) => (
+              <SellerBadge
+                key={badge.badge_key}
+                badge={badge}
+                last={index === badges.length - 1}
+              />
+            ))}
+          </View>
         </View>
-      </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -127,20 +309,37 @@ function BadgeList({
 function SellerBadge({ badge, last }: { badge: SellerBadgeRow; last: boolean }) {
   const earned = badge.earned_at !== null;
   const progress = lockedBadgeProgress(badge);
-  const status = earned ? 'EARNED' : 'LOCKED';
+  const status = earned ? 'Earned' : 'Locked';
 
   return (
     <View
-      className={`flex-row gap-4 py-5 ${last ? '' : 'border-b border-nilya-border'}`}
+      style={{
+        marginBottom: last ? 0 : space.space12,
+        padding: space.space16,
+        borderWidth: 1,
+        borderColor: earned ? `${C.primary}24` : C.border,
+        borderRadius: radius.radiusLarge,
+        borderCurve: 'continuous',
+        backgroundColor: C.surface,
+        flexDirection: 'row',
+        gap: space.space12,
+        ...elevation.raised,
+      }}
     >
       <View
-        className={`h-12 w-12 items-center justify-center ${earned ? 'bg-nilya-accent' : 'bg-nilya-surface-2'}`}
-        style={{ borderRadius: radius.radiusPill }}
+        style={{
+          width: 48,
+          height: 48,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: radius.radiusPill,
+          backgroundColor: earned ? C.primarySoft : C.bgMuted,
+        }}
       >
         <Icon
           name={sellerBadgeIcon(badge.icon_key)}
           role="inline"
-          color={earned ? C.textPrimary : C.textSecondary}
+          color={earned ? C.primary : C.textSecondary}
           decorative
         />
       </View>
@@ -150,9 +349,19 @@ function SellerBadge({ badge, last }: { badge: SellerBadgeRow; last: boolean }) 
           <T variant="bodyMedium" style={{ flex: 1 }}>
             {badge.title}
           </T>
-          <T variant="caption" color={earned ? C.textPrimary : C.textSecondary}>
-            {status}
-          </T>
+          <View
+            style={{
+              minHeight: 24,
+              justifyContent: 'center',
+              borderRadius: radius.radiusPill,
+              backgroundColor: earned ? C.successSurface : C.bgMuted,
+              paddingHorizontal: space.space8,
+            }}
+          >
+            <T variant="caption" color={earned ? C.success : C.textSecondary}>
+              {status}
+            </T>
+          </View>
         </View>
         <T variant="body" color={C.textSecondary} className="mt-1" selectable>
           {sellerBadgeCopy(earned ? badge.description : badge.requirement)}
