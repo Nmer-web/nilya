@@ -3,7 +3,20 @@ import { Platform } from 'react-native';
 
 import { supabase } from '@/lib/supabase';
 import { NEW_CONDITION } from '@/lib/database.types';
-import type { BundleDiscountSettingsRow } from '@/lib/database.types';
+import type {
+  BundleDiscountSettingsRow,
+  FoodDetailsRow,
+  JobDetailsRow,
+  ListingType,
+  PerfumeDetailsRow,
+  ServiceDetailsRow,
+} from '@/lib/database.types';
+import {
+  CANONICAL_LISTING_FILTER,
+  conditionForListingType,
+  isCanonicalListing,
+  isCommerceListing,
+} from '@/lib/listing-types';
 import {
   bundleDiscountWriteValuesToDraft,
   validateBundleDiscountDraft,
@@ -24,11 +37,19 @@ export type ListingDraftInput = {
   color: string | null;
   size: string | null;
   categorySlug: string;
-  priceCents: number;
+  listingType: ListingType;
+  priceCents: number | null;
+  currency: string;
   /** `original_price_cents`; omitted or null leaves no price drop recorded. */
   originalPriceCents?: number | null;
   city: string | null;
   countryCode: string;
+  details:
+    | { kind: 'product' }
+    | { kind: 'food'; values: Omit<FoodDetailsRow, 'listing_id' | 'created_at' | 'updated_at'> }
+    | { kind: 'perfume'; values: Omit<PerfumeDetailsRow, 'listing_id' | 'created_at' | 'updated_at'> }
+    | { kind: 'job'; values: Omit<JobDetailsRow, 'listing_id' | 'created_at' | 'updated_at'> }
+    | { kind: 'service'; values: Omit<ServiceDetailsRow, 'listing_id' | 'created_at' | 'updated_at'> };
 };
 
 export type AuthenticatedListingSeller = {
@@ -82,7 +103,8 @@ export class OwnerListingManagementError extends Error {
 export type ActivatedListingRow = {
   id: string;
   seller_id: string;
-  condition: string;
+  condition: string | null;
+  listing_type: ListingType;
   status: string;
   published_at: string | null;
 };
@@ -107,6 +129,26 @@ export async function requireAuthenticatedListingSeller(): Promise<Authenticated
     throw new ListingError('Your seller profile is required before you can publish.', 'profile-required');
   }
   return { id: sellerId };
+}
+
+/** Writes the one normalized detail row that belongs to a typed listing. */
+async function upsertSpecializedDetails(
+  listingId: string,
+  details: ListingDraftInput['details']
+): Promise<void> {
+  if (details.kind === 'product') return;
+
+  const table = details.kind === 'food'
+    ? 'food_details'
+    : details.kind === 'perfume'
+      ? 'perfume_details'
+      : details.kind === 'job'
+        ? 'job_details'
+        : 'service_details';
+  const { error } = await supabase
+    .from(table)
+    .upsert({ listing_id: listingId, ...details.values }, { onConflict: 'listing_id' });
+  if (error) throw error;
 }
 
 /**
@@ -139,9 +181,11 @@ export async function createDraftListing(
       color: input.color,
       size: input.size,
       category_slug: input.categorySlug,
-      condition: NEW_CONDITION,
+      listing_type: input.listingType,
+      condition: conditionForListingType(input.listingType),
       price_cents: input.priceCents,
       original_price_cents: input.originalPriceCents ?? null,
+      currency: input.currency,
       city: input.city,
       country_code: input.countryCode,
       status: 'draft',
@@ -152,7 +196,14 @@ export async function createDraftListing(
   if (error) {
     throw new ListingError('The private listing draft could not be created. Try again.', 'draft-create-failed');
   }
-  return (data as { id: string }).id;
+  const listingId = (data as { id: string }).id;
+  try {
+    await upsertSpecializedDetails(listingId, input.details);
+  } catch {
+    await supabase.from('listings').delete().eq('id', listingId).eq('status', 'draft');
+    throw new ListingError('The specialised listing details could not be saved.', 'draft-create-failed');
+  }
+  return listingId;
 }
 
 /**
@@ -224,7 +275,7 @@ export async function activateDraftListing(listingId: string): Promise<Activated
     .update({ status: 'active', published_at: new Date().toISOString() })
     .eq('id', listingId)
     .eq('status', 'draft')
-    .select('id, seller_id, condition, status, published_at')
+    .select('id, seller_id, condition, listing_type, status, published_at')
     .single();
   if (error) throw new ListingError('The listing could not be activated.', 'activation-failed');
   return data as ActivatedListingRow;
@@ -271,7 +322,7 @@ export async function deleteOwnerDraft(listingId: string): Promise<boolean> {
   return data !== null;
 }
 
-/** Moves only the signed-in owner's active NEW listing to the real `removed` status. */
+/** Moves only the signed-in owner's active canonical listing to `removed`. */
 export async function deactivateOwnerListing(listingId: string): Promise<void> {
   const seller = await requireAuthenticatedListingSeller();
   const { data, error } = await supabase
@@ -279,7 +330,7 @@ export async function deactivateOwnerListing(listingId: string): Promise<void> {
     .update({ status: 'removed' })
     .eq('id', listingId)
     .eq('seller_id', seller.id)
-    .eq('condition', NEW_CONDITION)
+    .or(CANONICAL_LISTING_FILTER)
     .eq('status', 'active')
     .select('id')
     .maybeSingle();
@@ -304,12 +355,17 @@ export async function deleteManagedOwnerDraft(listingId: string): Promise<void> 
   const seller = await requireAuthenticatedListingSeller();
   const { data: listing, error: listingError } = await supabase
     .from('listings')
-    .select('id, seller_id, status, condition')
+    .select('id, seller_id, status, condition, listing_type')
     .eq('id', listingId)
     .eq('seller_id', seller.id)
     .maybeSingle();
 
-  if (listingError || !listing || listing.status !== 'draft' || listing.condition !== NEW_CONDITION) {
+  if (
+    listingError ||
+    !listing ||
+    listing.status !== 'draft' ||
+    !isCanonicalListing(listing.listing_type as ListingType, listing.condition)
+  ) {
     throw new OwnerListingManagementError(
       'That private draft is no longer available for deletion.',
       'draft-delete-failed'
@@ -408,6 +464,55 @@ async function requireUserId(): Promise<string> {
   return id;
 }
 
+export type TypedActionResult = { id: string; existing: boolean };
+
+async function insertOnce(
+  table: 'job_applications' | 'service_quote_requests' | 'service_bookings',
+  identityColumn: 'applicant_id' | 'requester_id' | 'customer_id',
+  listingId: string,
+  extra: Record<string, string | null> = {}
+): Promise<TypedActionResult> {
+  const userId = await requireUserId();
+  const created = await supabase
+    .from(table)
+    .insert({ listing_id: listingId, [identityColumn]: userId, ...extra })
+    .select('id')
+    .single();
+
+  if (!created.error) return { id: (created.data as { id: string }).id, existing: false };
+  if (created.error.code !== '23505') throw created.error;
+
+  const existing = await supabase
+    .from(table)
+    .select('id')
+    .eq('listing_id', listingId)
+    .eq(identityColumn, userId)
+    .single();
+  if (existing.error) throw existing.error;
+  return { id: (existing.data as { id: string }).id, existing: true };
+}
+
+/** Persists an application before any optional external hand-off. */
+export function applyToJob(listingId: string): Promise<TypedActionResult> {
+  return insertOnce('job_applications', 'applicant_id', listingId);
+}
+
+export function requestServiceQuote(
+  listingId: string,
+  message?: string
+): Promise<TypedActionResult> {
+  const normalized = message?.trim() || null;
+  return insertOnce('service_quote_requests', 'requester_id', listingId, { message: normalized });
+}
+
+export function bookService(
+  listingId: string,
+  note?: string
+): Promise<TypedActionResult> {
+  const normalized = note?.trim() || null;
+  return insertOnce('service_bookings', 'customer_id', listingId, { note: normalized });
+}
+
 /**
  * Finds the thread for a listing, or opens it.
  *
@@ -419,7 +524,7 @@ async function requireUserId(): Promise<string> {
  * canonical row rather than surfacing an error.
  *
  * Buyer identity comes from Auth and seller identity is read from the active
- * NEW listing. `conversations_insert_as_buyer` independently enforces the same
+ * canonical listing. `conversations_insert_as_buyer` independently enforces the same
  * relationship at the database boundary.
  */
 export async function findOrCreateConversationForListing(
@@ -432,7 +537,7 @@ export async function findOrCreateConversationForListing(
     .select('seller_id')
     .eq('id', listingId)
     .eq('status', 'active')
-    .eq('condition', NEW_CONDITION)
+    .or(CANONICAL_LISTING_FILTER)
     .maybeSingle();
 
   if (listing.error) throw listing.error;
@@ -987,34 +1092,34 @@ export async function updateOwnListing(
   listingId: string,
   input: ListingDraftInput
 ): Promise<void> {
-  const seller = await requireAuthenticatedListingSeller();
+  await requireAuthenticatedListingSeller();
 
-  if (await listingHasLiveOrder(listingId)) {
+  if (isCommerceListing(input.listingType) && await listingHasLiveOrder(listingId)) {
     throw new ListingEditError(
       'This product has an order in progress and cannot be edited.',
       'live-order'
     );
   }
 
-  const { data, error } = await supabase
-    .from('listings')
-    .update({
-      title: input.title,
-      description: input.description,
-      brand: input.brand,
-      color: input.color,
-      size: input.size,
-      category_slug: input.categorySlug,
-      price_cents: input.priceCents,
-      city: input.city,
-      country_code: input.countryCode,
-    })
-    .eq('id', listingId)
-    .eq('seller_id', seller.id)
-    .eq('condition', NEW_CONDITION)
-    .in('status', ['draft', 'active', 'removed'])
-    .select('id')
-    .maybeSingle();
+  /* The RPC temporarily takes an active row private, writes its normalized
+     detail row and core fields, then restores the prior status in one database
+     transaction. A failed request therefore cannot leave half an edit live. */
+  const { data, error } = await supabase.rpc('update_own_typed_listing', {
+    p_listing_id: listingId,
+    p_title: input.title,
+    p_description: input.description,
+    p_brand: input.brand,
+    p_color: input.color,
+    p_size: input.size,
+    p_category_slug: input.categorySlug,
+    p_listing_type: input.listingType,
+    p_price_cents: input.priceCents,
+    p_original_price_cents: input.originalPriceCents ?? null,
+    p_currency: input.currency,
+    p_city: input.city,
+    p_country_code: input.countryCode,
+    p_details: input.details,
+  });
 
   if (error) {
     /* `price_drop_is_a_drop` requires any original price to stay above the
@@ -1029,7 +1134,7 @@ export async function updateOwnListing(
     );
   }
 
-  if (!data) {
+  if (data !== listingId) {
     throw new ListingEditError(
       'This product is no longer editable. Refresh and try again.',
       'not-editable'

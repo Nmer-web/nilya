@@ -40,17 +40,17 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-Gates derived from `.specify/memory/constitution.md` v1.0.0. Answer each with evidence, not
+Gates derived from `.specify/memory/constitution.md` v2.0.0. Answer each with evidence, not
 intent. A ❌ against a NON-NEGOTIABLE principle (I, II, VII) blocks the plan outright and cannot be
 carried into Complexity Tracking.
 
 | # | Gate | Status |
 |---|------|--------|
-| I (NON-NEGOTIABLE) | Every listing write sets the new condition; every listing read filters on it; no resale language anywhere in the feature | [ ] |
+| I (NON-NEGOTIABLE) | Every listing has a server-validated type; product/food writes and reads are NEW-only; job/service condition is null and those types never enter offers, shipping, orders, payments, or checkout; no resale language anywhere | [ ] |
 | II (NON-NEGOTIABLE) | No invented products, sellers, prices, ratings, counts, locations, orders, messages or payment states; no seed rows added for the UI; empty states designed; every route parameter is a real UUID from a real row | [ ] |
 | III | Every table, column and enum member the feature touches is confirmed present in the live schema / `src/lib/database.types.ts`; anything the schema cannot express is reported as a limitation rather than worked around | [ ] |
-| IV | Feature does not modify Supabase schema/RLS/publications, Realtime channels, or the Stripe functions and webhook contract — or names the proven defect and records the approval | [ ] |
-| V | Everything rendered as interactive is wired and persists; no dead controls; verified against a second independent account | [ ] |
+| IV | Feature does not modify frozen schema/RLS/publications, Realtime, or Stripe — or cites the exact dated approval recorded by the constitution and remains inside it | [ ] |
+| V | Everything rendered as interactive is wired and persists, including applications/quotes/bookings when shown; no dead controls; verified against a second independent account | [ ] |
 | VI | Approved Nilya Green/Amber/Ink/Muted/Surface brand system used by semantic role and logo rules preserved; loading, empty, error and offline states specified; accessibility roles, labels and state defined for every control | [ ] |
 | VII (NON-NEGOTIABLE) | Plan states how each behaviour will be runtime-verified, and names what will remain unverifiable and why | [ ] |
 | Platform | Expo SDK 57 versioned docs consulted; no server secrets in the bundle; payment work sequenced after the rest of the flow; Stripe test mode only | [ ] |

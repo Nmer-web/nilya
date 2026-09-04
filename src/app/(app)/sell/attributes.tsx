@@ -5,6 +5,7 @@ import { Text, View } from 'react-native';
 import { attributeFieldsFor } from '@/config/categoryAttributes';
 import { AttributeRenderer } from '@/features/sell/AttributeRenderer';
 import { useDraft } from '@/features/sell/DraftContext';
+import { SpecializedFields } from '@/features/sell/SpecializedFields';
 import { validateStepFields } from '@/features/sell/validation';
 import { SellStepScreen, StepFade } from '@/features/sell/wizard';
 import { useAsync } from '@/hooks/use-async';
@@ -20,7 +21,7 @@ import { color as C, space, type } from '@/theme/tokens';
  */
 export default function AttributesStep() {
   const router = useRouter();
-  const { draft, photos, setAttribute } = useDraft();
+  const { draft, photos, setAttribute, setSpecialized } = useDraft();
   const [attempted, setAttempted] = useState(false);
   const categories = useAsync(fetchCategoryTree, 'categories:tree');
 
@@ -28,18 +29,34 @@ export default function AttributesStep() {
   const errors = validateStepFields(4, draft, photos);
   const shown = attempted ? errors : {};
   const label = (categories.data ?? []).find((row) => row.slug === draft.categorySlug)?.label ?? 'this category';
+  const title = draft.detailKind === 'job'
+    ? 'Job details'
+    : draft.detailKind === 'service'
+      ? 'Service details'
+      : draft.detailKind === 'food'
+        ? 'Food details'
+        : draft.detailKind === 'perfume'
+          ? 'Fragrance details'
+          : 'Product details';
 
   return (
     <SellStepScreen
       step={4}
-      title="Product details"
-      subtitle={fields.length > 0 ? `What buyers filter ${label} by.` : undefined}
+      title={title}
+      subtitle={draft.detailKind === 'product' && fields.length > 0 ? `What buyers filter ${label} by.` : `Help people understand this ${draft.listingType}.`}
       errors={errors}
       onAttempt={() => setAttempted(true)}
       onContinue={() => router.push('/sell/pricing')}
     >
       <StepFade>
-        {fields.length === 0 ? (
+        {draft.detailKind !== 'product' ? (
+          <SpecializedFields
+            kind={draft.detailKind}
+            values={draft.specialized}
+            setValues={setSpecialized}
+            errors={shown}
+          />
+        ) : fields.length === 0 ? (
           <Text style={{ ...type.body, color: C.textSecondary }}>
             Nothing more to add for {label}. Continue to set the price.
           </Text>

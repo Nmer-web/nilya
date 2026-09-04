@@ -11,6 +11,9 @@
 
 export type ListingCondition = 'new' | 'very_good' | 'good';
 
+/** The server-validated kind of record stored in `listings`. */
+export type ListingType = 'product' | 'food' | 'job' | 'service';
+
 export type ListingStatus = 'draft' | 'active' | 'reserved' | 'sold' | 'removed';
 
 export type CategoryRow = {
@@ -25,6 +28,9 @@ export type CategoryRow = {
   /** Existing placement flags retained for backward-compatible Home/Browse curation. */
   in_explore: boolean;
   in_home: boolean;
+  listing_type: ListingType;
+  /** Product categories under Perfumes & Incense require `perfume_details`. */
+  requires_perfume_details: boolean;
 };
 
 export type ProfileSummary = {
@@ -98,18 +104,93 @@ export type ListingImageRow = {
   position: number;
 };
 
+export type FoodDetailsRow = {
+  listing_id: string;
+  price_unit: 'item' | 'kg' | 'g' | 'litre' | 'ml' | 'pack' | 'dozen';
+  quantity: number;
+  ingredients: string;
+  allergens: string;
+  expiry_date: string;
+  halal_status: 'halal' | 'not_halal' | 'not_specified';
+  preparation_type: 'homemade' | 'packaged';
+  storage_requirements: string;
+  delivery_requirements: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PerfumeDetailsRow = {
+  listing_id: string;
+  brand: string;
+  fragrance_name: string;
+  fragrance_type:
+    | 'parfum'
+    | 'eau_de_parfum'
+    | 'eau_de_toilette'
+    | 'cologne'
+    | 'perfume_oil'
+    | 'attar'
+    | 'oud'
+    | 'incense'
+    | 'bakhoor'
+    | 'other';
+  volume_ml: number;
+  sealed: boolean;
+  authenticity_declared: boolean;
+  fragrance_notes: string;
+  target_audience: 'women' | 'men' | 'unisex' | 'kids';
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobDetailsRow = {
+  listing_id: string;
+  employer: string;
+  sector: string;
+  contract_type: 'full_time' | 'part_time' | 'fixed_term' | 'temporary' | 'freelance' | 'internship';
+  schedule: string;
+  work_mode: 'onsite' | 'hybrid' | 'remote';
+  location: string;
+  salary_min_cents: number;
+  salary_max_cents: number;
+  salary_currency: string;
+  required_experience: string;
+  application_method: 'in_app' | 'external_url' | 'email' | 'phone';
+  application_value: string | null;
+  application_deadline: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ServiceDetailsRow = {
+  listing_id: string;
+  pricing_mode: 'fixed' | 'hourly' | 'daily' | 'quote';
+  service_area: string;
+  delivery_mode: 'onsite' | 'remote' | 'either';
+  availability: string;
+  experience: string;
+  created_at: string;
+  updated_at: string;
+};
+
 /** A listing as the feed and the grid need it. */
 export type ListingRow = {
   id: string;
   title: string;
   brand: string | null;
-  price_cents: number;
+  price_cents: number | null;
   original_price_cents: number | null;
   currency: string;
-  condition: ListingCondition;
+  condition: ListingCondition | null;
+  listing_type: ListingType;
   category_slug: string;
   /** The category row `category_slug` points at, for its display label. */
-  category: { slug: string; label: string } | null;
+  category: {
+    slug: string;
+    label: string;
+    listing_type: ListingType;
+    requires_perfume_details: boolean;
+  } | null;
   size: string | null;
   color: string | null;
   city: string | null;
@@ -118,6 +199,10 @@ export type ListingRow = {
   published_at: string | null;
   seller: ProfileSummary | null;
   images: ListingImageRow[];
+  food_details: FoodDetailsRow | null;
+  perfume_details: PerfumeDetailsRow | null;
+  job_details: JobDetailsRow | null;
+  service_details: ServiceDetailsRow | null;
 };
 
 /** Everything above, plus the fields only the detail screen needs. */
@@ -129,6 +214,8 @@ export type ListingDetailRow = Omit<ListingRow, 'seller'> & {
   category: {
     slug: string;
     label: string;
+    listing_type: ListingType;
+    requires_perfume_details: boolean;
   } | null;
 };
 
@@ -139,15 +226,10 @@ export type ListingDetailRow = Omit<ListingRow, 'seller'> & {
  * accepts — writing it down as `'new'` alone would be a description of the
  * database that is not true.
  *
- * NILYA sells new products only, so `'new'` is the only value the app writes and
- * the only one it reads: `createDraftListing` sets it, and every feed query
- * filters on it. The other two are reachable in Postgres and by nothing else.
- *
- * SCHEMA LIMITATION: the enum permits `very_good` and `good`, so the rule is
- * enforced by this application rather than by the database. A row written by
- * any other client could still carry a used condition. Closing that properly
- * needs a migration — `alter table listings add constraint listings_are_new
- * check (condition = 'new')` — which is outside what this task may change.
+ * Product and food rows use only `'new'`; job and service rows store null.
+ * `listings_typed_core_fields` enforces that distinction in PostgreSQL. The
+ * legacy enum members remain because removing them would rewrite history, but
+ * canonical public RLS excludes rows that do not satisfy the typed invariant.
  */
 export const CONDITION_LABEL: Record<ListingCondition, string> = {
   new: 'New',
@@ -155,5 +237,5 @@ export const CONDITION_LABEL: Record<ListingCondition, string> = {
   good: 'Good',
 };
 
-/** Every NILYA product is new. The single value the app ever writes or filters. */
+/** Every purchasable Nilya product and food listing is new. */
 export const NEW_CONDITION: ListingCondition = 'new';

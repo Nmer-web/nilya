@@ -1,5 +1,8 @@
 import { ISO_3166_1_ALPHA_2 } from '@/lib/countries';
-import { NEW_CONDITION } from '@/lib/database.types';
+import type { ListingType } from '@/lib/database.types';
+import type { SpecializedDraft } from '@/features/sell/draft';
+import type { ListingDetailKind } from '@/lib/listing-types';
+import { isCanonicalListing } from '@/lib/listing-types';
 import {
   LISTING_PHOTO_LIMIT,
   LISTING_PHOTO_MAX_BYTES,
@@ -45,6 +48,10 @@ export type PublishListingForm = {
   originalPrice?: string;
   city: string;
   countryCode: string;
+  currency: string;
+  listingType: ListingType;
+  detailKind: ListingDetailKind;
+  specialized: SpecializedDraft;
 };
 
 export type PublicationPhase =
@@ -255,7 +262,7 @@ export function parseEuroCents(value: string): number {
   return cents;
 }
 
-function normalizeForm(form: PublishListingForm): ListingDraftInput {
+export function normalizePublishForm(form: PublishListingForm): ListingDraftInput {
   const title = form.title.trim();
   const description = form.description.trim();
   const brand = form.brand.trim();
@@ -264,6 +271,7 @@ function normalizeForm(form: PublishListingForm): ListingDraftInput {
   const categorySlug = form.categorySlug.trim();
   const city = form.city.trim();
   const countryCode = form.countryCode.trim().toUpperCase();
+  const currency = form.currency.trim().toUpperCase();
 
   if (!title || title.length > TITLE_MAX) {
     throw new PublicationValidationError(`Title must be between 1 and ${TITLE_MAX} characters.`);
@@ -275,24 +283,145 @@ function normalizeForm(form: PublishListingForm): ListingDraftInput {
   if (!COUNTRY_CODES.has(countryCode)) {
     throw new PublicationValidationError('Choose a valid country.');
   }
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new PublicationValidationError('The marketplace currency is not valid.');
+  }
 
-  const priceCents = parseEuroCents(form.price);
-  const originalPriceCents = form.originalPrice?.trim() ? parseEuroCents(form.originalPrice) : null;
-  if (originalPriceCents !== null && originalPriceCents <= priceCents) {
+  const quoteService = form.listingType === 'service' && form.specialized.service.pricingMode === 'quote';
+  const priceCents = form.listingType === 'job' || quoteService ? null : parseEuroCents(form.price);
+  const originalPriceCents = form.listingType === 'product' && form.originalPrice?.trim()
+    ? parseEuroCents(form.originalPrice)
+    : null;
+  if (originalPriceCents !== null && (priceCents === null || originalPriceCents <= priceCents)) {
     throw new PublicationValidationError('The original price has to be higher than the price.');
   }
 
   return {
     title,
     categorySlug,
-    brand: brand || null,
-    color: color || null,
-    size: size || null,
+    brand: form.detailKind === 'product' || form.detailKind === 'food' || form.detailKind === 'perfume'
+      ? brand || null
+      : null,
+    color: form.listingType === 'product' ? color || null : null,
+    size: form.listingType === 'product' ? size || null : null,
     description: description || null,
     priceCents,
     originalPriceCents,
+    currency,
+    listingType: form.listingType,
     city: city || null,
     countryCode,
+    details: normalizeSpecializedDetails(form, brand, currency),
+  };
+}
+
+function required(value: string, label: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new PublicationValidationError(`${label} is required.`);
+  return normalized;
+}
+
+function positiveDecimal(value: string, label: string): number {
+  const normalized = value.trim().replace(',', '.');
+  if (!/^\d+(?:\.\d{1,3})?$/.test(normalized) || Number(normalized) <= 0) {
+    throw new PublicationValidationError(`${label} must be above zero.`);
+  }
+  return Number(normalized);
+}
+
+function requiredChoice<T extends string>(value: T | '', label: string): T {
+  if (!value) throw new PublicationValidationError(`${label} is required.`);
+  return value;
+}
+
+function normalizeSpecializedDetails(
+  form: PublishListingForm,
+  brand: string,
+  currency: string
+): ListingDraftInput['details'] {
+  if (form.detailKind === 'product') return { kind: 'product' };
+
+  if (form.detailKind === 'food') {
+    const food = form.specialized.food;
+    return {
+      kind: 'food',
+      values: {
+        price_unit: requiredChoice(food.priceUnit, 'Price unit'),
+        quantity: positiveDecimal(food.quantity, 'Quantity'),
+        ingredients: required(food.ingredients, 'Ingredients'),
+        allergens: required(food.allergens, 'Allergens'),
+        expiry_date: required(food.expiryDate, 'Expiry date'),
+        halal_status: requiredChoice(food.halalStatus, 'Halal status'),
+        preparation_type: requiredChoice(food.preparationType, 'Preparation type'),
+        storage_requirements: required(food.storageRequirements, 'Storage requirements'),
+        delivery_requirements: required(food.deliveryRequirements, 'Delivery requirements'),
+      },
+    };
+  }
+
+  if (form.detailKind === 'perfume') {
+    const perfume = form.specialized.perfume;
+    if (!perfume.authenticityDeclared) {
+      throw new PublicationValidationError('Confirm the authenticity declaration.');
+    }
+    return {
+      kind: 'perfume',
+      values: {
+        brand: required(brand, 'Brand'),
+        fragrance_name: required(perfume.fragranceName, 'Fragrance name'),
+        fragrance_type: requiredChoice(perfume.fragranceType, 'Fragrance type'),
+        volume_ml: positiveDecimal(perfume.volumeMl, 'Volume'),
+        sealed: perfume.sealed,
+        authenticity_declared: true,
+        fragrance_notes: required(perfume.fragranceNotes, 'Fragrance notes'),
+        target_audience: requiredChoice(perfume.targetAudience, 'Target audience'),
+      },
+    };
+  }
+
+  if (form.detailKind === 'job') {
+    const job = form.specialized.job;
+    const method = requiredChoice(job.applicationMethod, 'Application method');
+    const target = job.applicationValue.trim();
+    if (method === 'external_url' && !/^https:\/\/\S+$/i.test(target)) {
+      throw new PublicationValidationError('Enter a complete application URL.');
+    }
+    if (method === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
+      throw new PublicationValidationError('Enter a valid application email.');
+    }
+    if (method === 'phone' && !/^\+?[0-9][0-9 ()-]{5,24}$/.test(target)) {
+      throw new PublicationValidationError('Enter a valid application phone number.');
+    }
+    return {
+      kind: 'job',
+      values: {
+        employer: required(job.employer, 'Employer'),
+        sector: required(job.sector, 'Sector'),
+        contract_type: requiredChoice(job.contractType, 'Contract type'),
+        schedule: required(job.schedule, 'Schedule'),
+        work_mode: requiredChoice(job.workMode, 'Work mode'),
+        location: required(job.location, 'Location'),
+        salary_min_cents: parseEuroCents(job.salaryMin),
+        salary_max_cents: parseEuroCents(job.salaryMax),
+        salary_currency: currency,
+        required_experience: required(job.requiredExperience, 'Required experience'),
+        application_method: method,
+        application_value: method === 'in_app' ? null : target,
+        application_deadline: required(job.applicationDeadline, 'Application deadline'),
+      },
+    };
+  }
+
+  const service = form.specialized.service;
+  return {
+    kind: 'service',
+    values: {
+      pricing_mode: requiredChoice(service.pricingMode, 'Pricing mode'),
+      service_area: required(service.serviceArea, 'Service area'),
+      delivery_mode: requiredChoice(service.deliveryMode, 'Delivery mode'),
+      availability: required(service.availability, 'Availability'),
+      experience: required(service.experience, 'Experience'),
+    },
   };
 }
 
@@ -329,7 +458,7 @@ function stateMatchesExpected(
   return (
     state.seller_id === sellerId &&
     state.status === 'active' &&
-    state.condition === NEW_CONDITION &&
+    isCanonicalListing(state.listing_type, state.condition) &&
     state.published_at !== null &&
     state.images.length === paths.length &&
     state.images.every(
@@ -523,7 +652,7 @@ export async function publishRealListing(
 
   try {
     onPhase?.({ kind: 'validating' });
-    const draftInput = normalizeForm(form);
+    const draftInput = normalizePublishForm(form);
     validatePhotos(photos);
     failureStage = 'session';
     seller = await dependencies.requireSeller();

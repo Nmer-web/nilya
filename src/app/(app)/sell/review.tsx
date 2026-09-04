@@ -6,6 +6,7 @@ import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { formatPrice } from '@/components/listing-card';
 import { InlineError, Tap } from '@/components/ui';
 import { useDraft } from '@/features/sell/DraftContext';
+import type { ListingDraft } from '@/features/sell/draft';
 import { publicationFailureMessage, useRecovery } from '@/features/sell/recovery';
 import { useSellerProfile } from '@/features/sell/seller-profile';
 import { validateStepFields, type SellStep } from '@/features/sell/validation';
@@ -93,6 +94,7 @@ export default function ReviewStep() {
     : draft.categorySlug ?? '';
   const price = priceOrNull(draft.price, currency);
   const original = draft.originalPrice.trim() ? priceOrNull(draft.originalPrice, currency) : null;
+  const noun = draft.listingType === 'job' ? 'job' : draft.listingType === 'service' ? 'service' : 'listing';
   const cover = photos[0] ?? null;
   const coverSize = width - EDGE * 2;
 
@@ -118,6 +120,10 @@ export default function ReviewStep() {
           originalPrice: draft.originalPrice,
           city: profile.data?.city ?? '',
           countryCode: draft.countryCode,
+          currency,
+          listingType: draft.listingType,
+          detailKind: draft.detailKind,
+          specialized: draft.specialized,
         },
         [...photos],
         { onPhase: recovery.setPhase }
@@ -168,8 +174,8 @@ export default function ReviewStep() {
   return (
     <SellStepScreen
       step={6}
-      title="Review your listing"
-      subtitle="This is what buyers will see."
+      title={`Review your ${noun}`}
+      subtitle="This is what people will see on Nilya."
       errors={errors}
       onAttempt={() => setAttempted(true)}
       onContinue={() => void publish()}
@@ -218,18 +224,20 @@ export default function ReviewStep() {
           <Row label="Category" value={categoryLabel || 'Not chosen'} />
         </Section>
 
-        <Section title="Product details" onEdit={() => goTo(4)} error={attempted ? errors.size ?? errors.color : undefined}>
-          <Row label="Size" value={draft.attributes.size ?? 'Not set'} />
-          <Row label="Colour" value={draft.attributes.color ?? 'Not set'} />
-          <Text style={{ ...type.caption, color: C.textSecondary, marginTop: space.space8 }}>Sold as new.</Text>
+        <Section title={draft.detailKind === 'job' ? 'Job details' : draft.detailKind === 'service' ? 'Service details' : draft.detailKind === 'food' ? 'Food details' : draft.detailKind === 'perfume' ? 'Fragrance details' : 'Product details'} onEdit={() => goTo(4)} error={attempted ? Object.values(errors)[0] : undefined}>
+          <ReviewSpecialized draft={draft} />
         </Section>
 
-        <Section title="Price" onEdit={() => goTo(5)} error={attempted ? errors.price ?? errors.originalPrice ?? errors.countryCode : undefined}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.space8 }}>
-            <Text style={{ ...type.detailPrice, color: C.textPrimary }}>{price ?? 'Not set'}</Text>
-            {original ? <Text style={{ ...type.metadata, color: C.inkFaint, textDecorationLine: 'line-through' }}>{original}</Text> : null}
-          </View>
-          <Row label="Ships from" value={draft.countryCode ? countryName(draft.countryCode) : 'Not chosen'} />
+        <Section title={draft.listingType === 'job' ? 'Compensation' : 'Price'} onEdit={() => goTo(5)} error={attempted ? errors.price ?? errors.salaryMin ?? errors.salaryMax ?? errors.originalPrice ?? errors.countryCode : undefined}>
+          {draft.listingType === 'job' ? (
+            <Row label="Salary" value={`${priceOrNull(draft.specialized.job.salaryMin, currency) ?? 'Not set'}–${priceOrNull(draft.specialized.job.salaryMax, currency) ?? 'Not set'}`} />
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.space8 }}>
+              <Text style={{ ...type.detailPrice, color: C.textPrimary }}>{draft.specialized.service.pricingMode === 'quote' ? 'Quote required' : price ?? 'Not set'}</Text>
+              {original && draft.listingType === 'product' ? <Text style={{ ...type.metadata, color: C.inkFaint, textDecorationLine: 'line-through' }}>{original}</Text> : null}
+            </View>
+          )}
+          <Row label={draft.listingType === 'job' ? 'Job country' : draft.listingType === 'service' ? 'Provider country' : 'Ships from'} value={draft.countryCode ? countryName(draft.countryCode) : 'Not chosen'} />
         </Section>
       </StepFade>
     </SellStepScreen>
@@ -257,5 +265,82 @@ function Row({ label, value }: { label: string; value: string }) {
       <Text style={{ ...type.metadata, color: C.textSecondary }}>{label}</Text>
       <Text style={{ ...type.metadataMedium, color: C.textPrimary, flexShrink: 1, textAlign: 'right' }}>{value}</Text>
     </View>
+  );
+}
+
+function readable(value: string): string {
+  return value.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function ReviewSpecialized({ draft }: { draft: ListingDraft }) {
+  if (draft.detailKind === 'food') {
+    const food = draft.specialized.food;
+    return (
+      <>
+        <Row label="Quantity" value={`${food.quantity || 'Not set'} ${food.priceUnit || ''}`.trim()} />
+        <Row label="Ingredients" value={food.ingredients || 'Not set'} />
+        <Row label="Allergens" value={food.allergens || 'Not set'} />
+        <Row label="Expiry" value={food.expiryDate || 'Not set'} />
+        <Row label="Halal" value={readable(food.halalStatus || 'not specified')} />
+        <Row label="Preparation" value={readable(food.preparationType || 'not set')} />
+        <Row label="Storage" value={food.storageRequirements || 'Not set'} />
+        <Row label="Delivery" value={food.deliveryRequirements || 'Not set'} />
+      </>
+    );
+  }
+
+  if (draft.detailKind === 'perfume') {
+    const perfume = draft.specialized.perfume;
+    return (
+      <>
+        <Row label="Brand" value={draft.brand.trim() || 'Not set'} />
+        <Row label="Fragrance" value={perfume.fragranceName || 'Not set'} />
+        <Row label="Type" value={readable(perfume.fragranceType || 'not set')} />
+        <Row label="Volume" value={perfume.volumeMl ? `${perfume.volumeMl} ml` : 'Not set'} />
+        <Row label="Condition" value="New" />
+        <Row label="Sealed" value={perfume.sealed ? 'Yes' : 'No'} />
+        <Row label="Authenticity" value={perfume.authenticityDeclared ? 'Declared authentic' : 'Not declared'} />
+        <Row label="Notes" value={perfume.fragranceNotes || 'Not set'} />
+        <Row label="Audience" value={readable(perfume.targetAudience || 'not set')} />
+      </>
+    );
+  }
+
+  if (draft.detailKind === 'job') {
+    const job = draft.specialized.job;
+    return (
+      <>
+        <Row label="Employer" value={job.employer || 'Not set'} />
+        <Row label="Sector" value={job.sector || 'Not set'} />
+        <Row label="Contract" value={readable(job.contractType || 'not set')} />
+        <Row label="Schedule" value={job.schedule || 'Not set'} />
+        <Row label="Work mode" value={readable(job.workMode || 'not set')} />
+        <Row label="Location" value={job.location || 'Not set'} />
+        <Row label="Experience" value={job.requiredExperience || 'Not set'} />
+        <Row label="Apply via" value={readable(job.applicationMethod || 'not set')} />
+        <Row label="Deadline" value={job.applicationDeadline || 'Not set'} />
+      </>
+    );
+  }
+
+  if (draft.detailKind === 'service') {
+    const service = draft.specialized.service;
+    return (
+      <>
+        <Row label="Pricing" value={readable(service.pricingMode || 'not set')} />
+        <Row label="Service area" value={service.serviceArea || 'Not set'} />
+        <Row label="Delivery" value={readable(service.deliveryMode || 'not set')} />
+        <Row label="Availability" value={service.availability || 'Not set'} />
+        <Row label="Experience" value={service.experience || 'Not set'} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      {draft.attributes.size ? <Row label="Size" value={draft.attributes.size} /> : null}
+      {draft.attributes.color ? <Row label="Colour" value={draft.attributes.color} /> : null}
+      <Row label="Condition" value="New" />
+    </>
   );
 }

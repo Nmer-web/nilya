@@ -4,6 +4,7 @@ import { FlatList, I18nManager, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useNavClearance } from '@/components/bottom-nav';
+import { ActiveFilterChips, type ActiveFilterChipKey } from '@/components/active-filter-chips';
 import { Icon } from '@/components/icon';
 import { ListingFeedGrid } from '@/components/listing-feed-grid';
 import { Skeleton } from '@/components/skeleton';
@@ -17,12 +18,20 @@ import {
   categoryChildren,
   categoryHasChildren,
   categoryIconName,
+  categoryPath,
   isCanonicalCategorySlug,
 } from '@/lib/categories';
 import type { CategoryRow } from '@/lib/database.types';
 import { haptic } from '@/lib/haptics';
+import { listingNoun } from '@/lib/listing-types';
 import { fetchCategoryTree } from '@/lib/queries';
-import { EMPTY_FILTERS, SORTS, useApp } from '@/store/app-store';
+import {
+  activeFilterCount as countActiveFilters,
+  EMPTY_FILTERS,
+  emptyFiltersForCategory,
+  SORTS,
+  useApp,
+} from '@/store/app-store';
 import { color as C, radius, screenGutter, space, touch } from '@/theme/tokens';
 
 function routeValue(value: string | string[] | undefined): string {
@@ -53,7 +62,7 @@ function CategoryScreen({ slug, showAll }: { slug: string; showAll: boolean }) {
 
   const children = categoryChildren(rows, category.id);
   if (showAll || children.length === 0) {
-    return <CategoryProducts category={category} />;
+    return <CategoryProducts category={category} tree={rows} />;
   }
 
   return <CategoryMenu category={category} childCategories={children} tree={rows} />;
@@ -76,14 +85,14 @@ function CategoryMenu({
   const openSearch = () => {
     setCat(category.slug);
     setQuery('');
-    setFilters({ ...EMPTY_FILTERS, categorySlug: category.slug });
+    setFilters({ ...EMPTY_FILTERS, categorySlug: category.slug, listingType: category.listing_type });
     router.push('/search');
   };
 
   const openProducts = (target: CategoryRow, viewAll = false) => {
     haptic('selection-committed');
     setCat(target.slug);
-    setFilters({ ...EMPTY_FILTERS, categorySlug: target.slug });
+    setFilters({ ...EMPTY_FILTERS, categorySlug: target.slug, listingType: target.listing_type });
     router.push({
       pathname: '/category/[slug]',
       params: viewAll ? { slug: target.slug, view: 'all' } : { slug: target.slug },
@@ -106,10 +115,10 @@ function CategoryMenu({
           const label = item.kind === 'all' ? 'All' : item.category.label;
           const accessibilityLabel =
             item.kind === 'all'
-              ? `Browse all ${category.label} products`
+              ? `Browse all ${category.label} ${listingNoun(category.listing_type, true)}`
               : hasChildren
                 ? `Open ${item.category.label} category`
-                : `Browse ${item.category.label} products`;
+                : `Browse ${item.category.label} ${listingNoun(item.category.listing_type, true)}`;
 
           return (
             <CategoryMenuItem
@@ -191,20 +200,27 @@ function CategoryMenuItem({
   );
 }
 
-function CategoryProducts({ category }: { category: CategoryRow }) {
+function CategoryProducts({ category, tree }: { category: CategoryRow; tree: readonly CategoryRow[] }) {
   const router = useRouter();
   const goBack = useGoBack('/explore');
   const insets = useSafeAreaInsets();
   const navClearance = useNavClearance();
   const { width } = useWindowDimensions();
   const gutter = screenGutter(width);
-  const { filters, sort, openSheet, setFilters, setCat, setQuery } = useApp();
+  const { filters, sort, openSheet, setFilters, setCat, setQuery, setSort } = useApp();
   const favorites = useFavorites();
 
   useEffect(() => {
-    if (filters.categorySlug === category.slug) return;
-    setFilters({ ...filters, categorySlug: category.slug });
-  }, [category.slug, filters, setFilters]);
+    if (
+      filters.categorySlug === category.slug &&
+      filters.listingType === category.listing_type
+    ) return;
+    setFilters({ ...filters, categorySlug: category.slug, listingType: category.listing_type });
+  }, [category.listing_type, category.slug, filters, setFilters]);
+
+  useEffect(() => {
+    if (category.listing_type === 'job' && sort !== 'recent') setSort('recent');
+  }, [category.listing_type, setSort, sort]);
 
   const feed = useListingFeed(
     {
@@ -212,40 +228,71 @@ function CategoryProducts({ category }: { category: CategoryRow }) {
       minPriceCents: filters.minCents,
       maxPriceCents: filters.maxCents,
       countryCode: filters.countryCode,
+      city: filters.city,
       brand: filters.brand,
+      size: filters.size,
       color: filters.color,
+      deliveryKey: filters.deliveryKey,
+      listingType: category.listing_type,
+      halalStatus: filters.halalStatus,
+      preparationType: filters.preparationType,
+      fragranceType: filters.fragranceType,
+      targetAudience: filters.targetAudience,
+      sealed: filters.sealed,
+      contractType: filters.contractType,
+      workMode: filters.workMode,
+      sector: filters.sector,
+      pricingMode: filters.pricingMode,
+      serviceDeliveryMode: filters.serviceDeliveryMode,
       sort,
     },
-    `category:${category.slug}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${filters.brand}:${filters.color}:${sort}`
+    JSON.stringify(['category', category.slug, filters, sort])
   );
-  const activeFilterCount = [
-    filters.minCents,
-    filters.maxCents,
-    filters.countryCode,
-    filters.brand,
-    filters.color,
-  ].filter((value) => value !== null).length;
+  const activeFilterCount = countActiveFilters(filters, false, false);
   const sortLabel = SORTS.find((option) => option.key === sort)?.label ?? 'Newest';
+  const breadcrumb = categoryPath(tree, category.slug).map((item) => item.label).join(' \u203a ');
+  const singularNoun = listingNoun(category.listing_type);
+  const pluralNoun = listingNoun(category.listing_type, true);
+  const sectionTitle = pluralNoun.replace(/^./, (letter) => letter.toUpperCase());
   const countLabel = feed.loading
     ? 'Loading…'
     : feed.error || feed.total === null
       ? ''
-      : `${feed.total} ${feed.total === 1 ? 'product' : 'products'}`;
+      : `${feed.total} ${feed.total === 1 ? singularNoun : pluralNoun}`;
 
   const openSearch = () => {
     setCat(category.slug);
     setQuery('');
-    setFilters({ ...EMPTY_FILTERS, categorySlug: category.slug });
+    setFilters({ ...EMPTY_FILTERS, categorySlug: category.slug, listingType: category.listing_type });
     router.push('/search');
+  };
+
+  const clearFilters = () => setFilters({
+    ...emptyFiltersForCategory(category.slug),
+    listingType: category.listing_type,
+  });
+  const removeFilter = (key: ActiveFilterChipKey) => {
+    if (key === 'price') {
+      setFilters({ ...filters, minCents: null, maxCents: null });
+    } else if (key === 'countryCode') {
+      setFilters({ ...filters, countryCode: null, city: null });
+    } else if (key !== 'categorySlug') {
+      setFilters({ ...filters, [key]: null });
+    }
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
       <CategoryHeader title={category.label} onBack={goBack} onSearch={openSearch} />
       <View style={{ paddingHorizontal: gutter, paddingTop: space.space8, paddingBottom: space.space16 }}>
+        {breadcrumb ? (
+          <T variant="metadataMedium" color={C.primary} numberOfLines={1} style={{ marginBottom: space.space8 }}>
+            {breadcrumb}
+          </T>
+        ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.space12 }}>
           <T variant="sectionTitle" accessibilityRole="header" style={{ flex: 1 }}>
-            Products
+            {sectionTitle}
           </T>
           <T variant="metadata" color={C.textSecondary}>
             {countLabel}
@@ -253,21 +300,29 @@ function CategoryProducts({ category }: { category: CategoryRow }) {
         </View>
         <View style={{ flexDirection: 'row', gap: space.space8, marginTop: space.space12 }}>
           <ResultControl
-            label={sortLabel}
-            icon="chevronDown"
-            accessibilityLabel={`Sort products, ${sortLabel}`}
-            onPress={() => openSheet({ kind: 'sort' })}
-          />
-          <ResultControl
             label={activeFilterCount > 0 ? `Filters · ${activeFilterCount}` : 'Filters'}
             icon="sliders"
             selected={activeFilterCount > 0}
             accessibilityLabel={
-              activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : 'Filter products'
+              activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : `Filter ${pluralNoun}`
             }
             onPress={() => openSheet({ kind: 'filters' })}
           />
+          <ResultControl
+            label="Sort"
+            icon="chevronDown"
+            selected={sort !== 'recent'}
+            accessibilityLabel={`Sort ${pluralNoun}, ${sortLabel}`}
+            onPress={() => openSheet({ kind: 'sort' })}
+          />
         </View>
+        <ActiveFilterChips
+          filters={filters}
+          includeCategory={false}
+          includeListingType={false}
+          onRemove={removeFilter}
+          style={{ marginTop: space.space8 }}
+        />
       </View>
 
       <ListingFeedGrid
@@ -282,15 +337,28 @@ function CategoryProducts({ category }: { category: CategoryRow }) {
           feed.refresh();
           favorites.refresh();
         }}
-        empty={{
-          icon: 'bag',
-          title: 'No products found in this category.',
-          body:
-            activeFilterCount > 0
-              ? 'Try adjusting your filters.'
-              : 'New products will appear here as sellers publish them.',
-        }}
-        error={{ title: "Couldn't load products", body: 'Check your connection and try again.' }}
+        empty={
+          activeFilterCount > 0
+            ? {
+                icon: 'sliders',
+                title: `No ${pluralNoun} match these filters.`,
+                body: `Clear filters to see every ${singularNoun} in this category.`,
+                action: (
+                  <Button
+                    label="Clear filters"
+                    variant="secondary"
+                    onPress={clearFilters}
+                    style={{ marginTop: space.space20 }}
+                  />
+                ),
+              }
+            : {
+                icon: 'bag',
+                title: `No ${pluralNoun} found in this category.`,
+                body: `${sectionTitle} will appear here when people publish them on Nilya.`,
+              }
+        }
+        error={{ title: `Couldn't load ${pluralNoun}`, body: 'Check your connection and try again.' }}
       />
 
       {favorites.error ? (
@@ -328,7 +396,7 @@ function ResultControl({
         borderCurve: 'continuous',
         borderWidth: selected ? 0 : 1,
         borderColor: C.border,
-        backgroundColor: selected ? C.textPrimary : C.surface,
+        backgroundColor: selected ? C.primary : C.surface,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',

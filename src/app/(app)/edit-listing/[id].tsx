@@ -19,8 +19,11 @@ import {
   Tap,
 } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { NEW_CONDITION, type ListingImageRow } from '@/lib/database.types';
-import { categoryPath } from '@/lib/categories';
+import { type ListingImageRow } from '@/lib/database.types';
+import { categoryHasChildren, categoryPath } from '@/lib/categories';
+import { EMPTY_DRAFT, EMPTY_SPECIALIZED, type SpecializedDraft } from '@/features/sell/draft';
+import { ChoiceField, SpecializedFields } from '@/features/sell/SpecializedFields';
+import { validateStepFields } from '@/features/sell/validation';
 import { haptic } from '@/lib/haptics';
 import {
   disposeListingPhoto,
@@ -39,6 +42,8 @@ import {
   uploadListingObject,
   insertListingImage,
 } from '@/lib/mutations';
+import { normalizePublishForm } from '@/lib/listing-publication';
+import { detailKindForCategory, isCanonicalListing, isCommerceListing, listingNoun } from '@/lib/listing-types';
 import { fetchCategoryTree, fetchListing, imageUrl } from '@/lib/queries';
 import { useApp } from '@/store/app-store';
 import { useAuth } from '@/store/auth-store';
@@ -58,11 +63,11 @@ export default function EditListingRoute() {
   if (!listingId) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
-        <ScreenHeader title="Edit product" />
+        <ScreenHeader title="Edit listing" />
         <EmptyState
           icon="bag"
-          title="Product unavailable"
-          body="This link does not point at one of your products."
+          title="Listing unavailable"
+          body="This link does not point at one of your listings."
         />
       </View>
     );
@@ -102,6 +107,9 @@ function EditListing({ listingId }: { listingId: string }) {
   const [size, setSize] = useState('');
   const [categorySlug, setCategorySlug] = useState('');
   const [price, setPrice] = useState('');
+  const [originalPrice, setOriginalPrice] = useState('');
+  const [specialized, setSpecializedState] = useState<SpecializedDraft>(EMPTY_SPECIALIZED);
+  const [attempted, setAttempted] = useState(false);
   const [images, setImages] = useState<ListingImageRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -120,22 +128,83 @@ function EditListing({ listingId }: { listingId: string }) {
   }, []);
 
   const row = listing.data;
+  const editNoun = listingNoun(row?.listing_type ?? 'product');
 
   useEffect(() => {
     if (!row || seeded.current) return;
     seeded.current = true;
     setTitle(row.title);
     setDescription(row.description ?? '');
-    setBrand(row.brand ?? '');
+    setBrand(row.perfume_details?.brand ?? row.brand ?? '');
     setColor(row.color ?? '');
     setSize(row.size ?? '');
     setCategorySlug(row.category_slug);
     /* Cents to the seller's own units, so what they edit is what they see. */
-    setPrice((row.price_cents / 100).toString());
+    setPrice(row.price_cents == null ? '' : (row.price_cents / 100).toString());
+    setOriginalPrice(row.original_price_cents == null ? '' : (row.original_price_cents / 100).toString());
+    setSpecializedState({
+      food: row.food_details ? {
+        priceUnit: row.food_details.price_unit,
+        quantity: String(row.food_details.quantity),
+        ingredients: row.food_details.ingredients,
+        allergens: row.food_details.allergens,
+        expiryDate: row.food_details.expiry_date,
+        halalStatus: row.food_details.halal_status,
+        preparationType: row.food_details.preparation_type,
+        storageRequirements: row.food_details.storage_requirements,
+        deliveryRequirements: row.food_details.delivery_requirements,
+      } : EMPTY_SPECIALIZED.food,
+      perfume: row.perfume_details ? {
+        fragranceName: row.perfume_details.fragrance_name,
+        fragranceType: row.perfume_details.fragrance_type,
+        volumeMl: String(row.perfume_details.volume_ml),
+        sealed: row.perfume_details.sealed,
+        authenticityDeclared: row.perfume_details.authenticity_declared,
+        fragranceNotes: row.perfume_details.fragrance_notes,
+        targetAudience: row.perfume_details.target_audience,
+      } : EMPTY_SPECIALIZED.perfume,
+      job: row.job_details ? {
+        employer: row.job_details.employer,
+        sector: row.job_details.sector,
+        contractType: row.job_details.contract_type,
+        schedule: row.job_details.schedule,
+        workMode: row.job_details.work_mode,
+        location: row.job_details.location,
+        salaryMin: String(row.job_details.salary_min_cents / 100),
+        salaryMax: String(row.job_details.salary_max_cents / 100),
+        requiredExperience: row.job_details.required_experience,
+        applicationMethod: row.job_details.application_method,
+        applicationValue: row.job_details.application_value ?? '',
+        applicationDeadline: row.job_details.application_deadline,
+      } : EMPTY_SPECIALIZED.job,
+      service: row.service_details ? {
+        pricingMode: row.service_details.pricing_mode,
+        serviceArea: row.service_details.service_area,
+        deliveryMode: row.service_details.delivery_mode,
+        availability: row.service_details.availability,
+        experience: row.service_details.experience,
+      } : EMPTY_SPECIALIZED.service,
+    });
     setImages([...row.images].sort((a, b) => a.position - b.position));
   }, [row]);
 
-  const categoryRows = useMemo(() => categories.data ?? [], [categories.data]);
+  const setSpecialized = <K extends keyof SpecializedDraft,>(kind: K, changes: Partial<SpecializedDraft[K]>) => {
+    setSpecializedState((current) => ({
+      ...current,
+      [kind]: { ...current[kind], ...changes },
+    }));
+  };
+
+  const listingType = row?.listing_type ?? 'product';
+  const detailKind = row?.perfume_details ? 'perfume' : detailKindForCategory(row?.category);
+  const categoryRows = useMemo(() => {
+    const all = categories.data ?? [];
+    if (!row) return all;
+    return all.filter((category) =>
+      category.listing_type === row.listing_type &&
+      (row.perfume_details ? category.requires_perfume_details : !category.requires_perfume_details)
+    );
+  }, [categories.data, row]);
   const selectedCategoryPath = useMemo(
     () => categoryPath(categoryRows, categorySlug),
     [categoryRows, categorySlug]
@@ -148,10 +217,36 @@ function EditListing({ listingId }: { listingId: string }) {
     return cents > 0 ? cents : null;
   }, [price]);
 
+  const editDraft = {
+    ...EMPTY_DRAFT,
+    title,
+    description,
+    brand,
+    categorySlug: categorySlug || null,
+    listingType,
+    detailKind,
+    attributes: { size: size || null, color: color || null },
+    specialized,
+    price,
+    originalPrice,
+    countryCode: row?.country_code ?? null,
+  };
+  const validationErrors = {
+    ...validateStepFields(2, editDraft, []),
+    ...validateStepFields(4, editDraft, []),
+    ...validateStepFields(5, editDraft, []),
+  };
+  const selectedCategory = categoryRows.find((category) => category.slug === categorySlug);
+  const categoryValid = Boolean(
+    selectedCategory && !categoryHasChildren(categoryRows, selectedCategory.id)
+  );
+  if (!categoryValid) validationErrors.category = 'Choose a specific category.';
+  const complete = Object.keys(validationErrors).length === 0;
+
   if (listing.loading) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
-        <ScreenHeader title="Edit product" />
+        <ScreenHeader title="Edit listing" />
         <View style={{ padding: space.gutterCompact, gap: space.space16 }}>
           <Skeleton width="100%" height={120} round={radius.radiusLarge} />
           <Skeleton width="100%" height={72} round={radius.radiusMedium} />
@@ -165,17 +260,17 @@ function EditListing({ listingId }: { listingId: string }) {
   if (listing.error || !row) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
-        <ScreenHeader title="Edit product" />
+        <ScreenHeader title="Edit listing" />
         {listing.error ? (
           <ScreenError
             error={listing.error}
-            title="Could not load this product"
+            title="Could not load this listing"
             onRetry={listing.refetch}
           />
         ) : (
           <EmptyState
             icon="bag"
-            title="Product unavailable"
+            title="Listing unavailable"
             body="It may have been removed."
           />
         )}
@@ -188,14 +283,14 @@ function EditListing({ listingId }: { listingId: string }) {
   if (!user || user.id !== row.seller_id) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
-        <ScreenHeader title="Edit product" />
+        <ScreenHeader title={`Edit ${editNoun}`} />
         <EmptyState
           icon="shield"
-          title="This is not your product"
-          body="Only the seller who published a product can edit it."
+          title={`This is not your ${editNoun}`}
+          body={`Only the person who published this ${editNoun} can edit it.`}
           action={
             <Button
-              label="Back to the product"
+              label={`Back to the ${editNoun}`}
               variant="secondary"
               onPress={() => router.replace({ pathname: '/listing/[id]', params: { id: row.id } })}
               style={{ marginTop: space.space20 }}
@@ -206,47 +301,47 @@ function EditListing({ listingId }: { listingId: string }) {
     );
   }
 
-  if (row.condition !== NEW_CONDITION) {
+  if (!isCanonicalListing(row.listing_type, row.condition)) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
-        <ScreenHeader title="Edit product" />
+        <ScreenHeader title={`Edit ${editNoun}`} />
         <EmptyState
           icon="info"
-          title="This product cannot be edited"
-          body="NILYA sells new products only, and this listing is not recorded as new."
+          title={`This ${editNoun} cannot be edited`}
+          body="This record does not match Nilya’s listing-type rules."
         />
       </View>
     );
   }
 
   const trimmedTitle = title.trim();
-  const categoryValid = categoryRows.some((category) => category.slug === categorySlug);
-  const complete =
-    trimmedTitle.length >= 1 &&
-    trimmedTitle.length <= 120 &&
-    description.length <= 4000 &&
-    categoryValid &&
-    priceCents !== null;
 
   const save = async () => {
-    if (savingRef.current || !complete || priceCents === null) return;
+    setAttempted(true);
+    if (savingRef.current || !complete) return;
     savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
-      await updateOwnListing(row.id, {
+      const input = normalizePublishForm({
         title: trimmedTitle,
-        description: description.trim() || null,
-        brand: brand.trim() || null,
-        color: color.trim() || null,
-        size: size.trim() || null,
+        description,
+        brand,
+        color,
+        size,
         categorySlug,
-        priceCents,
-        city: row.city,
+        price,
+        originalPrice,
+        city: row.city ?? '',
         countryCode: row.country_code,
+        currency: row.currency,
+        listingType: row.listing_type,
+        detailKind,
+        specialized,
       });
+      await updateOwnListing(row.id, input);
       if (!mounted.current) return;
-      flash('Product updated');
+      flash(`${row.listing_type === 'job' ? 'Job' : row.listing_type === 'service' ? 'Service' : 'Listing'} updated`);
       haptic('important-confirmation');
       router.replace({ pathname: '/listing/[id]', params: { id: row.id } });
     } catch (caught) {
@@ -267,7 +362,7 @@ function EditListing({ listingId }: { listingId: string }) {
     /* A listing with no photograph cannot be shown honestly anywhere in the
        app, so the last one is kept until a replacement is added. */
     if (images.length <= 1) {
-      setPhotoError('A product needs at least one photo. Add another before removing this one.');
+      setPhotoError(`A ${editNoun} needs at least one photo. Add another before removing this one.`);
       return;
     }
     setPhotoBusy(true);
@@ -290,7 +385,7 @@ function EditListing({ listingId }: { listingId: string }) {
     if (photoBusy) return;
     const remaining = LISTING_PHOTO_LIMIT - images.length;
     if (remaining <= 0) {
-      setPhotoError(`A product can have at most ${LISTING_PHOTO_LIMIT} photos.`);
+      setPhotoError(`A ${editNoun} can have at most ${LISTING_PHOTO_LIMIT} photos.`);
       return;
     }
 
@@ -346,7 +441,7 @@ function EditListing({ listingId }: { listingId: string }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <ScreenHeader title="Edit product" />
+      <ScreenHeader title={`Edit ${editNoun}`} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -459,35 +554,38 @@ function EditListing({ listingId }: { listingId: string }) {
             }}
           >
             <T variant="sectionTitle" accessibilityRole="header" style={{ marginBottom: space.space16 }}>
-              Product
+              {row.listing_type === 'job' ? 'Job' : row.listing_type === 'service' ? 'Service' : row.listing_type === 'food' ? 'Food listing' : 'Product'}
             </T>
 
             <Field
               label="Title"
               value={title}
               onChangeText={(value) => setTitle(value.slice(0, 120))}
-              placeholder="What are you selling?"
+              placeholder={row.listing_type === 'job' ? 'Job title' : row.listing_type === 'service' ? 'Service title' : 'What are you listing?'}
               maxLength={120}
               editable={!saving}
+              error={attempted ? validationErrors.title : undefined}
             />
             <Field
               label="Description"
               value={description}
               onChangeText={(value) => setDescription(value.slice(0, 4000))}
-              placeholder="Describe your product"
+              placeholder={`Describe this ${editNoun}`}
               maxLength={4000}
               multiline
               editable={!saving}
+              error={attempted ? validationErrors.description : undefined}
               style={{ minHeight: 96, textAlignVertical: 'top' }}
             />
-            <Field
+            {isCommerceListing(row.listing_type) ? <Field
               label="Brand"
               value={brand}
               onChangeText={setBrand}
               placeholder="Optional"
               editable={!saving}
-            />
-            <View style={{ flexDirection: 'row', gap: space.space12 }}>
+              error={attempted ? validationErrors.brand : undefined}
+            /> : null}
+            {row.listing_type === 'product' && detailKind === 'product' ? <View style={{ flexDirection: 'row', gap: space.space12 }}>
               <View style={{ flex: 1 }}>
                 <Field
                   label="Colour"
@@ -506,9 +604,27 @@ function EditListing({ listingId }: { listingId: string }) {
                   editable={!saving}
                 />
               </View>
-            </View>
+            </View> : null}
 
-            <Field
+            {row.listing_type === 'job' ? (
+              <View style={{ flexDirection: 'row', gap: space.space12 }}>
+                <View style={{ flex: 1 }}><Field label={`Minimum salary (${row.currency})`} value={specialized.job.salaryMin} onChangeText={(salaryMin) => setSpecialized('job', { salaryMin: salaryMin.replace(/[^0-9.,]/g, '') })} keyboardType="decimal-pad" editable={!saving} error={attempted ? validationErrors.salaryMin : undefined} /></View>
+                <View style={{ flex: 1 }}><Field label={`Maximum salary (${row.currency})`} value={specialized.job.salaryMax} onChangeText={(salaryMax) => setSpecialized('job', { salaryMax: salaryMax.replace(/[^0-9.,]/g, '') })} keyboardType="decimal-pad" editable={!saving} error={attempted ? validationErrors.salaryMax : undefined} /></View>
+              </View>
+            ) : row.listing_type === 'service' ? (
+              <View>
+                <ChoiceField label="Pricing mode" value={specialized.service.pricingMode} options={[["fixed", "Fixed price"], ["hourly", "Per hour"], ["daily", "Per day"], ["quote", "Quote required"]] as const} onChange={(pricingMode) => { setSpecialized('service', { pricingMode }); if (pricingMode === 'quote') setPrice(''); }} error={attempted ? validationErrors.pricingMode : undefined} />
+                {specialized.service.pricingMode !== 'quote' ? <Field
+                  label={`Price (${row.currency})`}
+                  value={price}
+                  onChangeText={(value) => setPrice(value.replace(/[^0-9.,]/g, ''))}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  editable={!saving}
+                  error={attempted ? validationErrors.price : undefined}
+                /> : null}
+              </View>
+            ) : <><Field
               label={`Price (${row.currency})`}
               value={price}
               onChangeText={(value) => setPrice(value.replace(/[^0-9.,]/g, ''))}
@@ -520,8 +636,19 @@ function EditListing({ listingId }: { listingId: string }) {
                   ? 'Enter a price above zero.'
                   : `Buyers will see ${formatPrice(priceCents, row.currency)}`
               }
+              error={attempted ? validationErrors.price : undefined}
             />
+            <Field label={`Original price (${row.currency})`} value={originalPrice} onChangeText={(value) => setOriginalPrice(value.replace(/[^0-9.,]/g, ''))} placeholder="Optional" keyboardType="decimal-pad" editable={!saving} error={attempted ? validationErrors.originalPrice : undefined} /></>}
           </View>
+
+          {detailKind !== 'product' ? (
+            <View style={{ marginTop: space.space24, paddingTop: space.space24, borderTopWidth: 1, borderTopColor: C.border }}>
+              <T variant="sectionTitle" accessibilityRole="header" style={{ marginBottom: space.space16 }}>
+                {detailKind === 'food' ? 'Food details' : detailKind === 'perfume' ? 'Fragrance details' : detailKind === 'job' ? 'Job details' : 'Service details'}
+              </T>
+              <SpecializedFields kind={detailKind} values={specialized} setValues={setSpecialized} errors={attempted ? validationErrors : {}} />
+            </View>
+          ) : null}
 
           <View
             style={{
@@ -563,6 +690,7 @@ function EditListing({ listingId }: { listingId: string }) {
                     haptic('selection-committed');
                   }}
                 />
+                {attempted && validationErrors.category ? <InlineError message={validationErrors.category} style={{ marginTop: space.space8 }} /> : null}
               </View>
             )}
           </View>
@@ -574,7 +702,7 @@ function EditListing({ listingId }: { listingId: string }) {
             thing a seller can own or change. The buyer picks one at checkout
             from the options available in this product's country.
           */}
-          <View
+          {isCommerceListing(row.listing_type) ? <View
             style={{
               marginTop: space.space32,
               padding: space.space16,
@@ -589,11 +717,11 @@ function EditListing({ listingId }: { listingId: string }) {
             <View style={{ flex: 1, gap: space.space4 }}>
               <T variant="bodyMedium">Delivery is set per country</T>
               <T variant="metadata" color={C.textSecondary}>
-                Buyers choose from the delivery options NILYA offers in this product&apos;s
+                Buyers choose from the delivery options Nilya offers in this listing&apos;s
                 country. Sellers do not set delivery methods or their prices.
               </T>
             </View>
-          </View>
+          </View> : null}
 
           {error ? <InlineError message={error} style={{ marginTop: space.space24 }} /> : null}
 
@@ -601,7 +729,7 @@ function EditListing({ listingId }: { listingId: string }) {
             label="Save changes"
             loading={saving}
             loadingLabel="Saving…"
-            disabled={!complete || photoBusy}
+            disabled={photoBusy}
             onPress={() => void save()}
             style={{ marginTop: space.space24 }}
           />

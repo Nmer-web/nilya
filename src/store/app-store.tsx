@@ -13,6 +13,7 @@ import {
   readRecentSearches,
   writeRecentSearches,
 } from '@/lib/recent-searches';
+import type { ListingType } from '@/lib/database.types';
 
 
 /*
@@ -49,8 +50,23 @@ export type Filters = {
   minCents: number | null;
   maxCents: number | null;
   countryCode: string | null;
+  city: string | null;
   brand: string | null;
+  size: string | null;
   color: string | null;
+  /** A real `delivery_options.key`; listing country decides applicability. */
+  deliveryKey: string | null;
+  listingType: ListingType | null;
+  halalStatus: string | null;
+  preparationType: string | null;
+  fragranceType: string | null;
+  targetAudience: string | null;
+  sealed: boolean | null;
+  contractType: string | null;
+  workMode: string | null;
+  sector: string | null;
+  pricingMode: string | null;
+  serviceDeliveryMode: string | null;
 };
 
 export const EMPTY_FILTERS: Filters = {
@@ -58,8 +74,22 @@ export const EMPTY_FILTERS: Filters = {
   minCents: null,
   maxCents: null,
   countryCode: null,
+  city: null,
   brand: null,
+  size: null,
   color: null,
+  deliveryKey: null,
+  listingType: null,
+  halalStatus: null,
+  preparationType: null,
+  fragranceType: null,
+  targetAudience: null,
+  sealed: null,
+  contractType: null,
+  workMode: null,
+  sector: null,
+  pricingMode: null,
+  serviceDeliveryMode: null,
 };
 /*
  * The prototype conversation is gone from here. `msgs`, `typing` and the
@@ -242,6 +272,40 @@ export function useApp() {
 /** True when any filter is set — drives the filter button's filled state. */
 export function filtersActive(f: Filters) {
   return Object.values(f).some((v) => v !== null);
+}
+
+/** Number of active discovery filters, optionally excluding a fixed category scope. */
+export function activeFilterCount(
+  f: Filters,
+  includeCategory = true,
+  includeListingType = true
+) {
+  const refinements = [
+    f.minCents !== null || f.maxCents !== null,
+    f.countryCode !== null,
+    f.city !== null,
+    f.brand !== null,
+    f.size !== null,
+    f.color !== null,
+    f.deliveryKey !== null,
+    includeListingType && f.listingType !== null,
+    f.halalStatus !== null,
+    f.preparationType !== null,
+    f.fragranceType !== null,
+    f.targetAudience !== null,
+    f.sealed !== null,
+    f.contractType !== null,
+    f.workMode !== null,
+    f.sector !== null,
+    f.pricingMode !== null,
+    f.serviceDeliveryMode !== null,
+  ].filter(Boolean).length;
+  return refinements + (includeCategory && f.categorySlug !== null ? 1 : 0);
+}
+
+/** Reset refinements while keeping a category result screen pinned to its real branch. */
+export function emptyFiltersForCategory(categorySlug: string): Filters {
+  return { ...EMPTY_FILTERS, categorySlug };
 }
 
 /**

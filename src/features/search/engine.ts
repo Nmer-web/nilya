@@ -1,4 +1,5 @@
-import { NEW_CONDITION, type ListingRow } from '@/lib/database.types';
+import type { ListingRow } from '@/lib/database.types';
+import { isCanonicalListing } from '@/lib/listing-types';
 
 import type {
   CategorySuggestion,
@@ -174,14 +175,14 @@ function matchesSelectedValue(value: string | null | undefined, selected: readon
 }
 
 function matchesFilters(listing: ListingRow, filters: SearchFilters): boolean {
-  if (listing.condition !== NEW_CONDITION) return false;
+  if (!isCanonicalListing(listing.listing_type, listing.condition)) return false;
   if (filters.query.trim() && scoreListing(listing, filters.query) === null) return false;
   if (!matchesSelectedValue(listing.category_slug, filters.categorySlugs)) return false;
   if (!matchesSelectedValue(listing.size, filters.sizes)) return false;
   if (!matchesSelectedValue(listing.color, filters.colors)) return false;
   if (!matchesSelectedValue(listing.brand, filters.brands)) return false;
-  if (filters.priceMinCents !== null && listing.price_cents < filters.priceMinCents) return false;
-  if (filters.priceMaxCents !== null && listing.price_cents > filters.priceMaxCents) return false;
+  if (filters.priceMinCents !== null && (listing.price_cents === null || listing.price_cents < filters.priceMinCents)) return false;
+  if (filters.priceMaxCents !== null && (listing.price_cents === null || listing.price_cents > filters.priceMaxCents)) return false;
   return true;
 }
 
@@ -220,10 +221,10 @@ export function search(products: readonly ListingRow[], filters: SearchFilters):
     let difference = 0;
     switch (filters.sort) {
       case 'priceAsc':
-        difference = left.listing.price_cents - right.listing.price_cents;
+        difference = (left.listing.price_cents ?? Number.POSITIVE_INFINITY) - (right.listing.price_cents ?? Number.POSITIVE_INFINITY);
         break;
       case 'priceDesc':
-        difference = right.listing.price_cents - left.listing.price_cents;
+        difference = (right.listing.price_cents ?? Number.NEGATIVE_INFINITY) - (left.listing.price_cents ?? Number.NEGATIVE_INFINITY);
         break;
       case 'rating':
         difference = compareNullableDescending(rating(left.listing), rating(right.listing));
@@ -279,7 +280,7 @@ export function suggest(products: readonly ListingRow[], query: string): Suggest
   const productSuggestions: RankedSuggestion<ProductSuggestion>[] = [];
 
   products.forEach((listing, originalIndex) => {
-    if (listing.condition !== NEW_CONDITION) return;
+    if (!isCanonicalListing(listing.listing_type, listing.condition)) return;
 
     const productScore = scoreListing(listing, query);
     if (productScore !== null) {
@@ -359,7 +360,7 @@ function facetValue(listing: ListingRow, facet: SearchFacet): string | null {
 function availableFacetValues(products: readonly ListingRow[], facet: SearchFacet): string[] {
   const byNormalizedValue = new Map<string, string>();
   for (const listing of products) {
-    if (listing.condition !== NEW_CONDITION) continue;
+    if (!isCanonicalListing(listing.listing_type, listing.condition)) continue;
     const value = facetValue(listing, facet);
     if (value) byNormalizedValue.set(normalizeSearchText(value), value);
   }

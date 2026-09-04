@@ -4,7 +4,7 @@ import Animated from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
 import { ImageSlot } from '@/components/image-slot';
-import { ListingImage, formatPrice, useFavoriteFeedback } from '@/components/listing-card';
+import { ListingImage, formatPrice, listingPriceText, listingTypeBadge, useFavoriteFeedback } from '@/components/listing-card';
 import { PressableScale } from '@/components/ui';
 import type { ListingRow } from '@/lib/database.types';
 import { coverUrl } from '@/lib/queries';
@@ -70,10 +70,12 @@ export function ListingThumb({ width = THUMB.md }: { width?: number }) {
  */
 const NEW_IN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function productBadge(listing: ListingRow): 'New in' | 'Sale' | null {
+export function productBadge(listing: ListingRow): string | null {
+  const typed = listingTypeBadge(listing);
+  if (typed) return typed;
   const published = listing.published_at ? Date.parse(listing.published_at) : Number.NaN;
   if (Number.isFinite(published) && Date.now() - published <= NEW_IN_WINDOW_MS) return 'New in';
-  if (listing.original_price_cents != null && listing.original_price_cents > listing.price_cents) return 'Sale';
+  if (listing.price_cents != null && listing.original_price_cents != null && listing.original_price_cents > listing.price_cents) return 'Sale';
   return null;
 }
 
@@ -91,9 +93,9 @@ export const ProductCard = React.memo(function ProductCard({
   onPress: () => void;
 }) {
   const title = listing.title.trim();
-  const price = formatPrice(listing.price_cents, listing.currency);
+  const price = listingPriceText(listing);
   const originalPrice =
-    listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
+    listing.price_cents != null && listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
       ? formatPrice(listing.original_price_cents, listing.currency)
       : null;
   const badge = productBadge(listing);
@@ -116,7 +118,7 @@ export const ProductCard = React.memo(function ProductCard({
           width={width}
           aspectRatio={3 / 4}
           round={radius.radiusXLarge}
-          label={`${title} product photo`}
+          label={`${title} listing photo`}
         />
 
         {badge ? (

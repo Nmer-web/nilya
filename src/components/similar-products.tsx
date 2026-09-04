@@ -18,11 +18,13 @@ const LOADING_CARD_COUNT = 3;
  * fewer round trip than each fetching the same listings for itself.
  */
 export function SimilarProducts({
+  title = 'Similar listings',
   listings,
   loading,
   savedIds,
   onToggleSave,
 }: {
+  title?: string;
   listings: readonly ListingRow[];
   loading: boolean;
   savedIds: Set<string>;
@@ -37,7 +39,7 @@ export function SimilarProducts({
     <View className="mt-8 border-t border-nilya-border pt-6">
       <View className="px-5 pb-4">
         <T variant="sectionTitle" accessibilityRole="header">
-          Similar products
+          {title}
         </T>
       </View>
 

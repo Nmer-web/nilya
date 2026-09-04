@@ -70,6 +70,10 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T008 Configure error handling and logging infrastructure
 - [ ] T009 Setup environment configuration management
 
+For Nilya listing work, foundational tasks MUST include typed-listing validation: product/food are
+NEW-only; job/service condition is null and cannot enter offer, shipment, order, payment, or
+checkout paths. Any approved schema/RLS work must cite the dated constitution approval.
+
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
 ---

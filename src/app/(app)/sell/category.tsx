@@ -47,7 +47,7 @@ export default function CategoryStep() {
       return;
     }
     haptic('selection-committed');
-    setCategory(category.slug);
+    setCategory(category);
   };
 
   return (
@@ -119,7 +119,7 @@ export default function CategoryStep() {
             onPress: () => {
               if (pending) {
                 haptic('selection-committed');
-                setCategory(pending === 'clear' ? null : pending.slug);
+                setCategory(pending === 'clear' ? null : pending);
               }
               setPending(null);
             },

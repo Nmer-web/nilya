@@ -7,6 +7,7 @@ import { SellCountryPicker } from '@/components/sell-country-picker';
 import { Skeleton } from '@/components/skeleton';
 import { InlineError } from '@/components/ui';
 import { useDraft } from '@/features/sell/DraftContext';
+import { ChoiceField } from '@/features/sell/SpecializedFields';
 import { useSellerProfile } from '@/features/sell/seller-profile';
 import { validateStepFields } from '@/features/sell/validation';
 import { FieldError, FieldLabel, SellStepScreen, StepFade } from '@/features/sell/wizard';
@@ -42,7 +43,7 @@ function sanitizeMoney(value: string): string {
  */
 export default function PricingStep() {
   const router = useRouter();
-  const { draft, patch, photos } = useDraft();
+  const { draft, patch, photos, setSpecialized } = useDraft();
   const [attempted, setAttempted] = useState(false);
   const settings = useAsync(fetchPlatformSettings, 'platform-settings');
   const profile = useSellerProfile();
@@ -59,6 +60,14 @@ export default function PricingStep() {
   if (!settings.loading && !currencyReady) errors.currency = 'Pricing is unavailable until the marketplace currency is confirmed.';
   const shown = attempted ? errors : {};
 
+  const commerce = draft.listingType === 'product' || draft.listingType === 'food';
+  const isJob = draft.listingType === 'job';
+  const isService = draft.listingType === 'service';
+  const quoteOnly = isService && draft.specialized.service.pricingMode === 'quote';
+  const showPrice = !isJob && !quoteOnly;
+  const showOriginal = commerce;
+  const screenTitle = isJob ? 'Set compensation' : isService ? 'Set service pricing' : 'Set the price';
+
   const price = cents(draft.price);
   const original = draft.originalPrice.trim() ? cents(draft.originalPrice) : null;
   const discount = price !== null && original !== null && original > price ? Math.round((1 - price / original) * 100) : null;
@@ -66,27 +75,62 @@ export default function PricingStep() {
   return (
     <SellStepScreen
       step={5}
-      title="Set the price"
+      title={screenTitle}
       errors={errors}
       onAttempt={() => setAttempted(true)}
       onContinue={() => router.push('/sell/review')}
     >
       <StepFade>
-        <FieldLabel label={`Price${currencyReady ? ` (${currency})` : ''}`} />
-        <MoneyInput
-          value={draft.price}
-          onChangeText={(value) => patch({ price: sanitizeMoney(value) })}
-          symbol={currencyReady ? '€' : ''}
-          accessibilityLabel="Price"
-          large
-          error={Boolean(shown.price)}
-        />
-        <FieldError message={shown.price ?? shown.currency} />
+        {isService ? (
+          <ChoiceField
+            label="Pricing mode"
+            value={draft.specialized.service.pricingMode}
+            options={[["fixed", "Fixed price"], ["hourly", "Per hour"], ["daily", "Per day"], ["quote", "Quote required"]] as const}
+            onChange={(pricingMode) => {
+              setSpecialized('service', { pricingMode });
+              if (pricingMode === 'quote') patch({ price: '', originalPrice: '' });
+            }}
+            error={shown.pricingMode}
+          />
+        ) : null}
+
+        {isJob ? (
+          <View style={{ gap: space.space20 }}>
+            <View>
+              <FieldLabel label={`Minimum salary${currencyReady ? ` (${currency})` : ''}`} />
+              <MoneyInput value={draft.specialized.job.salaryMin} onChangeText={(salaryMin) => setSpecialized('job', { salaryMin: sanitizeMoney(salaryMin) })} symbol={currencyReady ? '€' : ''} accessibilityLabel="Minimum salary" large error={Boolean(shown.salaryMin)} />
+              <FieldError message={shown.salaryMin ?? shown.currency} />
+            </View>
+            <View>
+              <FieldLabel label={`Maximum salary${currencyReady ? ` (${currency})` : ''}`} />
+              <MoneyInput value={draft.specialized.job.salaryMax} onChangeText={(salaryMax) => setSpecialized('job', { salaryMax: sanitizeMoney(salaryMax) })} symbol={currencyReady ? '€' : ''} accessibilityLabel="Maximum salary" error={Boolean(shown.salaryMax)} />
+              <FieldError message={shown.salaryMax} />
+            </View>
+          </View>
+        ) : showPrice ? (
+          <View style={{ marginTop: isService ? space.space24 : 0 }}>
+            <FieldLabel label={`${isService ? 'Price' : 'Price'}${currencyReady ? ` (${currency})` : ''}`} />
+            <MoneyInput
+              value={draft.price}
+              onChangeText={(value) => patch({ price: sanitizeMoney(value) })}
+              symbol={currencyReady ? '€' : ''}
+              accessibilityLabel="Price"
+              large
+              error={Boolean(shown.price)}
+            />
+            <FieldError message={shown.price ?? shown.currency} />
+          </View>
+        ) : (
+          <View style={{ marginTop: space.space16, padding: space.space16, borderRadius: radius.radiusMedium, backgroundColor: C.primarySoft }}>
+            <Text style={{ ...type.metadata, color: C.primary }}>Customers will request a quote before a price is agreed.</Text>
+            <FieldError message={shown.currency} />
+          </View>
+        )}
         {settings.error ? (
           <InlineError message="The marketplace currency could not be confirmed." actionLabel="Retry" onAction={settings.refetch} style={{ marginTop: space.space12 }} />
         ) : null}
 
-        <View style={{ marginTop: space.space24 }}>
+        {showOriginal ? <View style={{ marginTop: space.space24 }}>
           <FieldLabel
             label="Original price"
             trailing={
@@ -117,10 +161,10 @@ export default function PricingStep() {
               Shown struck through beside the price when it is higher.
             </Text>
           )}
-        </View>
+        </View> : null}
 
         <View style={{ marginTop: space.space24 }}>
-          <FieldLabel label="Ships from" />
+          <FieldLabel label={isJob ? 'Job country' : isService ? 'Provider country' : 'Ships from'} />
           {profile.loading && draft.countryCode === null ? (
             <Skeleton width="100%" height={52} round={radius.radiusMedium} />
           ) : (
@@ -136,7 +180,7 @@ export default function PricingStep() {
           ) : null}
         </View>
 
-        {draft.countryCode && currencyReady ? (
+        {commerce && draft.countryCode && currencyReady ? (
           <View style={{ marginTop: space.space24 }}>
             <FieldLabel label="Delivery buyers can choose" />
             <Text style={{ ...type.caption, color: C.textSecondary, marginBottom: space.space8 }}>

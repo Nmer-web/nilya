@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEY = 'nilya.search.recent.v1';
-const LIMIT = 6;
+const LIMIT = 8;
 
 /**
  * Normalises user-entered search history without inventing suggestions. Earlier

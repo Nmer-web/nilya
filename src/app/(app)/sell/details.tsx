@@ -27,6 +27,8 @@ export default function DetailsStep() {
 
   const errors = validateStepFields(2, draft, photos);
   const shown = attempted ? errors : {};
+  const showBrand = draft.listingType === 'product' || draft.listingType === 'food';
+  const noun = draft.listingType === 'job' ? 'job' : draft.listingType === 'service' ? 'service' : 'product';
 
   const suggestions = useMemo(() => {
     const query = draft.brand.trim().toLowerCase();
@@ -39,7 +41,7 @@ export default function DetailsStep() {
   return (
     <SellStepScreen
       step={2}
-      title="Describe your product"
+      title={`Describe your ${noun}`}
       errors={errors}
       onAttempt={() => setAttempted(true)}
       onContinue={() => router.push('/sell/category')}
@@ -49,14 +51,14 @@ export default function DetailsStep() {
           label="Title"
           value={draft.title}
           onChangeText={(value) => patch({ title: value.slice(0, TITLE_MAX) })}
-          placeholder="What are you selling?"
+          placeholder={draft.listingType === 'job' ? 'Job title' : draft.listingType === 'service' ? 'Service title' : 'What are you selling?'}
           maxLength={TITLE_MAX}
           autoCapitalize="sentences"
           returnKeyType="next"
           error={shown.title}
         />
 
-        <View style={{ marginTop: space.space20 }}>
+        {showBrand ? <View style={{ marginTop: space.space20 }}>
           <SellTextField
             label="Brand"
             value={draft.brand}
@@ -82,13 +84,13 @@ export default function DetailsStep() {
               ))}
             </View>
           ) : null}
-        </View>
+        </View> : null}
 
         <SellTextField
           label="Description"
           value={draft.description}
           onChangeText={(value) => patch({ description: value.slice(0, DESCRIPTION_MAX) })}
-          placeholder="Material, fit, what makes it special…"
+          placeholder={draft.listingType === 'job' ? 'Responsibilities and role details…' : draft.listingType === 'service' ? 'What you provide and what is included…' : 'What makes it special…'}
           maxLength={DESCRIPTION_MAX}
           multiline
           autoCapitalize="sentences"
@@ -96,9 +98,11 @@ export default function DetailsStep() {
           style={{ marginTop: space.space20 }}
         />
 
-        <Text style={{ ...type.metadata, color: C.textSecondary, marginTop: space.space20 }}>
-          Every product on NILYA is sold new, so there is no condition to choose.
-        </Text>
+        {draft.listingType === 'product' || draft.listingType === 'food' ? (
+          <Text style={{ ...type.metadata, color: C.textSecondary, marginTop: space.space20 }}>
+            Every purchasable item on Nilya is sold new, so there is no condition to choose.
+          </Text>
+        ) : null}
       </StepFade>
     </SellStepScreen>
   );

@@ -10,6 +10,7 @@ import { FadeIn, Skeleton } from '@/components/skeleton';
 import { Button, EmptyState, PressableScale, T } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import type { CategoryRow } from '@/lib/database.types';
+import { categoryIconName } from '@/lib/categories';
 import { haptic } from '@/lib/haptics';
 import { fetchCategories } from '@/lib/queries';
 import { EMPTY_FILTERS, useApp } from '@/store/app-store';
@@ -53,9 +54,11 @@ export default function Explore() {
   const browseCategory = useCallback(
     (category: CategoryRow) => {
       haptic('selection-committed');
+      setCat(category.slug);
+      setFilters({ ...EMPTY_FILTERS, categorySlug: category.slug, listingType: category.listing_type });
       router.push({ pathname: '/category/[slug]', params: { slug: category.slug } });
     },
-    [router]
+    [router, setCat, setFilters]
   );
 
   const renderCategory = useCallback(
@@ -225,7 +228,7 @@ function CategoryCard({
               justifyContent: 'center',
             }}
           >
-            <Icon name="bag" role="navigation" color={C.textSecondary} decorative />
+            <Icon name={categoryIconName(category.icon_key)} role="navigation" color={C.primary} decorative />
           </View>
         )}
       </View>

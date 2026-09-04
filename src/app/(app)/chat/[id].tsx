@@ -23,7 +23,8 @@ import { Button, EmptyState, InlineError, PressableScale, ScreenError, Tap } fro
 import { useAsync } from '@/hooks/use-async';
 import { useConversation } from '@/hooks/use-conversation';
 import { useGoBack } from '@/hooks/use-go-back';
-import { NEW_CONDITION } from '@/lib/database.types';
+import type { ListingCondition } from '@/lib/database.types';
+import { CANONICAL_LISTING_FILTER, isCanonicalListing, isCommerceListing } from '@/lib/listing-types';
 import { retryableReadMessage } from '@/lib/errors';
 import { haptic } from '@/lib/haptics';
 import { createOffer, markConversationRead, sendMessage } from '@/lib/mutations';
@@ -34,7 +35,7 @@ import { color as C, duration, space } from '@/theme/tokens';
 
 type ChatConversationBase = Omit<ConversationRow, 'listing'>;
 type ChatListing = NonNullable<ConversationRow['listing']>;
-type ChatListingQueryRow = ChatListing & { condition: string };
+type ChatListingQueryRow = ChatListing & { condition: ListingCondition | null };
 type OfferSheetPhase = 'closed' | 'open' | 'closing';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -58,14 +59,14 @@ async function fetchChatConversation(id: string): Promise<ConversationRow | null
   const conversation = conversationResult.data as unknown as ChatConversationBase;
   const listingResult = await supabase
     .from('listings')
-    .select('id, title, price_cents, currency, status, condition, images:listing_images ( storage_path, position )')
+    .select('id, title, price_cents, currency, status, listing_type, condition, images:listing_images ( storage_path, position )')
     .eq('id', conversation.listing_id)
-    .eq('condition', NEW_CONDITION)
+    .or(CANONICAL_LISTING_FILTER)
     .maybeSingle();
 
   if (listingResult.error) throw listingResult.error;
   const listingRow = listingResult.data as unknown as ChatListingQueryRow | null;
-  const listing = listingRow?.condition === NEW_CONDITION
+  const listing = listingRow && isCanonicalListing(listingRow.listing_type, listingRow.condition)
     ? (({ condition: _condition, ...row }) => row)(listingRow)
     : null;
 
@@ -244,6 +245,8 @@ function Conversation({ id }: { id: string }) {
   const offerCurrency = conversation.listing?.currency;
   const canMakeOffer = !!conversation.listing
     && conversation.listing.status === 'active'
+    && isCommerceListing(conversation.listing.listing_type)
+    && conversation.listing.price_cents != null
     && me === conversation.buyer_id
     && conversation.buyer_id !== conversation.seller_id
     && !liveOffer
@@ -366,7 +369,7 @@ function Conversation({ id }: { id: string }) {
         } : undefined}
       />
 
-      {!!conversation.listing && !!offerCurrency && (
+      {!!conversation.listing && conversation.listing.price_cents != null && isCommerceListing(conversation.listing.listing_type) && !!offerCurrency && (
         <OfferSheet
           phase={offerSheetPhase}
           sellerPrice={formatPrice(conversation.listing.price_cents, offerCurrency)}
@@ -666,7 +669,9 @@ function ListingContext({ conversation }: { conversation: ConversationRow }) {
   }
 
   const imageUrl = coverUrl(listing.images);
-  const price = formatPrice(listing.price_cents, listing.currency);
+  const price = listing.price_cents == null
+    ? listing.listing_type === 'job' ? 'Job opportunity' : 'Service'
+    : formatPrice(listing.price_cents, listing.currency);
 
   return (
     <Tap

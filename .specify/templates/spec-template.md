@@ -105,6 +105,12 @@
 - **[Entity 1]**: [What it represents, key attributes without implementation]
 - **[Entity 2]**: [What it represents, relationships to other entities]
 
+<!--
+  For Nilya listing features, specify the applicable listing_type values. Product and food are
+  new purchasable goods; job and service condition is null and they must not inherit commerce
+  controls. Important searchable fields belong in normalized columns, never placeholder JSON.
+-->
+
 ## Success Criteria *(mandatory)*
 
 <!--
@@ -137,4 +143,3 @@
   If a scenario needs a listing, an order or a conversation, state how that row comes to exist
   through a real user action — do not assume seeded or sample content.
 -->
-

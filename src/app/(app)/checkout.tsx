@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/skeleton';
 import { Button, Card, EmptyState, InlineError, ScreenError, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { NEW_CONDITION } from '@/lib/database.types';
+import { isCommerceListing } from '@/lib/listing-types';
 import { retryableReadMessage } from '@/lib/errors';
 import { fetchDeliveryOptions, startCheckout, type DeliveryOptionRow } from '@/lib/mutations';
 import { coverUrl, fetchAcceptedOffer, fetchListing, fetchPlatformSettings } from '@/lib/queries';
@@ -105,6 +106,10 @@ function Checkout({ listingId }: { listingId: string }) {
         )}
       </View>
     );
+  }
+
+  if (!isCommerceListing(row.listing_type) || row.price_cents == null) {
+    return <CheckoutUnavailable />;
   }
 
   if (settings.error || offer.error || !settings.data) {

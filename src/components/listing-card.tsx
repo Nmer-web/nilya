@@ -14,6 +14,7 @@ import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/ui';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { NEW_CONDITION, type ListingRow } from '@/lib/database.types';
+import { detailKindForCategory } from '@/lib/listing-types';
 import { coverUrl } from '@/lib/queries';
 import {
   color as C,
@@ -60,6 +61,54 @@ function useCardWidth(columns = 2) {
 export function formatPrice(cents: number, currency = 'EUR'): string {
   const symbol = currency === 'EUR' ? '€' : `${currency} `;
   return cents % 100 === 0 ? `${symbol}${cents / 100}` : `${symbol}${(cents / 100).toFixed(2)}`;
+}
+
+function humanize(value: string): string {
+  return value.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
+}
+
+/** The truthful price/compensation label used by every typed listing card. */
+export function listingPriceText(
+  listing: Pick<
+    ListingRow,
+    | 'listing_type'
+    | 'job_details'
+    | 'service_details'
+    | 'food_details'
+    | 'price_cents'
+    | 'currency'
+  >
+): string {
+  if (listing.listing_type === 'job' && listing.job_details) {
+    const { salary_min_cents: minimum, salary_max_cents: maximum, salary_currency: currency } = listing.job_details;
+    return minimum === maximum
+      ? formatPrice(minimum, currency)
+      : `${formatPrice(minimum, currency)}–${formatPrice(maximum, currency)}`;
+  }
+  if (listing.listing_type === 'service' && listing.service_details?.pricing_mode === 'quote') {
+    return 'Quote required';
+  }
+  if (listing.price_cents == null) return 'Price unavailable';
+  const amount = formatPrice(listing.price_cents, listing.currency);
+  if (listing.listing_type === 'food' && listing.food_details) {
+    return `${amount} / ${listing.food_details.price_unit}`;
+  }
+  if (listing.listing_type === 'service' && listing.service_details) {
+    const suffix = listing.service_details.pricing_mode === 'hourly'
+      ? ' / hour'
+      : listing.service_details.pricing_mode === 'daily'
+        ? ' / day'
+        : '';
+    return `${amount}${suffix}`;
+  }
+  return amount;
+}
+
+export function listingTypeBadge(listing: ListingRow): string | null {
+  const kind = detailKindForCategory(listing.category);
+  if (kind === 'perfume') return 'FRAGRANCE';
+  if (kind === 'product') return null;
+  return kind.toUpperCase();
 }
 
 /**
@@ -198,24 +247,35 @@ export const ListingCard = React.memo(function ListingCard({
   imageAspectRatio?: number;
 }) {
   const router = useRouter();
-  const price = formatPrice(listing.price_cents, listing.currency);
+  const price = listingPriceText(listing);
   const originalPrice = listing.original_price_cents == null
     ? null
     : formatPrice(listing.original_price_cents, listing.currency);
   const title = listing.title.trim();
-  const candidateBrand = listing.brand?.trim() || null;
+  const candidateBrand = listing.listing_type === 'job'
+    ? listing.job_details?.employer?.trim() || null
+    : listing.perfume_details?.brand?.trim() || listing.brand?.trim() || null;
   const brand = candidateBrand?.toLocaleLowerCase() === title.toLocaleLowerCase() ? null : candidateBrand;
   const place = [listing.city, listing.country_code].filter(Boolean).join(', ');
   const size = SIZED_CATEGORY_SLUGS.has(listing.category_slug) ? listing.size?.trim() : null;
   const color = listing.color?.trim();
-  const attributes = [size, color, listing.condition === NEW_CONDITION ? 'NEW' : null].filter(
+  const typedAttributes = listing.listing_type === 'job' && listing.job_details
+    ? [humanize(listing.job_details.contract_type), humanize(listing.job_details.work_mode)]
+    : listing.listing_type === 'service' && listing.service_details
+      ? [humanize(listing.service_details.delivery_mode), listing.service_details.service_area]
+      : listing.listing_type === 'food' && listing.food_details
+        ? [humanize(listing.food_details.preparation_type), humanize(listing.food_details.halal_status)]
+        : listing.perfume_details
+          ? [humanize(listing.perfume_details.fragrance_type), `${listing.perfume_details.volume_ml} ml`]
+          : [size, color, listing.condition === NEW_CONDITION ? 'NEW' : null];
+  const attributes = typedAttributes.filter(
     (value): value is string => Boolean(value)
   );
   const showAttributeRow = showAttributes && attributes.length > 0;
   const photoCount = listing.images.length;
   const verifiedSeller = showSellerVerification && listing.seller?.is_verified === true;
   const discountPercent =
-    listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
+    listing.price_cents != null && listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
       ? Math.round((1 - listing.price_cents / listing.original_price_cents) * 100)
       : null;
   const imageHeight = width / imageAspectRatio;
@@ -261,7 +321,7 @@ export const ListingCard = React.memo(function ListingCard({
         <ListingImage
           url={coverUrl(listing.images)}
           width={width}
-          label={`${listing.title} product photo`}
+          label={`${listing.title} listing photo`}
           round={framed ? 0 : imageToken.listing.radius}
           aspectRatio={imageAspectRatio}
         />
@@ -271,7 +331,11 @@ export const ListingCard = React.memo(function ListingCard({
           discounted listing's savings matter more to a shopper than its photo
           count, so the badge wins the slot when both would otherwise apply.
         */}
-        {showDiscountBadge && discountPercent != null && discountPercent > 0 ? (
+        {listingTypeBadge(listing) ? (
+          <View accessible accessibilityLabel={`${listingTypeBadge(listing)} listing`} style={{ position: 'absolute', left: space.space12, top: space.space12, minHeight: 30, justifyContent: 'center', borderRadius: radius.radiusSmall, backgroundColor: C.primary, paddingHorizontal: space.space8 }}>
+            <Text style={{ color: C.textInverse, fontSize: 12, fontWeight: '700', letterSpacing: 0.4 }}>{listingTypeBadge(listing)}</Text>
+          </View>
+        ) : showDiscountBadge && discountPercent != null && discountPercent > 0 ? (
           <View
             accessible
             accessibilityLabel={`${discountPercent} percent below the original price`}
@@ -433,13 +497,13 @@ export const ShowcaseListingCard = React.memo(function ShowcaseListingCard({
   onToggleSave: (id: string) => void;
 }) {
   const router = useRouter();
-  const price = formatPrice(listing.price_cents, listing.currency);
+  const price = listingPriceText(listing);
   const originalPrice =
-    listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
+    listing.price_cents != null && listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
       ? formatPrice(listing.original_price_cents, listing.currency)
       : null;
   const discountPercent =
-    listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
+    listing.price_cents != null && listing.original_price_cents != null && listing.original_price_cents > listing.price_cents
       ? Math.round((1 - listing.price_cents / listing.original_price_cents) * 100)
       : null;
   const title = listing.title.trim();
@@ -489,7 +553,7 @@ export const ShowcaseListingCard = React.memo(function ShowcaseListingCard({
         <ListingImage
           url={coverUrl(listing.images)}
           width={imageWidth}
-          label={`${title} product photo`}
+          label={`${title} listing photo`}
           round={radius.radiusLarge}
           aspectRatio={imageWidth / imageHeight}
         />

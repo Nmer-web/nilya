@@ -11,6 +11,7 @@ import { useAsync } from '@/hooks/use-async';
 import { useFavorites } from '@/hooks/use-favorites';
 import { useGoBack } from '@/hooks/use-go-back';
 import type { ListingRow } from '@/lib/database.types';
+import { isCommerceListing } from '@/lib/listing-types';
 import { coverUrl, fetchListingsByIds, fetchOrders } from '@/lib/queries';
 import { useAuth } from '@/store/auth-store';
 import { getCartIds, removeManyFromCart, useCart } from '@/store/cart-store';
@@ -18,6 +19,11 @@ import { color as C, elevation, radius, scale, space, touch, type } from '@/them
 
 const EDGE = space.space16;
 const THUMB = 88;
+type CommerceListingRow = ListingRow & { price_cents: number };
+
+function isPurchasable(row: ListingRow): row is CommerceListingRow {
+  return isCommerceListing(row.listing_type) && row.condition === 'new' && row.price_cents != null;
+}
 
 /** Order statuses that mean a listing has been bought and should leave the cart. */
 const LIVE_ORDER_STATUSES = new Set(['pending_payment', 'paid', 'shipped', 'delivered', 'completed', 'disputed']);
@@ -65,10 +71,10 @@ export default function Cart() {
   }, [items.data]);
 
   const rowsById = useMemo(
-    () => new Map((items.data?.rows ?? []).map((row) => [row.id, row])),
+    () => new Map((items.data?.rows ?? []).filter(isPurchasable).map((row) => [row.id, row])),
     [items.data]
   );
-  const available = cart.ids.map((id) => rowsById.get(id)).filter((row): row is ListingRow => Boolean(row));
+  const available = cart.ids.map((id) => rowsById.get(id)).filter((row): row is CommerceListingRow => Boolean(row));
   const unavailableIds = items.data ? cart.ids.filter((id) => !rowsById.has(id)) : [];
 
   /* One subtotal per currency; listings carry their own and nothing converts. */
@@ -217,7 +223,7 @@ function CartItem({
   onRemove,
   onOpen,
 }: {
-  listing: ListingRow;
+  listing: CommerceListingRow;
   saved: boolean;
   onToggleSave: () => void;
   onRemove: () => void;

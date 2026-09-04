@@ -16,7 +16,10 @@ import {
   readStoredDraft,
   writeStoredDraft,
   type ListingDraft,
+  type SpecializedDraft,
 } from '@/features/sell/draft';
+import type { CategoryRow } from '@/lib/database.types';
+import { detailKindForCategory } from '@/lib/listing-types';
 import { disposeListingPhotos, type LocalListingPhoto } from '@/lib/listing-photos';
 
 const PERSIST_DEBOUNCE_MS = 500;
@@ -29,10 +32,16 @@ type DraftContextValue = {
   hydrated: boolean;
   /** True when this session started from a stored draft. */
   resumed: boolean;
-  patch: (changes: Partial<Omit<ListingDraft, 'attributes'>>) => void;
+  patch: (changes: Partial<Omit<ListingDraft, 'attributes' | 'specialized'>>) => void;
   setAttribute: (key: AttributeKey, value: string | null) => void;
+  setSpecialized: <K extends keyof SpecializedDraft>(
+    kind: K,
+    changes: Partial<SpecializedDraft[K]>
+  ) => void;
   /** Changing category clears the attributes, since their options belong to it. */
-  setCategory: (slug: string | null) => void;
+  setCategory: (
+    category: Pick<CategoryRow, 'slug' | 'listing_type' | 'requires_perfume_details'> | null
+  ) => void;
   setPhotos: (update: (previous: readonly LocalListingPhoto[]) => readonly LocalListingPhoto[]) => void;
   /** Writes the draft to storage right now, ahead of the debounce. */
   save: () => Promise<void>;
@@ -99,7 +108,7 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const patch = useCallback((changes: Partial<Omit<ListingDraft, 'attributes'>>) => {
+  const patch = useCallback((changes: Partial<Omit<ListingDraft, 'attributes' | 'specialized'>>) => {
     setDraft((previous) => ({ ...previous, ...changes }));
   }, []);
 
@@ -107,11 +116,30 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
     setDraft((previous) => ({ ...previous, attributes: { ...previous.attributes, [key]: value } }));
   }, []);
 
-  const setCategory = useCallback((slug: string | null) => {
+  const setSpecialized = useCallback(<K extends keyof SpecializedDraft,>(
+    kind: K,
+    changes: Partial<SpecializedDraft[K]>
+  ) => {
+    setDraft((previous) => ({
+      ...previous,
+      specialized: {
+        ...previous.specialized,
+        [kind]: { ...previous.specialized[kind], ...changes },
+      },
+    }));
+  }, []);
+
+  const setCategory = useCallback((category: Pick<CategoryRow, 'slug' | 'listing_type' | 'requires_perfume_details'> | null) => {
     setDraft((previous) =>
-      previous.categorySlug === slug
+      previous.categorySlug === category?.slug
         ? previous
-        : { ...previous, categorySlug: slug, attributes: { size: null, color: null } }
+        : {
+            ...previous,
+            categorySlug: category?.slug ?? null,
+            listingType: category?.listing_type ?? 'product',
+            detailKind: detailKindForCategory(category),
+            attributes: { size: null, color: null },
+          }
     );
   }, []);
 
@@ -145,8 +173,8 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<DraftContextValue>(
-    () => ({ draft, photos, hydrated, resumed, patch, setAttribute, setCategory, setPhotos, save, discard }),
-    [draft, photos, hydrated, resumed, patch, setAttribute, setCategory, setPhotos, save, discard]
+    () => ({ draft, photos, hydrated, resumed, patch, setAttribute, setSpecialized, setCategory, setPhotos, save, discard }),
+    [draft, photos, hydrated, resumed, patch, setAttribute, setSpecialized, setCategory, setPhotos, save, discard]
   );
 
   return <DraftContext.Provider value={value}>{children}</DraftContext.Provider>;

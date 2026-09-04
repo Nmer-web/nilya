@@ -24,6 +24,9 @@
     // resolved by the Supabase Edge runtime and its own toolchain.
     "supabase",
     // The Next.js admin workspace owns its own tsconfig and path aliases.
-    "admin"
+    "admin",
+    // Node's built-in test runner owns this integration-test surface. The app
+    // compiler deliberately includes only Expo/React Native globals.
+    "tests"
   ]
 }

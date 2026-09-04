@@ -21,9 +21,11 @@ import { useAsync } from '@/hooks/use-async';
 import { useFavorites } from '@/hooks/use-favorites';
 import { useListingFeed } from '@/hooks/use-listing-feed';
 import type { CategoryRow, ListingRow } from '@/lib/database.types';
+import { categoryIconName } from '@/lib/categories';
 import { haptic } from '@/lib/haptics';
+import { isCommerceListing, listingNoun } from '@/lib/listing-types';
 import { coverUrl, fetchCategories, fetchListings } from '@/lib/queries';
-import { useApp } from '@/store/app-store';
+import { activeFilterCount as countActiveFilters, EMPTY_FILTERS, useApp } from '@/store/app-store';
 import { useCart } from '@/store/cart-store';
 import { color as C, duration, radius, scale, space, touch, type } from '@/theme/tokens';
 
@@ -59,7 +61,11 @@ export default function Home() {
   const category = filters.categorySlug;
   const chooseCategory = (slug: string | null) => {
     setCat(slug ?? 'All');
-    setFilters({ ...filters, categorySlug: slug });
+    setFilters({
+      ...EMPTY_FILTERS,
+      categorySlug: slug,
+      listingType: slug ? 'product' : null,
+    });
   };
 
   const feedFilters = {
@@ -67,17 +73,31 @@ export default function Home() {
     minPriceCents: filters.minCents,
     maxPriceCents: filters.maxCents,
     countryCode: filters.countryCode,
+    city: filters.city,
     brand: filters.brand,
+    size: filters.size,
     color: filters.color,
+    deliveryKey: filters.deliveryKey,
+    listingType: filters.listingType,
+    halalStatus: filters.halalStatus,
+    preparationType: filters.preparationType,
+    fragranceType: filters.fragranceType,
+    targetAudience: filters.targetAudience,
+    sealed: filters.sealed,
+    contractType: filters.contractType,
+    workMode: filters.workMode,
+    sector: filters.sector,
+    pricingMode: filters.pricingMode,
+    serviceDeliveryMode: filters.serviceDeliveryMode,
   };
-  const filterKey = `${category}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${filters.brand}:${filters.color}`;
+  const filterKey = JSON.stringify([category, filters]);
 
   /* The swipeable row is always newest first, whatever sort the grid uses:
      "New arrivals" ordered by price would not be new arrivals. */
   const newArrivals = useListingFeed({ ...feedFilters, sort: 'recent' }, `home:new:${filterKey}`);
   const feed = useListingFeed({ ...feedFilters, sort }, `home:${filterKey}:${sort}`);
 
-  const activeFilterCount = Object.values(filters).filter((value) => value !== null).length;
+  const activeFilterCount = countActiveFilters(filters);
 
   const audiences = AUDIENCE_SLUGS.map((slug) => (categories.data ?? []).find((row) => row.slug === slug)).filter(
     (row): row is CategoryRow => Boolean(row)
@@ -88,14 +108,14 @@ export default function Home() {
     <View style={{ paddingTop: insets.top + space.space8, paddingBottom: space.space8 }}>
       <View
         style={{
-          height: touch.minimum,
+          height: touch.large,
           marginHorizontal: EDGE,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
         }}
       >
-        <NilyaLockup iconSize={28} />
+        <NilyaLockup iconSize={32} />
         <View style={{ flexDirection: 'row', gap: space.space8 }}>
           <IconButton icon="heart" label="Wishlist" onPress={() => router.push('/favorites')} />
           <IconButton icon="bag" label="Bag" badge={cart.count} onPress={() => router.push('/cart')} />
@@ -209,14 +229,14 @@ export default function Home() {
         }}
         empty={{
           icon: 'bag',
-          title: activeFilterCount === 0 ? 'No products yet' : 'Nothing here yet',
+          title: activeFilterCount === 0 ? 'No listings yet' : 'Nothing here yet',
           body:
             activeFilterCount === 0
-              ? 'New products will appear here as sellers publish them.'
+              ? 'New products, food, jobs and services will appear here on Nilya.'
               : 'Try another category or adjust your filters.',
           action: (
             <View style={{ marginTop: space.space20 }}>
-              <Button label="Start selling" onPress={() => router.push('/sell')} />
+              <Button label="Create a listing" onPress={() => router.push('/sell')} />
             </View>
           ),
         }}
@@ -238,6 +258,10 @@ export default function Home() {
 function HeroBanner({ listing, width, onPress }: { listing: ListingRow; width: number; onPress: () => void }) {
   const photo = coverUrl(listing.images);
   const imageWidth = Math.round(width * 0.46);
+  const noun = listingNoun(listing.listing_type);
+  const actionLabel = isCommerceListing(listing.listing_type)
+    ? 'Shop now'
+    : `View ${noun}`;
 
   return (
     <PressableScale
@@ -245,7 +269,7 @@ function HeroBanner({ listing, width, onPress }: { listing: ListingRow; width: n
       scale={scale.cardPressed}
       motionRole="cardPress"
       accessibilityRole="button"
-      accessibilityLabel={`New arrivals. ${listing.title}. Shop now`}
+      accessibilityLabel={`Latest on Nilya. ${listing.title}. ${actionLabel}`}
       style={{
         height: HERO_HEIGHT,
         borderRadius: radius.radiusXLarge,
@@ -290,10 +314,10 @@ function HeroBanner({ listing, width, onPress }: { listing: ListingRow; width: n
         </View>
         <View style={{ gap: space.space4 }}>
           <Text style={{ ...type.productTitle, color: C.textPrimary }} numberOfLines={1}>
-            New arrivals
+            Latest on Nilya
           </Text>
           <Text style={{ ...type.metadata, color: C.textSecondary }} numberOfLines={2}>
-            The latest products from Nilya sellers, starting with {listing.title.trim()}.
+            A newly published {noun}: {listing.title.trim()}.
           </Text>
         </View>
         <View
@@ -306,7 +330,7 @@ function HeroBanner({ listing, width, onPress }: { listing: ListingRow; width: n
             backgroundColor: C.textPrimary,
           }}
         >
-          <Text style={{ ...type.metadataMedium, color: C.textInverse }}>Shop now</Text>
+          <Text style={{ ...type.metadataMedium, color: C.textInverse }}>{actionLabel}</Text>
         </View>
       </View>
     </PressableScale>
@@ -338,7 +362,7 @@ function CategoryDisc({ category, onPress }: { category: CategoryRow; onPress: (
         {artwork ? (
           <CategoryArtwork kind={artwork} size={40} />
         ) : (
-          <Icon name="bag" role="inline" color={C.textSecondary} decorative />
+          <Icon name={categoryIconName(category.icon_key)} role="inline" color={C.primary} decorative />
         )}
       </View>
       <Text style={{ ...type.caption, color: C.textPrimary }} numberOfLines={1}>

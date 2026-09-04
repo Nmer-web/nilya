@@ -221,7 +221,9 @@ function MyListingItem({
   onConfirm: (action: OwnerAction) => void;
   onRetry: (action: OwnerAction) => void;
 }) {
-  const price = formatPrice(listing.price_cents, listing.currency);
+  const price = listing.price_cents == null
+    ? listing.listing_type === 'job' ? 'Job opportunity' : 'Quote required'
+    : formatPrice(listing.price_cents, listing.currency);
   const date = listingDate(listing);
 
   return (

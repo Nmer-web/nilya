@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -22,7 +23,7 @@ import {
   ListingActionBar,
   listingActionBarContentClearance,
 } from "@/components/listing-action-bar";
-import { formatPrice, useFavoriteFeedback } from "@/components/listing-card";
+import { formatPrice, listingPriceText, useFavoriteFeedback } from "@/components/listing-card";
 import { ListingRail } from "@/components/listing-rail";
 import { FloatingIconButton } from "@/components/screen-header";
 import { SimilarProducts } from "@/components/similar-products";
@@ -39,12 +40,16 @@ import { useAsync } from "@/hooks/use-async";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useGoBack } from "@/hooks/use-go-back";
 import { hasActiveBundleDiscount } from "@/lib/bundle-discounts";
-import { NEW_CONDITION, type SellerIdentity } from "@/lib/database.types";
+import type { ListingDetailRow, SellerIdentity } from "@/lib/database.types";
 import { retryableReadMessage } from "@/lib/errors";
 import {
   fetchDeliveryOptions,
   findOrCreateConversationForListing,
+  applyToJob,
+  bookService,
+  requestServiceQuote,
 } from "@/lib/mutations";
+import { isCanonicalListing, isCommerceListing, listingNoun } from "@/lib/listing-types";
 import {
   fetchListing,
   fetchListings,
@@ -61,6 +66,7 @@ import {
 import { listingShareContent } from "@/lib/sharing";
 import { useAuth } from "@/store/auth-store";
 import { useCart } from "@/store/cart-store";
+import { useApp } from "@/store/app-store";
 import {
   color as C,
   duration,
@@ -103,9 +109,12 @@ function ListingDetail({ listingId }: { listingId: string }) {
   const favorites = useFavorites();
   const { user } = useAuth();
   const cart = useCart();
+  const { flash } = useApp();
 
   const [opening, setOpening] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
+  const [typedAction, setTypedAction] = useState<'apply' | 'quote' | 'book' | null>(null);
+  const [typedActionError, setTypedActionError] = useState<string | null>(null);
   const mounted = useRef(true);
   const openingRef = useRef(false);
   const openingRequest = useRef(0);
@@ -212,13 +221,18 @@ function ListingDetail({ listingId }: { listingId: string }) {
 
   const saved = favorites.saved.has(row.id);
   const isMine = !!user && user.id === row.seller_id;
-  const canMessage =
-    !!user &&
-    !isMine &&
-    row.status === "active" &&
-    row.condition === NEW_CONDITION;
+  const canonical = isCanonicalListing(row.listing_type, row.condition);
+  const commerce = isCommerceListing(row.listing_type);
+  const isJob = row.listing_type === 'job';
+  const isService = row.listing_type === 'service';
+  const today = new Date().toISOString().slice(0, 10);
+  const applicationsOpen = !isJob || Boolean(
+    row.job_details && row.job_details.application_deadline >= today
+  );
+  const foodExpired = Boolean(row.food_details && row.food_details.expiry_date < today);
+  const canMessage = !isMine && row.status === "active" && canonical;
   const sellerAway = row.seller?.holiday_mode === true;
-  const canBuy = canMessage && !sellerAway;
+  const canBuy = canMessage && commerce && row.price_cents != null && !sellerAway && !foodExpired;
   const showFavorite = !isMine;
   const sellerItemRows = sellerItems.data ?? [];
   const similarItemRows = similarItems.data ?? [];
@@ -228,29 +242,36 @@ function ListingDetail({ listingId }: { listingId: string }) {
    * neither is a selector, and each is omitted when the column is empty.
    */
   const sizeValue = row.size?.trim() || null;
+  const priceLabel = listingPriceText(row);
   const originalPrice =
-    row.original_price_cents != null && row.original_price_cents > row.price_cents
+    row.price_cents != null && row.original_price_cents != null && row.original_price_cents > row.price_cents
       ? formatPrice(row.original_price_cents, row.currency)
       : null;
   /* The seller's stored rating, present only once someone has rated them. */
   const sellerRating = row.seller
     ? formatProfileRating(row.seller.rating_avg, row.seller.rating_count)
     : null;
-  const displayBrand = distinctBrand(row.brand, row.title);
+  const displayBrand = distinctBrand(
+    row.perfume_details?.brand ?? row.job_details?.employer ?? row.brand,
+    row.title
+  );
   const description = row.description?.trim() ?? "";
   const publishedAgo = formatPublishedAgo(row.published_at);
-  const publicationLabel = publishedAgo
-    ? `NEW · Published ${publishedAgo}`
-    : "NEW";
+  const typeLabel = isJob ? 'JOB' : isService ? 'SERVICE' : row.listing_type === 'food' ? 'FOOD · NEW' : 'NEW';
+  const publicationLabel = publishedAgo ? `${typeLabel} · Published ${publishedAgo}` : typeLabel;
 
   const contactSeller = async () => {
     if (
       openingRef.current ||
-      !user ||
-      user.id === row.seller_id ||
+      (user && user.id === row.seller_id) ||
       row.status !== "active" ||
-      row.condition !== NEW_CONDITION
+      !canonical
     ) {
+      return;
+    }
+
+    if (!user) {
+      router.push('/sign-in');
       return;
     }
 
@@ -275,7 +296,37 @@ function ListingDetail({ listingId }: { listingId: string }) {
     }
   };
 
-  const scrollBottomPadding = listingActionBarContentClearance(insets.bottom);
+  const runTypedAction = async (action: 'apply' | 'quote' | 'book') => {
+    if (!canMessage || typedAction || (action === 'apply' && !applicationsOpen)) return;
+    if (!user) {
+      router.push('/sign-in');
+      return;
+    }
+    setTypedAction(action);
+    setTypedActionError(null);
+    try {
+      if (action === 'apply' && row.job_details) {
+        const result = await applyToJob(row.id);
+        flash(result.existing ? 'Application already submitted' : 'Application submitted on Nilya');
+        const target = applicationTarget(row.job_details.application_method, row.job_details.application_value);
+        if (target && await Linking.canOpenURL(target)) await Linking.openURL(target);
+      } else if (action === 'quote') {
+        const result = await requestServiceQuote(row.id);
+        flash(result.existing ? 'Quote already requested' : 'Quote requested on Nilya');
+      } else if (action === 'book') {
+        const result = await bookService(row.id);
+        flash(result.existing ? 'Booking already requested' : 'Booking requested on Nilya');
+      }
+    } catch (caught) {
+      setTypedActionError(retryableReadMessage(caught, 'This request could not be saved.'));
+    } finally {
+      if (mounted.current) setTypedAction(null);
+    }
+  };
+
+  const scrollBottomPadding = commerce
+    ? listingActionBarContentClearance(insets.bottom)
+    : insets.bottom + space.space48;
 
   return (
     <View className="flex-1 bg-nilya-background">
@@ -335,12 +386,12 @@ function ListingDetail({ listingId }: { listingId: string }) {
               <IconButton
                 icon="send"
                 variant="surface"
-                label="Share product"
+                label={`Share ${listingNoun(row.listing_type)}`}
                 onPress={() => {
                   void Share.share(
                     listingShareContent(
                       row.title,
-                      formatPrice(row.price_cents, row.currency),
+                      priceLabel,
                     ),
                   ).catch(() => {});
                 }}
@@ -414,7 +465,7 @@ function ListingDetail({ listingId }: { listingId: string }) {
                   </T>
                 ) : null}
                 <T variant="detailPrice" selectable>
-                  {formatPrice(row.price_cents, row.currency)}
+                  {priceLabel}
                 </T>
               </View>
             </View>
@@ -449,7 +500,7 @@ function ListingDetail({ listingId }: { listingId: string }) {
               </View>
             ) : null}
 
-            <ProductBundleDiscount sellerId={row.seller_id} />
+            {commerce ? <ProductBundleDiscount sellerId={row.seller_id} /> : null}
 
             {/* Buying lives in the bar at the foot of the screen; messaging
                 sits here, beside the copy it is about. */}
@@ -461,7 +512,7 @@ function ListingDetail({ listingId }: { listingId: string }) {
                   </T>
                 ) : null}
                 <Button
-                  label="Message seller"
+                  label={isJob ? 'Contact employer' : isService ? 'Message provider' : 'Message seller'}
                   variant="secondary"
                   loading={opening}
                   onPress={() => {
@@ -471,7 +522,28 @@ function ListingDetail({ listingId }: { listingId: string }) {
               </View>
             ) : null}
 
-            {sellerAway ? (
+            {canMessage && isJob ? (
+              <View className="mt-3 gap-2">
+                {typedActionError ? <T variant="metadata" color={C.errorText} accessibilityRole="alert">{typedActionError}</T> : null}
+                <Button
+                  label={applicationsOpen ? 'Apply now' : 'Applications closed'}
+                  disabled={!applicationsOpen}
+                  loading={typedAction === 'apply'}
+                  onPress={() => void runTypedAction('apply')}
+                />
+                <Button label={saved ? 'Remove saved job' : 'Save job'} variant="secondary" onPress={favourite.activate} />
+              </View>
+            ) : null}
+
+            {canMessage && isService ? (
+              <View className="mt-3 gap-2">
+                {typedActionError ? <T variant="metadata" color={C.errorText} accessibilityRole="alert">{typedActionError}</T> : null}
+                <Button label="Request quote" loading={typedAction === 'quote'} onPress={() => void runTypedAction('quote')} />
+                <Button label="Book service" variant="secondary" loading={typedAction === 'book'} onPress={() => void runTypedAction('book')} />
+              </View>
+            ) : null}
+
+            {sellerAway && commerce ? (
               <View
                 accessible
                 accessibilityRole="text"
@@ -490,13 +562,22 @@ function ListingDetail({ listingId }: { listingId: string }) {
               </View>
             ) : null}
 
+            {foodExpired ? (
+              <View className="mt-5 flex-row items-start gap-2" accessibilityRole="alert">
+                <Icon name="info" role="metadata" color={C.errorText} decorative />
+                <T variant="metadata" color={C.errorText} className="min-w-0 flex-1">
+                  This food listing has passed its expiry date and cannot be purchased.
+                </T>
+              </View>
+            ) : null}
+
             {isMine && (
               <View className="mt-5 gap-3">
                 <T variant="metadata" color={C.textSecondary}>
                   This is your listing.
                 </T>
                 <Button
-                  label="Edit product"
+                  label={isJob ? 'Edit job' : isService ? 'Edit service' : 'Edit listing'}
                   variant="secondary"
                   onPress={() =>
                     router.push({
@@ -515,22 +596,30 @@ function ListingDetail({ listingId }: { listingId: string }) {
           <DescriptionSection key={description} description={description} />
         )}
 
-        <ProductAttributes
-          categoryLabel={row.category?.label ?? null}
-          color={row.color}
-          size={row.size}
-        />
+        {row.listing_type === 'product' && !row.perfume_details ? (
+          <ProductAttributes
+            categoryLabel={row.category?.label ?? null}
+            color={row.color}
+            size={row.size}
+          />
+        ) : (
+          <TypedListingDetails listing={row} />
+        )}
 
         {row.seller ? (
-          <SellerBlock seller={row.seller} sellerId={row.seller_id} />
+          <SellerBlock
+            seller={row.seller}
+            sellerId={row.seller_id}
+            title={isJob ? 'Employer' : isService ? 'Provider' : 'Seller'}
+          />
         ) : (
           <SellerUnavailable />
         )}
 
-        <DeliveryBlock countryCode={row.country_code} currency={row.currency} />
-        <TrustBlock />
+        {commerce ? <DeliveryBlock countryCode={row.country_code} currency={row.currency} /> : null}
+        {commerce ? <TrustBlock /> : null}
         <ListingRail
-          title="More from this seller"
+          title={isJob ? 'More from this employer' : isService ? 'More from this provider' : 'More from this seller'}
           listings={sellerItemRows}
           loading={sellerItems.loading}
           savedIds={favorites.saved}
@@ -544,6 +633,7 @@ function ListingDetail({ listingId }: { listingId: string }) {
         />
         {/* The same rows the hero strip shows, on one read rather than two. */}
         <SimilarProducts
+          title={isJob ? 'Similar jobs' : isService ? 'Similar services' : row.listing_type === 'food' ? 'Similar food listings' : 'Similar products'}
           listings={similarItemRows}
           loading={similarItems.loading}
           savedIds={favorites.saved}
@@ -551,7 +641,7 @@ function ListingDetail({ listingId }: { listingId: string }) {
         />
       </ScrollView>
 
-      <ListingActionBar
+      {commerce && row.price_cents != null ? <ListingActionBar
         bottomInset={insets.bottom}
         inCart={cart.has(row.id)}
         onBuyNow={
@@ -568,7 +658,7 @@ function ListingDetail({ listingId }: { listingId: string }) {
             : undefined
         }
         onViewCart={() => router.push("/cart")}
-      />
+      /> : null}
     </View>
   );
 }
@@ -1107,6 +1197,91 @@ function ProductAttributes({
   );
 }
 
+function readable(value: string): string {
+  return value.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function applicationTarget(
+  method: NonNullable<ListingDetailRow['job_details']>['application_method'],
+  value: string | null
+): string | null {
+  if (!value) return null;
+  if (method === 'external_url') return /^https?:\/\//i.test(value) ? value : null;
+  if (method === 'email') return `mailto:${value}`;
+  if (method === 'phone') return `tel:${value.replace(/[^+0-9]/g, '')}`;
+  return null;
+}
+
+function TypedListingDetails({ listing }: { listing: ListingDetailRow }) {
+  const rows: { label: string; value: string }[] = [];
+  let title = 'Details';
+
+  if (listing.food_details) {
+    const food = listing.food_details;
+    title = 'Food details';
+    rows.push(
+      { label: 'Category', value: listing.category?.label ?? listing.category_slug },
+      { label: 'Quantity', value: `${food.quantity} ${food.price_unit}` },
+      { label: 'Ingredients', value: food.ingredients },
+      { label: 'Allergens', value: food.allergens },
+      { label: 'Expiry', value: food.expiry_date },
+      { label: 'Halal', value: readable(food.halal_status) },
+      { label: 'Preparation', value: readable(food.preparation_type) },
+      { label: 'Storage', value: food.storage_requirements },
+      { label: 'Delivery', value: food.delivery_requirements },
+    );
+  } else if (listing.perfume_details) {
+    const perfume = listing.perfume_details;
+    title = 'Fragrance details';
+    rows.push(
+      { label: 'Brand', value: perfume.brand },
+      { label: 'Fragrance', value: perfume.fragrance_name },
+      { label: 'Type', value: readable(perfume.fragrance_type) },
+      { label: 'Volume', value: `${perfume.volume_ml} ml` },
+      { label: 'Condition', value: 'New' },
+      { label: 'Sealed', value: perfume.sealed ? 'Yes' : 'No' },
+      { label: 'Authenticity', value: perfume.authenticity_declared ? 'Declared authentic' : 'Not declared' },
+      { label: 'Notes', value: perfume.fragrance_notes },
+      { label: 'Audience', value: readable(perfume.target_audience) },
+    );
+  } else if (listing.job_details) {
+    const job = listing.job_details;
+    title = 'Job details';
+    rows.push(
+      { label: 'Employer', value: job.employer },
+      { label: 'Sector', value: job.sector },
+      { label: 'Contract', value: readable(job.contract_type) },
+      { label: 'Schedule', value: job.schedule },
+      { label: 'Work mode', value: readable(job.work_mode) },
+      { label: 'Location', value: job.location },
+      { label: 'Salary', value: `${formatPrice(job.salary_min_cents, job.salary_currency)}–${formatPrice(job.salary_max_cents, job.salary_currency)}` },
+      { label: 'Experience', value: job.required_experience },
+      { label: 'Apply via', value: readable(job.application_method) },
+      { label: 'Deadline', value: job.application_deadline },
+    );
+  } else if (listing.service_details) {
+    const service = listing.service_details;
+    title = 'Service details';
+    rows.push(
+      { label: 'Category', value: listing.category?.label ?? listing.category_slug },
+      { label: 'Pricing', value: readable(service.pricing_mode) },
+      { label: 'Service area', value: service.service_area },
+      { label: 'Delivery', value: readable(service.delivery_mode) },
+      { label: 'Availability', value: service.availability },
+      { label: 'Experience', value: service.experience },
+    );
+  }
+
+  if (rows.length === 0) return null;
+  return (
+    <DetailSection title={title}>
+      {rows.map((row, index) => (
+        <DetailRow key={`${row.label}:${index}`} label={row.label} value={row.value} last={index === rows.length - 1} />
+      ))}
+    </DetailSection>
+  );
+}
+
 function DescriptionSection({ description }: { description: string }) {
   const [expanded, setExpanded] = useState(false);
   const [canCollapse, setCanCollapse] = useState(false);
@@ -1165,9 +1340,11 @@ function DescriptionSection({ description }: { description: string }) {
 function SellerBlock({
   seller,
   sellerId,
+  title = 'Seller',
 }: {
   seller: SellerIdentity;
   sellerId: string;
+  title?: string;
 }) {
   const router = useRouter();
   const displayName = seller.display_name?.trim() ?? "";
@@ -1185,7 +1362,7 @@ function SellerBlock({
   if (!displayName || !validSellerRelation) return <SellerUnavailable />;
 
   return (
-    <DetailSection title="Seller">
+    <DetailSection title={title}>
       <PressableScale
         onPress={() =>
           router.push({

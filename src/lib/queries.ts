@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { categoryDescendantSlugs, isCanonicalCategorySlug } from '@/lib/categories';
-import { NEW_CONDITION } from '@/lib/database.types';
+import { CANONICAL_LISTING_FILTER } from '@/lib/listing-types';
 import { REFERRAL_CODE_PATTERN } from '@/lib/referrals';
 import type {
   BundleDiscountSettingsRow,
@@ -76,10 +76,14 @@ async function logAuthDiagnostics(): Promise<void> {
 
 /** Listing columns shared by feed and detail reads. */
 const LISTING_BASE_SELECT = `
-  id, title, brand, price_cents, original_price_cents, currency, condition,
+  id, title, brand, price_cents, original_price_cents, currency, condition, listing_type,
   category_slug, size, color, city, country_code, tagline, published_at,
-  category:categories ( slug, label ),
-  images:listing_images ( storage_path, position )
+  category:categories ( slug, label, listing_type, requires_perfume_details ),
+  images:listing_images ( storage_path, position ),
+  food_details ( listing_id, price_unit, quantity, ingredients, allergens, expiry_date, halal_status, preparation_type, storage_requirements, delivery_requirements, created_at, updated_at ),
+  perfume_details ( listing_id, brand, fragrance_name, fragrance_type, volume_ml, sealed, authenticity_declared, fragrance_notes, target_audience, created_at, updated_at ),
+  job_details ( listing_id, employer, sector, contract_type, schedule, work_mode, location, salary_min_cents, salary_max_cents, salary_currency, required_experience, application_method, application_value, application_deadline, created_at, updated_at ),
+  service_details ( listing_id, pricing_mode, service_area, delivery_mode, availability, experience, created_at, updated_at )
 `;
 
 /** Columns the grid and feed need, including their compact seller signals. */
@@ -95,13 +99,17 @@ const LISTING_SELECT = `
  * inner embed instead of the feed's optional image embed.
  */
 const SIMILAR_LISTING_SELECT = `
-  id, title, brand, price_cents, original_price_cents, currency, condition,
+  id, title, brand, price_cents, original_price_cents, currency, condition, listing_type,
   category_slug, size, color, city, country_code, tagline, published_at,
-  category:categories ( slug, label ),
+  category:categories ( slug, label, listing_type, requires_perfume_details ),
   seller:profiles!listings_seller_id_fkey!inner (
     id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales
   ),
-  images:listing_images!inner ( storage_path, position )
+  images:listing_images!inner ( storage_path, position ),
+  food_details ( listing_id, price_unit, quantity, ingredients, allergens, expiry_date, halal_status, preparation_type, storage_requirements, delivery_requirements, created_at, updated_at ),
+  perfume_details ( listing_id, brand, fragrance_name, fragrance_type, volume_ml, sealed, authenticity_declared, fragrance_notes, target_audience, created_at, updated_at ),
+  job_details ( listing_id, employer, sector, contract_type, schedule, work_mode, location, salary_min_cents, salary_max_cents, salary_currency, required_experience, application_method, application_value, application_deadline, created_at, updated_at ),
+  service_details ( listing_id, pricing_mode, service_area, delivery_mode, availability, experience, created_at, updated_at )
 `;
 
 /** One joined identity read; Product Detail never needs a second profile request. */
@@ -116,7 +124,7 @@ const LISTING_DETAIL_SELECT = `
 
 /** Private owner-management rows. No public seller join or favorite state is needed. */
 const MY_LISTING_SELECT = `
-  id, seller_id, title, price_cents, original_price_cents, currency, condition, status,
+  id, seller_id, title, price_cents, original_price_cents, currency, condition, listing_type, status,
   published_at, created_at, updated_at,
   images:listing_images ( storage_path, position )
 `;
@@ -129,13 +137,28 @@ export type FeedSort = 'recent' | 'price_asc' | 'price_desc';
 export type FeedFilters = {
   /** Category slug, or null for everything. A parent includes every active descendant. */
   category?: string | null;
-  /** Free text, matched against title, brand, city and description. */
+  /** Free text, matched against title, brand, category path, city and description. */
   query?: string;
+  listingType?: ListingRow['listing_type'] | null;
   minPriceCents?: number | null;
   maxPriceCents?: number | null;
   countryCode?: string | null;
+  city?: string | null;
   brand?: string | null;
+  size?: string | null;
   color?: string | null;
+  /** A real `delivery_options.key`; applicability is derived from listing country. */
+  deliveryKey?: string | null;
+  halalStatus?: string | null;
+  preparationType?: string | null;
+  fragranceType?: string | null;
+  targetAudience?: string | null;
+  sealed?: boolean | null;
+  contractType?: string | null;
+  workMode?: string | null;
+  sector?: string | null;
+  pricingMode?: string | null;
+  serviceDeliveryMode?: string | null;
   /** Restricts the feed to one seller, for their profile. */
   sellerId?: string | null;
   /** Seller and owner storefronts remain readable while the seller is away. */
@@ -143,14 +166,188 @@ export type FeedFilters = {
   sort?: FeedSort;
 };
 
+export type ProductSearchSuggestion = {
+  id: string;
+  title: string;
+  brand: string | null;
+  categorySlug: string;
+  images: ListingImageRow[];
+};
+
+export type SellerSearchSuggestion = {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  avatarColor: string | null;
+  city: string | null;
+  countryCode: string | null;
+};
+
+export type SearchSuggestions = {
+  products: ProductSearchSuggestion[];
+  brands: string[];
+  sellers: SellerSearchSuggestion[];
+};
+
+const EMPTY_SEARCH_SUGGESTIONS: SearchSuggestions = {
+  products: [],
+  brands: [],
+  sellers: [],
+};
+
+const SEARCH_SUGGESTION_CANDIDATE_LIMIT = 16;
+const SEARCH_SELLER_CANDIDATE_LIMIT = 24;
+const SEARCH_PRODUCT_SUGGESTION_LIMIT = 5;
+const SEARCH_BRAND_SUGGESTION_LIMIT = 4;
+const SEARCH_SELLER_SUGGESTION_LIMIT = 4;
+
+type ProductSuggestionCandidate = {
+  id: string;
+  title: string;
+  brand: string | null;
+  category_slug: string;
+  images: ListingImageRow[] | null;
+};
+
+type SellerSuggestionCandidate = {
+  seller_id: string;
+  seller: {
+    id: string;
+    display_name: string;
+    avatar_url: string | null;
+    avatar_color: string | null;
+    city: string | null;
+    country_code: string | null;
+  } | null;
+};
+
+/**
+ * Turn ordinary user text into a safe Postgres prefix tsquery. The same
+ * `search_tsv` GIN index serves both autocomplete and submitted websearch;
+ * this is only the prefix form needed while a word is still being typed.
+ */
+function prefixTextSearch(raw: string): string | null {
+  const lexemes = raw.normalize('NFKC').match(/[\p{L}\p{N}]+/gu)?.slice(0, 8) ?? [];
+  if (lexemes.length === 0) return null;
+  return lexemes.map((lexeme) => `${lexeme.slice(0, 48)}:*`).join(' & ');
+}
+
+function normalizedSearchText(raw: string): string {
+  return raw.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+function textMatchesTypedPrefix(value: string, rawQuery: string): boolean {
+  const queryWords = normalizedSearchText(rawQuery).match(/[\p{L}\p{N}]+/gu) ?? [];
+  const valueWords = normalizedSearchText(value).match(/[\p{L}\p{N}]+/gu) ?? [];
+  return queryWords.length > 0 && queryWords.every((queryWord) =>
+    valueWords.some((valueWord) => valueWord.startsWith(queryWord))
+  );
+}
+
+/** Escape LIKE metacharacters so typed `%` and `_` stay literal. */
+function escapeLikePattern(raw: string): string {
+  return raw.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+type DeliveryReferenceRow = {
+  country_code: string;
+  key: string;
+  name: string;
+  sort_order: number;
+};
+
+type DeliveryCountryScope =
+  | { mode: 'all'; countryCodes: string[] }
+  | { mode: 'include'; countryCodes: string[] }
+  | { mode: 'exclude'; countryCodes: string[] }
+  | { mode: 'none'; countryCodes: string[] };
+
+let deliveryReferenceRequest: Promise<DeliveryReferenceRow[]> | null = null;
+
+/** Active delivery reference rows shared by option generation and feed applicability. */
+async function fetchDeliveryReferenceRows(): Promise<DeliveryReferenceRow[]> {
+  if (deliveryReferenceRequest) return deliveryReferenceRequest;
+
+  deliveryReferenceRequest = (async () => {
+    const { data, error } = await supabase
+      .from('delivery_options')
+      .select('country_code, key, name, sort_order')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as DeliveryReferenceRow[];
+  })();
+
+  try {
+    return await deliveryReferenceRequest;
+  } catch (error) {
+    deliveryReferenceRequest = null;
+    throw error;
+  }
+}
+
+const deliveryScopeRequests = new Map<string, Promise<DeliveryCountryScope>>();
+
+/**
+ * Convert a delivery key into a country predicate without inventing a listing
+ * delivery column. A country's specific ladder replaces the `**` fallback,
+ * exactly as checkout does: fallback keys apply everywhere except countries
+ * whose own active ladder omits that key.
+ */
+async function deliveryCountryScope(deliveryKey: string): Promise<DeliveryCountryScope> {
+  const normalized = deliveryKey.trim();
+  if (!normalized) return { mode: 'none', countryCodes: [] };
+
+  const existing = deliveryScopeRequests.get(normalized);
+  if (existing) return existing;
+
+  const request = (async () => {
+    const rows = await fetchDeliveryReferenceRows();
+    const specificCountries = new Set(
+      rows.filter((row) => row.country_code !== '**').map((row) => row.country_code)
+    );
+    const supportedSpecific = new Set(
+      rows
+        .filter((row) => row.country_code !== '**' && row.key === normalized)
+        .map((row) => row.country_code)
+    );
+    const fallbackSupportsKey = rows.some(
+      (row) => row.country_code === '**' && row.key === normalized
+    );
+
+    if (fallbackSupportsKey) {
+      const excluded = [...specificCountries].filter((code) => !supportedSpecific.has(code));
+      return excluded.length > 0
+        ? { mode: 'exclude' as const, countryCodes: excluded }
+        : { mode: 'all' as const, countryCodes: [] };
+    }
+
+    const included = [...supportedSpecific];
+    return included.length > 0
+      ? { mode: 'include' as const, countryCodes: included }
+      : { mode: 'none' as const, countryCodes: [] };
+  })();
+
+  deliveryScopeRequests.set(normalized, request);
+  try {
+    return await request;
+  } catch (error) {
+    deliveryScopeRequests.delete(normalized);
+    throw error;
+  }
+}
+
 export type MyListingRow = {
   id: string;
   seller_id: string;
   title: string;
-  price_cents: number;
+  price_cents: number | null;
   original_price_cents: number | null;
   currency: string;
   condition: ListingRow['condition'];
+  listing_type: ListingRow['listing_type'];
   status: ListingStatus;
   published_at: string | null;
   created_at: string;
@@ -174,10 +371,16 @@ export async function fetchListings(
   const categorySlugs = filters.category
     ? await fetchCategoryDescendantSlugs(filters.category)
     : null;
+  const deliveryScope = filters.deliveryKey
+    ? await deliveryCountryScope(filters.deliveryKey)
+    : null;
 
   /* An invalid or inactive category has no product set. Returning a truthful
      empty page avoids turning an unrecognised scope into an unfiltered feed. */
   if (filters.category && categorySlugs?.length === 0) {
+    return { rows: [], hasMore: false, total: 0 };
+  }
+  if (deliveryScope?.mode === 'none') {
     return { rows: [], hasMore: false, total: 0 };
   }
 
@@ -186,11 +389,25 @@ export async function fetchListings(
    * and the enum still accepts legacy non-new values, so this keeps any row
    * outside the constitution out of the feed rather than trusting none exists.
    */
+  let listingSelect = LISTING_SELECT;
+  if (filters.halalStatus || filters.preparationType) {
+    listingSelect = listingSelect.replace('food_details (', 'food_details!inner (');
+  }
+  if (filters.fragranceType || filters.targetAudience || filters.sealed != null) {
+    listingSelect = listingSelect.replace('perfume_details (', 'perfume_details!inner (');
+  }
+  if (filters.contractType || filters.workMode || filters.sector) {
+    listingSelect = listingSelect.replace('job_details (', 'job_details!inner (');
+  }
+  if (filters.pricingMode || filters.serviceDeliveryMode) {
+    listingSelect = listingSelect.replace('service_details (', 'service_details!inner (');
+  }
+
   let q = supabase
     .from('listings')
-    .select(LISTING_SELECT, { count: 'exact' })
+    .select(listingSelect, { count: 'exact' })
     .eq('status', 'active')
-    .eq('condition', NEW_CONDITION)
+    .or(CANONICAL_LISTING_FILTER)
     .range(from, from + PAGE_SIZE - 1);
 
   /* Public marketplace discovery excludes away sellers without rewriting any
@@ -198,10 +415,28 @@ export async function fetchListings(
   if (!filters.includeHolidaySellers) q = q.eq('seller.holiday_mode', false);
 
   if (categorySlugs) q = q.in('category_slug', categorySlugs);
+  if (filters.listingType) q = q.eq('listing_type', filters.listingType);
   if (filters.sellerId) q = q.eq('seller_id', filters.sellerId);
   if (filters.countryCode) q = q.eq('country_code', filters.countryCode);
+  if (filters.city) q = q.eq('city', filters.city);
   if (filters.brand) q = q.eq('brand', filters.brand);
+  if (filters.size) q = q.eq('size', filters.size);
   if (filters.color) q = q.eq('color', filters.color);
+  if (filters.halalStatus) q = q.eq('food_details.halal_status', filters.halalStatus);
+  if (filters.preparationType) q = q.eq('food_details.preparation_type', filters.preparationType);
+  if (filters.fragranceType) q = q.eq('perfume_details.fragrance_type', filters.fragranceType);
+  if (filters.targetAudience) q = q.eq('perfume_details.target_audience', filters.targetAudience);
+  if (filters.sealed != null) q = q.eq('perfume_details.sealed', filters.sealed);
+  if (filters.contractType) q = q.eq('job_details.contract_type', filters.contractType);
+  if (filters.workMode) q = q.eq('job_details.work_mode', filters.workMode);
+  if (filters.sector) q = q.eq('job_details.sector', filters.sector);
+  if (filters.pricingMode) q = q.eq('service_details.pricing_mode', filters.pricingMode);
+  if (filters.serviceDeliveryMode) q = q.eq('service_details.delivery_mode', filters.serviceDeliveryMode);
+  if (deliveryScope?.mode === 'include') {
+    q = q.in('country_code', deliveryScope.countryCodes);
+  } else if (deliveryScope?.mode === 'exclude') {
+    q = q.not('country_code', 'in', `(${deliveryScope.countryCodes.join(',')})`);
+  }
   if (filters.minPriceCents != null) q = q.gte('price_cents', filters.minPriceCents);
   if (filters.maxPriceCents != null) q = q.lte('price_cents', filters.maxPriceCents);
 
@@ -213,12 +448,17 @@ export async function fetchListings(
   const text = filters.query?.trim();
   if (text) q = q.textSearch('search_tsv', text, { type: 'websearch', config: 'simple' });
 
-  q =
-    filters.sort === 'price_asc'
-      ? q.order('price_cents', { ascending: true })
-      : filters.sort === 'price_desc'
-        ? q.order('price_cents', { ascending: false })
-        : q.order('published_at', { ascending: false });
+  q = filters.sort === 'price_asc'
+    ? q
+        .order('price_cents', { ascending: true })
+        .order('published_at', { ascending: false })
+        .order('id', { ascending: false })
+    : filters.sort === 'price_desc'
+      ? q
+          .order('price_cents', { ascending: false })
+          .order('published_at', { ascending: false })
+          .order('id', { ascending: false })
+      : q.order('published_at', { ascending: false }).order('id', { ascending: false });
 
   const { data, error, count } = await q;
   if (error) {
@@ -236,6 +476,115 @@ export async function fetchListings(
   /* PostgREST counts the whole filtered set alongside the page, so the figure
      shown beside the grid is the real total and never an extrapolation. */
   return { rows, hasMore: rows.length === PAGE_SIZE, total: typeof count === 'number' ? count : null };
+}
+
+/**
+ * Compact, live autocomplete groups for the canonical Search screen.
+ *
+ * Product and brand candidates reuse the listing full-text vector in prefix
+ * mode. Seller names reuse the existing trigram index, but the query starts
+ * from active NEW listings so a public profile is suggested only when it is a
+ * real marketplace seller. Every read remains subject to the existing RLS.
+ */
+export async function fetchSearchSuggestions(
+  rawQuery: string,
+  categorySlug?: string | null,
+  signal?: AbortSignal
+): Promise<SearchSuggestions> {
+  const query = normalizedSearchText(rawQuery);
+  const prefixQuery = prefixTextSearch(query);
+  if (query.length < 2 || !prefixQuery) return EMPTY_SEARCH_SUGGESTIONS;
+
+  const categorySlugs = categorySlug
+    ? await fetchCategoryDescendantSlugs(categorySlug)
+    : null;
+  if (categorySlug && categorySlugs?.length === 0) return EMPTY_SEARCH_SUGGESTIONS;
+  if (signal?.aborted) throw new Error('Search suggestion request cancelled');
+
+  let productQuery = supabase
+    .from('listings')
+    .select(`
+      id, title, brand, category_slug,
+      images:listing_images ( storage_path, position ),
+      seller:profiles!listings_seller_id_fkey!inner ( id )
+    `)
+    .eq('status', 'active')
+    .or(CANONICAL_LISTING_FILTER)
+    .eq('seller.holiday_mode', false)
+    .textSearch('search_tsv', prefixQuery, { config: 'simple' })
+    .order('published_at', { ascending: false })
+    .limit(SEARCH_SUGGESTION_CANDIDATE_LIMIT);
+
+  let sellerQuery = supabase
+    .from('listings')
+    .select(`
+      seller_id,
+      seller:profiles!listings_seller_id_fkey!inner (
+        id, display_name, avatar_url, avatar_color, city, country_code
+      )
+    `)
+    .eq('status', 'active')
+    .or(CANONICAL_LISTING_FILTER)
+    .eq('seller.holiday_mode', false)
+    .ilike('seller.display_name', `%${escapeLikePattern(query)}%`)
+    .order('published_at', { ascending: false })
+    .limit(SEARCH_SELLER_CANDIDATE_LIMIT);
+
+  if (categorySlugs) {
+    productQuery = productQuery.in('category_slug', categorySlugs);
+    sellerQuery = sellerQuery.in('category_slug', categorySlugs);
+  }
+  if (signal) {
+    productQuery = productQuery.abortSignal(signal);
+    sellerQuery = sellerQuery.abortSignal(signal);
+  }
+
+  const [productResult, sellerResult] = await Promise.all([productQuery, sellerQuery]);
+  if (productResult.error) throw productResult.error;
+  if (sellerResult.error) throw sellerResult.error;
+
+  const candidates = (productResult.data ?? []) as unknown as ProductSuggestionCandidate[];
+  const brandKeys = new Set<string>();
+  const brands: string[] = [];
+  for (const candidate of candidates) {
+    const brand = candidate.brand?.trim();
+    const key = brand?.toLocaleLowerCase();
+    if (!brand || !key || brandKeys.has(key) || !textMatchesTypedPrefix(brand, query)) continue;
+    brandKeys.add(key);
+    brands.push(brand);
+    if (brands.length === SEARCH_BRAND_SUGGESTION_LIMIT) break;
+  }
+
+  const sellerKeys = new Set<string>();
+  const sellers: SellerSearchSuggestion[] = [];
+  for (const candidate of (sellerResult.data ?? []) as unknown as SellerSuggestionCandidate[]) {
+    const seller = candidate.seller;
+    if (!seller || seller.id !== candidate.seller_id || sellerKeys.has(seller.id)) continue;
+    const displayName = seller.display_name.trim();
+    if (!displayName) continue;
+    sellerKeys.add(seller.id);
+    sellers.push({
+      id: seller.id,
+      displayName,
+      avatarUrl: seller.avatar_url,
+      avatarColor: seller.avatar_color,
+      city: seller.city?.trim() || null,
+      countryCode: seller.country_code?.trim() || null,
+    });
+    if (sellers.length === SEARCH_SELLER_SUGGESTION_LIMIT) break;
+  }
+
+  return {
+    products: candidates.slice(0, SEARCH_PRODUCT_SUGGESTION_LIMIT).map((candidate) => ({
+      id: candidate.id,
+      title: candidate.title,
+      brand: candidate.brand,
+      categorySlug: candidate.category_slug,
+      images: candidate.images ?? [],
+    })),
+    brands,
+    sellers,
+  };
 }
 
 /**
@@ -265,7 +614,7 @@ export async function fetchMyListings(
     .from('listings')
     .select(MY_LISTING_SELECT)
     .eq('seller_id', sellerId)
-    .eq('condition', NEW_CONDITION)
+    .or(CANONICAL_LISTING_FILTER)
     .eq('status', status)
     .order(orderColumn, { ascending: false })
     .order('id', { ascending: false })
@@ -287,7 +636,7 @@ export async function fetchListing(id: string): Promise<ListingDetailRow | null>
     .from('listings')
     .select(LISTING_DETAIL_SELECT)
     .eq('id', id)
-    .eq('condition', NEW_CONDITION)
+    .or(CANONICAL_LISTING_FILTER)
     .maybeSingle();
 
   if (error) throw error;
@@ -338,7 +687,7 @@ export async function fetchSimilarListings({
       .from('listings')
       .select(SIMILAR_LISTING_SELECT)
       .eq('status', 'active')
-      .eq('condition', NEW_CONDITION)
+      .or(CANONICAL_LISTING_FILTER)
       .eq('category_slug', categorySlug)
       .eq('seller.holiday_mode', false)
       .neq('id', currentListingId)
@@ -371,7 +720,8 @@ export type OwnerPublicationState = {
   id: string;
   seller_id: string;
   status: ListingStatus;
-  condition: string;
+  condition: ListingRow['condition'];
+  listing_type: ListingRow['listing_type'];
   published_at: string | null;
   images: {
     storage_path: string;
@@ -386,7 +736,7 @@ export async function fetchOwnerPublicationState(id: string): Promise<OwnerPubli
   const { data, error } = await supabase
     .from('listings')
     .select(
-      'id, seller_id, status, condition, published_at, images:listing_images ( storage_path, position, width, height )'
+      'id, seller_id, status, condition, listing_type, published_at, images:listing_images ( storage_path, position, width, height )'
     )
     .eq('id', id)
     .maybeSingle();
@@ -398,7 +748,7 @@ export async function fetchOwnerPublicationState(id: string): Promise<OwnerPubli
 }
 
 const CATEGORY_SELECT =
-  'id, slug, label, parent_id, icon_key, sort_order, is_active, created_at, in_explore, in_home';
+  'id, slug, label, parent_id, icon_key, sort_order, is_active, created_at, in_explore, in_home, listing_type, requires_perfume_details';
 
 const LEGACY_CATEGORY_SELECT = 'slug, label, sort_order, in_explore, in_home';
 
@@ -449,6 +799,8 @@ function legacyCategory(row: LegacyCategoryRow): CategoryRow {
     icon_key: null,
     is_active: true,
     created_at: '',
+    listing_type: 'product',
+    requires_perfume_details: false,
   };
 }
 
@@ -790,6 +1142,209 @@ export async function setProfileFollow(profileId: string, following: boolean): P
  * so a separate query would only be a second thing to keep in step.
  */
 
+export type ListingFilterLocation = {
+  countryCode: string;
+  city: string;
+};
+
+export type ListingDeliveryFilterOption = {
+  /** Stored `delivery_options.key`, passed back to the canonical listing query. */
+  key: string;
+  /** A real name from one of the applicable active delivery rows. */
+  label: string;
+};
+
+export type ListingFilterOptions = {
+  brands: string[];
+  sizes: string[];
+  colors: string[];
+  countries: string[];
+  locations: ListingFilterLocation[];
+  delivery: ListingDeliveryFilterOption[];
+  listingTypes: ListingRow['listing_type'][];
+  halalStatuses: string[];
+  preparationTypes: string[];
+  fragranceTypes: string[];
+  targetAudiences: string[];
+  sealedValues: boolean[];
+  contractTypes: string[];
+  workModes: string[];
+  sectors: string[];
+  pricingModes: string[];
+  serviceDeliveryModes: string[];
+};
+
+const EMPTY_LISTING_FILTER_OPTIONS: ListingFilterOptions = {
+  brands: [],
+  sizes: [],
+  colors: [],
+  countries: [],
+  locations: [],
+  delivery: [],
+  listingTypes: [], halalStatuses: [], preparationTypes: [], fragranceTypes: [],
+  targetAudiences: [], sealedValues: [], contractTypes: [], workModes: [], sectors: [],
+  pricingModes: [], serviceDeliveryModes: [],
+};
+
+const FACET_ROW_LIMIT = 500;
+
+type ListingFilterValueRow = {
+  listing_type: ListingRow['listing_type'];
+  brand: string | null;
+  size: string | null;
+  color: string | null;
+  city: string | null;
+  country_code: string;
+  food_details: Pick<NonNullable<ListingRow['food_details']>, 'halal_status' | 'preparation_type'> | null;
+  perfume_details: Pick<NonNullable<ListingRow['perfume_details']>, 'fragrance_type' | 'target_audience' | 'sealed'> | null;
+  job_details: Pick<NonNullable<ListingRow['job_details']>, 'contract_type' | 'work_mode' | 'sector'> | null;
+  service_details: Pick<NonNullable<ListingRow['service_details']>, 'pricing_mode' | 'delivery_mode'> | null;
+};
+
+function sortedTextValues(rows: readonly ListingFilterValueRow[], field: 'brand' | 'size' | 'color') {
+  const values = new Set<string>();
+  for (const row of rows) {
+    const value = row[field]?.trim();
+    if (value) values.add(value);
+  }
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
+/** Active delivery keys that actually apply to at least one country in this result scope. */
+async function deliveryOptionsForCountries(
+  countryCodes: readonly string[]
+): Promise<ListingDeliveryFilterOption[]> {
+  if (countryCodes.length === 0) return [];
+
+  const rows = await fetchDeliveryReferenceRows();
+  const fallback = rows.filter((row) => row.country_code === '**');
+  const byCountry = new Map<string, DeliveryReferenceRow[]>();
+  for (const row of rows) {
+    if (row.country_code === '**') continue;
+    const countryRows = byCountry.get(row.country_code) ?? [];
+    countryRows.push(row);
+    byCountry.set(row.country_code, countryRows);
+  }
+
+  const byKey = new Map<string, DeliveryReferenceRow[]>();
+  for (const countryCode of countryCodes) {
+    const applicable = byCountry.get(countryCode) ?? fallback;
+    for (const row of applicable) {
+      const matching = byKey.get(row.key) ?? [];
+      matching.push(row);
+      byKey.set(row.key, matching);
+    }
+  }
+
+  return [...byKey.entries()]
+    .map(([key, applicable]) => {
+      const representative = [...applicable].sort(
+        (left, right) =>
+          Number(left.country_code === '**') - Number(right.country_code === '**') ||
+          left.name.length - right.name.length ||
+          left.name.localeCompare(right.name)
+      )[0];
+      return {
+        key,
+        label: representative?.name ?? key,
+        sortOrder: Math.min(...applicable.map((row) => row.sort_order)),
+      };
+    })
+    .sort(
+      (left, right) => left.sortOrder - right.sortOrder || left.label.localeCompare(right.label)
+    )
+    .map(({ key, label }) => ({ key, label }));
+}
+
+/**
+ * Real facet values for one category/search scope.
+ *
+ * Product rows are still filtered and paginated entirely by PostgREST. This
+ * bounded metadata read exists only because PostgREST cannot project DISTINCT
+ * text values; a database facet RPC is the future scale path, not a client-side
+ * download of the catalogue.
+ */
+export async function fetchListingFilterOptions(
+  scope: Pick<FeedFilters, 'category' | 'query'> = {}
+): Promise<ListingFilterOptions> {
+  const categorySlugs = scope.category
+    ? await fetchCategoryDescendantSlugs(scope.category)
+    : null;
+  if (scope.category && categorySlugs?.length === 0) return EMPTY_LISTING_FILTER_OPTIONS;
+
+  let query = supabase
+    .from('listings')
+    .select(`
+      listing_type, brand, size, color, city, country_code,
+      food_details ( halal_status, preparation_type ),
+      perfume_details ( fragrance_type, target_audience, sealed ),
+      job_details ( contract_type, work_mode, sector ),
+      service_details ( pricing_mode, delivery_mode ),
+      seller:profiles!listings_seller_id_fkey!inner(id)
+    `)
+    .eq('status', 'active')
+    .or(CANONICAL_LISTING_FILTER)
+    .eq('seller.holiday_mode', false)
+    .limit(FACET_ROW_LIMIT);
+
+  if (categorySlugs) query = query.in('category_slug', categorySlugs);
+  const text = scope.query?.trim();
+  if (text) query = query.textSearch('search_tsv', text, { type: 'websearch', config: 'simple' });
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = (data ?? []) as unknown as ListingFilterValueRow[];
+  const countries = [...new Set(rows.map((row) => row.country_code.trim()).filter(Boolean))].sort();
+  const locationKeys = new Set<string>();
+  const locations: ListingFilterLocation[] = [];
+  for (const row of rows) {
+    const countryCode = row.country_code.trim();
+    const city = row.city?.trim();
+    if (!countryCode || !city) continue;
+    const key = `${countryCode}\u0000${city}`;
+    if (locationKeys.has(key)) continue;
+    locationKeys.add(key);
+    locations.push({ countryCode, city });
+  }
+  locations.sort(
+    (left, right) =>
+      left.countryCode.localeCompare(right.countryCode) || left.city.localeCompare(right.city)
+  );
+
+  return {
+    brands: sortedTextValues(rows, 'brand'),
+    sizes: sortedTextValues(rows, 'size'),
+    colors: sortedTextValues(rows, 'color'),
+    countries,
+    locations,
+    delivery: await deliveryOptionsForCountries(countries),
+    listingTypes: [...new Set(rows.map((row) => row.listing_type))],
+    halalStatuses: distinctRelated(rows, (row) => row.food_details?.halal_status),
+    preparationTypes: distinctRelated(rows, (row) => row.food_details?.preparation_type),
+    fragranceTypes: distinctRelated(rows, (row) => row.perfume_details?.fragrance_type),
+    targetAudiences: distinctRelated(rows, (row) => row.perfume_details?.target_audience),
+    sealedValues: [...new Set(rows.map((row) => row.perfume_details?.sealed).filter((value): value is boolean => typeof value === 'boolean'))],
+    contractTypes: distinctRelated(rows, (row) => row.job_details?.contract_type),
+    workModes: distinctRelated(rows, (row) => row.job_details?.work_mode),
+    sectors: distinctRelated(rows, (row) => row.job_details?.sector),
+    pricingModes: distinctRelated(rows, (row) => row.service_details?.pricing_mode),
+    serviceDeliveryModes: distinctRelated(rows, (row) => row.service_details?.delivery_mode),
+  };
+}
+
+function distinctRelated(
+  rows: readonly ListingFilterValueRow[],
+  valueFor: (row: ListingFilterValueRow) => string | null | undefined
+): string[] {
+  const values = new Set<string>();
+  for (const row of rows) {
+    const value = valueFor(row);
+    if (typeof value === 'string' && value.trim()) values.add(value.trim());
+  }
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
 /**
  * Country codes that currently have listings, for the location filter.
  *
@@ -803,7 +1358,7 @@ export async function fetchListingCountries(): Promise<string[]> {
     .from('listings')
     .select('country_code, seller:profiles!listings_seller_id_fkey!inner(id)')
     .eq('status', 'active')
-    .eq('condition', NEW_CONDITION)
+    .or(CANONICAL_LISTING_FILTER)
     .eq('seller.holiday_mode', false)
     .limit(200);
 
@@ -824,7 +1379,7 @@ async function fetchListingTextValues(column: 'brand' | 'color'): Promise<string
     .from('listings')
     .select(`${column}, seller:profiles!listings_seller_id_fkey!inner(id)`)
     .eq('status', 'active')
-    .eq('condition', NEW_CONDITION)
+    .or(CANONICAL_LISTING_FILTER)
     .eq('seller.holiday_mode', false)
     .not(column, 'is', null)
     .limit(200);
@@ -864,9 +1419,10 @@ export type ConversationRow = {
   listing: {
     id: string;
     title: string;
-    price_cents: number;
+    price_cents: number | null;
     currency: string;
     status: ListingStatus;
+    listing_type: ListingRow['listing_type'];
     images: ListingImageRow[];
   } | null;
   buyer: ProfileSummary | null;
@@ -884,7 +1440,7 @@ export type MessageRow = {
 
 const CONVERSATION_SELECT = `
   id, listing_id, buyer_id, seller_id, last_message_at, created_at,
-  listing:listings ( id, title, price_cents, currency, status, images:listing_images ( storage_path, position ) ),
+  listing:listings ( id, title, price_cents, currency, status, listing_type, images:listing_images ( storage_path, position ) ),
   buyer:profiles!conversations_buyer_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales ),
   seller:profiles!conversations_seller_id_fkey ( id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales )
 `;
@@ -1006,7 +1562,7 @@ export async function fetchFavoriteListings(
       .select(LISTING_SELECT)
       .in('id', ids)
       .eq('status', 'active')
-      .eq('condition', NEW_CONDITION);
+      .or(CANONICAL_LISTING_FILTER);
 
     if (error) throw error;
     const byId = new Map(((data ?? []) as unknown as ListingRow[]).map((row) => [row.id, row]));
@@ -1260,7 +1816,7 @@ export async function fetchListingsByIds(ids: readonly string[]): Promise<Listin
     .select(LISTING_SELECT)
     .in('id', [...ids])
     .eq('status', 'active')
-    .eq('condition', NEW_CONDITION);
+    .or(CANONICAL_LISTING_FILTER);
 
   if (error) throw error;
   return (data ?? []) as unknown as ListingRow[];

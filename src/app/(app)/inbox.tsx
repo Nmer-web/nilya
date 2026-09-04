@@ -11,12 +11,14 @@ import { Skeleton } from '@/components/skeleton';
 import { Button, EmptyState, InlineError, PressableScale, ScreenError, T } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import {
-  NEW_CONDITION,
+  type ListingCondition,
+  type ListingType,
   type ListingImageRow,
   type ProfileSummary,
 } from '@/lib/database.types';
 import { coverUrl, fetchConversationSummaries, type MessageRow } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
+import { CANONICAL_LISTING_FILTER, isCanonicalListing } from '@/lib/listing-types';
 import { useAuth } from '@/store/auth-store';
 import {
   color as C,
@@ -44,12 +46,13 @@ type InboxThread = {
 type InboxListing = {
   id: string;
   title: string;
-  price_cents: number;
+  price_cents: number | null;
   currency: string;
+  listing_type: ListingType;
   images: ListingImageRow[];
 };
 
-type InboxListingQueryRow = InboxListing & { condition: string };
+type InboxListingQueryRow = InboxListing & { condition: ListingCondition | null };
 
 const INBOX_THREAD_SELECT = `
   id, listing_id, buyer_id, seller_id, last_message_at, created_at,
@@ -73,15 +76,15 @@ async function fetchInboxListings(listingIds: readonly string[]): Promise<Map<st
 
   const { data, error } = await supabase
     .from('listings')
-    .select('id, title, price_cents, currency, condition, images:listing_images ( storage_path, position )')
+    .select('id, title, price_cents, currency, listing_type, condition, images:listing_images ( storage_path, position )')
     .in('id', [...listingIds])
-    .eq('condition', NEW_CONDITION);
+    .or(CANONICAL_LISTING_FILTER);
 
   if (error) throw error;
   const rows = (data ?? []) as unknown as InboxListingQueryRow[];
   return new Map(
     rows
-      .filter((row) => row.condition === NEW_CONDITION)
+      .filter((row) => isCanonicalListing(row.listing_type, row.condition))
       .map(({ condition: _condition, ...listing }) => [listing.id, listing])
   );
 }
@@ -290,7 +293,11 @@ function ConversationCard({
   const unreadCount = summary?.unread ?? 0;
   const unread = unreadCount > 0;
   const stamp = summary?.last.created_at ?? thread.last_message_at ?? thread.created_at;
-  const price = listing ? formatPrice(listing.price_cents, listing.currency) : null;
+  const price = listing
+    ? listing.price_cents == null
+      ? listing.listing_type === 'job' ? 'Job opportunity' : 'Service'
+      : formatPrice(listing.price_cents, listing.currency)
+    : null;
   const noMessages = thread.last_message_at === null && !summary;
   const sentByMe = summary?.last.sender_id === me;
   const preview = summary ? `${sentByMe ? 'You: ' : ''}${summary.last.body}` : noMessages ? 'Start the conversation' : null;

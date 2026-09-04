@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { usePathname } from 'expo-router';
 import { ScrollView, TextInput, View } from 'react-native';
 
@@ -6,15 +6,23 @@ import { CategoryTreePicker } from '@/components/category-tree-picker';
 import { Icon, type IconName } from '@/components/icon';
 import { Scrim, Sheet, SheetClose, SheetGrabber, Toast } from '@/components/sheet';
 import { Button, Chip, InlineError, SectionLabel, T, Tap } from '@/components/ui';
+import { attributeFieldsFor, type AttributeKey } from '@/config/categoryAttributes';
 import { useAsync } from '@/hooks/use-async';
+import { categoryPath } from '@/lib/categories';
+import { countryName } from '@/lib/countries';
 import {
   fetchCategoryTree,
-  fetchListingBrands,
-  fetchListingColors,
-  fetchListingCountries,
+  fetchListingFilterOptions,
   fetchListings,
 } from '@/lib/queries';
-import { EMPTY_FILTERS, SORTS, useApp, type Filters } from '@/store/app-store';
+import {
+  activeFilterCount,
+  EMPTY_FILTERS,
+  emptyFiltersForCategory,
+  SORTS,
+  useApp,
+  type Filters,
+} from '@/store/app-store';
 import { color as C, radius, space, touch, type as typography } from '@/theme/tokens';
 
 /**
@@ -136,7 +144,7 @@ function SheetRow({
     >
       {!!icon && <Icon name={icon} role="inline" color={destructive ? C.error : C.textPrimary} />}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <T variant="bodyMedium" color={destructive ? C.errorText : C.textPrimary}>
+        <T variant="bodyMedium" color={destructive ? C.errorText : selected ? C.primary : C.textPrimary}>
           {label}
         </T>
         {!!sub && (
@@ -145,7 +153,7 @@ function SheetRow({
           </T>
         )}
       </View>
-      {selected && <Icon name="check" role="inline" color={C.textPrimary} />}
+      {selected && <Icon name="check" role="inline" color={C.primary} />}
     </Tap>
   );
 }
@@ -160,8 +168,11 @@ function SheetRow({
  * presses with the list re-sorting under you each time.
  */
 function SortSheet(phase: Phase) {
-  const { sort, setSort } = useApp();
+  const { sort, setSort, filters } = useApp();
   const dismiss = useDismiss();
+  const sorts = filters.listingType === 'job'
+    ? SORTS.filter((option) => option.key === 'recent')
+    : SORTS;
   return (
     <Sheet {...phase} accessibilityLabel="Sort listings" style={{ paddingTop: space.space12, paddingHorizontal: space.space24, paddingBottom: space.space16 }}>
       <SheetGrabber style={{ marginBottom: space.space16 }} />
@@ -169,12 +180,12 @@ function SortSheet(phase: Phase) {
 
       {/* Each key maps to an ORDER BY in `fetchListings`, not a client sort. */}
       <View style={{ marginTop: space.space8 }}>
-        {SORTS.map((s, i) => (
+        {sorts.map((s, i) => (
           <SheetRow
             key={s.key}
             label={s.label}
             selected={sort === s.key}
-            last={i === SORTS.length - 1}
+            last={i === sorts.length - 1}
             onPress={() => {
               setSort(s.key);
               dismiss();
@@ -195,12 +206,30 @@ function SortSheet(phase: Phase) {
  */
 
 /** €12.50 → 1250, and '' → null so an empty field clears the bound. */
-function toCents(text: string): number | null {
-  const n = Number(text.replace(',', '.').trim());
-  return text.trim() === '' || !Number.isFinite(n) || n < 0 ? null : Math.round(n * 100);
+type ParsedPrice = { cents: number | null; error: string | null };
+
+/** Parse decimal display text into integer cents without using a float as storage. */
+function parsePriceCents(text: string): ParsedPrice {
+  const normalized = text.trim().replace(',', '.');
+  if (!normalized) return { cents: null, error: null };
+  if (!/^\d+(?:\.\d{0,2})?$/.test(normalized)) {
+    return { cents: null, error: 'Use a valid amount with no more than two decimal places.' };
+  }
+
+  const [whole = '0', fraction = ''] = normalized.split('.');
+  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  if (!Number.isSafeInteger(cents) || cents > 2_147_483_647) {
+    return { cents: null, error: 'This amount is too large.' };
+  }
+  return { cents, error: null };
 }
 
 const fromCents = (cents: number | null) => (cents == null ? '' : String(cents / 100));
+
+const optionLabel = (value: string) => ({
+  value,
+  label: value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase()),
+});
 
 /**
  * Filters, applied to the database.
@@ -212,52 +241,170 @@ const fromCents = (cents: number | null) => (cents == null ? '' : String(cents /
  * re-queries mid-typing.
  */
 function FiltersSheet(phase: Phase) {
-  const { filters, q, setFilters, resetFilters } = useApp();
+  const { filters, q, setFilters, resetFilters, setSort } = useApp();
   const pathname = usePathname();
   const dismiss = useDismiss();
   const [draft, setDraft] = useState<Filters>(filters);
   const [minText, setMinText] = useState(fromCents(filters.minCents));
   const [maxText, setMaxText] = useState(fromCents(filters.maxCents));
-  const draftMinCents = toCents(minText);
-  const draftMaxCents = toCents(maxText);
+  const parsedMin = parsePriceCents(minText);
+  const parsedMax = parsePriceCents(maxText);
+  const priceError =
+    parsedMin.error ??
+    parsedMax.error ??
+    (parsedMin.cents !== null && parsedMax.cents !== null && parsedMax.cents < parsedMin.cents
+      ? 'Maximum price must be greater than or equal to minimum price.'
+      : null);
   const previewQuery = pathname === '/search' ? q : '';
   const categoryScoped = pathname.startsWith('/category/');
 
   const categories = useAsync(fetchCategoryTree, 'categories:tree');
-  const countries = useAsync(fetchListingCountries, 'listing-countries');
-  const brands = useAsync(fetchListingBrands, 'listing-brands');
-  const colors = useAsync(fetchListingColors, 'listing-colors');
+  const options = useAsync(
+    () => fetchListingFilterOptions({ category: draft.categorySlug, query: previewQuery }),
+    JSON.stringify(['listing-filter-options', draft.categorySlug, previewQuery])
+  );
+  const filterOptions = options.data;
+  const selectedCategory = (categories.data ?? []).find(
+    (category) => category.slug === draft.categorySlug
+  );
+  const effectiveType = selectedCategory?.listing_type ?? draft.listingType;
+  const categoryFields = selectedCategory ? attributeFieldsFor(selectedCategory.slug) : [];
+  const categoryRootSlug = selectedCategory
+    ? categoryPath(categories.data ?? [], selectedCategory.slug)[0]?.slug
+    : null;
+  const categorySupports = (key: AttributeKey) =>
+    categoryFields.some((field) => field.key === key);
+  const showSize =
+    Boolean(selectedCategory) &&
+    categorySupports('size') &&
+    (filterOptions?.sizes.length ?? 0) > 0;
+  const showColor =
+    categoryRootSlug !== 'electronics' &&
+    (!selectedCategory || categorySupports('color')) &&
+    (filterOptions?.colors.length ?? 0) > 0;
+  const cityOptions = useMemo(
+    () =>
+      (filterOptions?.locations ?? []).filter(
+        (location) => !draft.countryCode || location.countryCode === draft.countryCode
+      ),
+    [draft.countryCode, filterOptions?.locations]
+  );
+  const previewFilters: Filters = {
+    ...draft,
+    minCents: parsedMin.cents,
+    maxCents: parsedMax.cents,
+  };
 
   /** Counts what the current draft would return, so the CTA is not a guess. */
   const preview = useAsync(
     () =>
-      fetchListings(
-        {
-          query: previewQuery,
-          category: draft.categorySlug,
-          minPriceCents: draftMinCents,
-          maxPriceCents: draftMaxCents,
-          countryCode: draft.countryCode,
-          brand: draft.brand,
-          color: draft.color,
-        },
-        0
-      ),
-    `filter-preview:${previewQuery}:${draft.categorySlug}:${draftMinCents}:${draftMaxCents}:${draft.countryCode}:${draft.brand}:${draft.color}`
+      priceError
+        ? Promise.resolve({ rows: [], hasMore: false, total: null })
+        : fetchListings(
+            {
+              query: previewQuery,
+              category: previewFilters.categorySlug,
+              minPriceCents: previewFilters.minCents,
+              maxPriceCents: previewFilters.maxCents,
+              countryCode: previewFilters.countryCode,
+              city: previewFilters.city,
+              brand: previewFilters.brand,
+              size: previewFilters.size,
+              color: previewFilters.color,
+              deliveryKey: previewFilters.deliveryKey,
+              listingType: previewFilters.listingType,
+              halalStatus: previewFilters.halalStatus,
+              preparationType: previewFilters.preparationType,
+              fragranceType: previewFilters.fragranceType,
+              targetAudience: previewFilters.targetAudience,
+              sealed: previewFilters.sealed,
+              contractType: previewFilters.contractType,
+              workMode: previewFilters.workMode,
+              sector: previewFilters.sector,
+              pricingMode: previewFilters.pricingMode,
+              serviceDeliveryMode: previewFilters.serviceDeliveryMode,
+            },
+            0
+          ),
+    JSON.stringify(['filter-preview', previewQuery, previewFilters, priceError])
   );
 
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setDraft((d) => ({ ...d, [k]: v }));
 
+  const selectCategory = (categorySlug: string | null) => {
+    const nextCategory = (categories.data ?? []).find((category) => category.slug === categorySlug);
+    if (nextCategory?.listing_type === 'job') {
+      setMinText('');
+      setMaxText('');
+    }
+    const supported = categorySlug ? attributeFieldsFor(categorySlug) : [];
+    const nextRootSlug = categorySlug
+      ? categoryPath(categories.data ?? [], categorySlug)[0]?.slug
+      : null;
+    setDraft((current) => ({
+      ...current,
+      categorySlug,
+      listingType: nextCategory?.listing_type ?? null,
+      halalStatus: null,
+      preparationType: null,
+      fragranceType: null,
+      targetAudience: null,
+      sealed: null,
+      contractType: null,
+      workMode: null,
+      sector: null,
+      pricingMode: null,
+      serviceDeliveryMode: null,
+      minCents: nextCategory?.listing_type === 'job' ? null : current.minCents,
+      maxCents: nextCategory?.listing_type === 'job' ? null : current.maxCents,
+      deliveryKey: nextCategory && (nextCategory.listing_type === 'job' || nextCategory.listing_type === 'service') ? null : current.deliveryKey,
+      size: categorySlug && supported.some((field) => field.key === 'size') ? current.size : null,
+      color:
+        nextRootSlug !== 'electronics' &&
+        (!categorySlug || supported.some((field) => field.key === 'color'))
+          ? current.color
+          : null,
+    }));
+  };
+
   const apply = () => {
-    setFilters({ ...draft, minCents: toCents(minText), maxCents: toCents(maxText) });
+    if (priceError) return;
+    setFilters(previewFilters);
+    if (previewFilters.listingType === 'job') setSort('recent');
     dismiss();
   };
 
+  const clearAll = () => {
+    const scopedCategory = filters.categorySlug ?? draft.categorySlug;
+    const cleared =
+      categoryScoped && scopedCategory ? emptyFiltersForCategory(scopedCategory) : EMPTY_FILTERS;
+    if (categoryScoped) setFilters(cleared);
+    else resetFilters();
+    setDraft(cleared);
+    setMinText('');
+    setMaxText('');
+  };
+
   const count = preview.data?.total;
+  const hasDraftFilters =
+    activeFilterCount(previewFilters, !categoryScoped, !categoryScoped) > 0 ||
+    minText.trim().length > 0 ||
+    maxText.trim().length > 0;
 
   return (
-    <Sheet {...phase} top={78} accessibilityLabel="Filter listings" style={{ overflow: 'hidden' }}>
+    <Sheet
+      {...phase}
+      top={78}
+      accessibilityLabel="Filter listings"
+      style={{
+        overflow: 'hidden',
+        backgroundColor: C.surface,
+        borderTopLeftRadius: radius.radiusHero,
+        borderTopRightRadius: radius.radiusHero,
+      }}
+    >
       <View
+        className="bg-nilya-surface"
         style={{
           paddingHorizontal: space.space24,
           paddingTop: space.space12,
@@ -268,26 +415,21 @@ function FiltersSheet(phase: Phase) {
       >
         <SheetGrabber style={{ marginBottom: space.space12 }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Tap
-            onPress={() => {
-              if (categoryScoped) {
-                const scopedEmpty = { ...EMPTY_FILTERS, categorySlug: filters.categorySlug };
-                setFilters(scopedEmpty);
-                setDraft(scopedEmpty);
-              } else {
-                resetFilters();
-                setDraft(EMPTY_FILTERS);
-              }
-              setMinText('');
-              setMaxText('');
-            }}
-            accessibilityRole="button"
-            hitSlop={8}
-          >
-            <T variant="button" color={C.textSecondary}>
-              Clear
-            </T>
-          </Tap>
+          {hasDraftFilters ? (
+            <Tap
+              onPress={clearAll}
+              accessibilityRole="button"
+              accessibilityLabel="Clear all filters"
+              hitSlop={8}
+              style={{ minWidth: 72, minHeight: touch.minimum, justifyContent: 'center' }}
+            >
+              <T variant="button" color={C.primary}>
+                Clear all
+              </T>
+            </Tap>
+          ) : (
+            <View style={{ width: 72 }} />
+          )}
           <T variant="sectionTitle">
             Filters
           </T>
@@ -320,14 +462,14 @@ function FiltersSheet(phase: Phase) {
                 <Chip
                   label="Any"
                   active={draft.categorySlug === null}
-                  onPress={() => set('categorySlug', null)}
+                  onPress={() => selectCategory(null)}
                 />
                 <View style={{ marginTop: space.space8 }}>
                   <CategoryTreePicker
                     categories={categories.data ?? []}
                     selectedSlug={draft.categorySlug}
                     allowParentSelection
-                    onSelect={(category) => set('categorySlug', category.slug)}
+                    onSelect={(category) => selectCategory(category.slug)}
                   />
                 </View>
               </View>
@@ -335,87 +477,176 @@ function FiltersSheet(phase: Phase) {
           </>
         ) : null}
 
-        <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Price range</SectionLabel>
+        {!selectedCategory && (filterOptions?.listingTypes.length ?? 0) > 1 ? (
+          <FilterChoiceGroup
+            title="Listing type"
+            anyLabel="All types"
+            value={draft.listingType}
+            options={(filterOptions?.listingTypes ?? []).map((value) => ({
+              value,
+              label: value === 'product' ? 'Products' : value === 'food' ? 'Food' : value === 'job' ? 'Jobs' : 'Services',
+            }))}
+            onChange={(value) => {
+              const listingType = value as Filters['listingType'];
+              if (listingType === 'job') { setMinText(''); setMaxText(''); }
+              setDraft((current) => ({
+                ...current,
+                listingType,
+                halalStatus: null,
+                preparationType: null,
+                fragranceType: null,
+                targetAudience: null,
+                sealed: null,
+                contractType: null,
+                workMode: null,
+                sector: null,
+                pricingMode: null,
+                serviceDeliveryMode: null,
+                minCents: listingType === 'job' ? null : current.minCents,
+                maxCents: listingType === 'job' ? null : current.maxCents,
+                deliveryKey: listingType === 'job' || listingType === 'service' ? null : current.deliveryKey,
+              }));
+            }}
+          />
+        ) : null}
+
+        {effectiveType !== 'job' && draft.pricingMode !== 'quote' ? <><SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Price range</SectionLabel>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.space12 }}>
-          <PriceInput label="Minimum" value={minText} onChange={setMinText} />
+          <PriceInput label="Minimum" value={minText} invalid={Boolean(parsedMin.error)} onChange={setMinText} />
           <View style={{ width: 12, height: 1, backgroundColor: C.borderStrong }} />
-          <PriceInput label="Maximum" value={maxText} onChange={setMaxText} />
+          <PriceInput label="Maximum" value={maxText} invalid={Boolean(parsedMax.error)} onChange={setMaxText} />
         </View>
 
-        <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Location</SectionLabel>
-        {(countries.data ?? []).length === 0 ? (
-          <T variant="metadata" color={C.textSecondary}>
-            {countries.loading
-              ? 'Loading locations…'
-              : 'Locations appear here once there are listings to filter.'}
+        {priceError ? (
+          <T accessibilityRole="alert" variant="caption" color={C.errorText} style={{ marginTop: space.space8 }}>
+            {priceError}
           </T>
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.space8 }}>
-            <Chip
-              label="Anywhere"
-              active={draft.countryCode === null}
-              onPress={() => set('countryCode', null)}
-            />
-            {(countries.data ?? []).map((cc) => (
-              <Chip
-                key={cc}
-                label={cc}
-                active={draft.countryCode === cc}
-                onPress={() => set('countryCode', cc)}
-              />
-            ))}
-          </View>
-        )}
+        ) : null}</> : null}
 
-        <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Brand</SectionLabel>
-        {(brands.data ?? []).length === 0 ? (
-          <T variant="metadata" color={C.textSecondary}>
-            {brands.loading
-              ? 'Loading brands...'
-              : 'Brands appear here once active listings include them.'}
-          </T>
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.space8 }}>
-            <Chip
-              label="Any"
-              active={draft.brand === null}
-              onPress={() => set('brand', null)}
+        {options.error ? (
+          <View style={{ marginTop: space.space20 }}>
+            <InlineError
+              message="Filter options could not be loaded."
+              actionLabel="Retry"
+              onAction={options.refetch}
             />
-            {(brands.data ?? []).map((brand) => (
-              <Chip
-                key={brand}
-                label={brand}
-                active={draft.brand === brand}
-                onPress={() => set('brand', brand)}
-              />
-            ))}
           </View>
-        )}
+        ) : options.loading ? (
+          <T variant="metadata" color={C.textSecondary} style={{ marginTop: space.space24 }}>
+            Loading available filters...
+          </T>
+        ) : null}
 
-        <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>Color</SectionLabel>
-        {(colors.data ?? []).length === 0 ? (
-          <T variant="metadata" color={C.textSecondary}>
-            {colors.loading
-              ? 'Loading colors...'
-              : 'Colors appear here once active listings include them.'}
-          </T>
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.space8 }}>
-            <Chip
-              label="Any"
-              active={draft.color === null}
-              onPress={() => set('color', null)}
-            />
-            {(colors.data ?? []).map((color) => (
-              <Chip
-                key={color}
-                label={color}
-                active={draft.color === color}
-                onPress={() => set('color', color)}
-              />
-            ))}
-          </View>
-        )}
+        {(filterOptions?.countries.length ?? 0) > 0 ? (
+          <FilterChoiceGroup
+            title="Country"
+            anyLabel="Anywhere"
+            value={draft.countryCode}
+            options={(filterOptions?.countries ?? []).map((value) => ({
+              value,
+              label: countryName(value),
+            }))}
+            onChange={(value) =>
+              setDraft((current) => ({ ...current, countryCode: value, city: null }))
+            }
+          />
+        ) : null}
+
+        {draft.countryCode && cityOptions.length > 0 ? (
+          <FilterChoiceGroup
+            title="City"
+            anyLabel="Any city"
+            value={draft.city}
+            options={cityOptions.map((location) => ({
+              value: location.city,
+              label: location.city,
+            }))}
+            onChange={(value) => set('city', value)}
+          />
+        ) : null}
+
+        {(effectiveType === null || effectiveType === 'product' || effectiveType === 'food') && (filterOptions?.brands.length ?? 0) > 0 ? (
+          <FilterChoiceGroup
+            title="Brand"
+            value={draft.brand}
+            options={(filterOptions?.brands ?? []).map((value) => ({ value, label: value }))}
+            onChange={(value) => set('brand', value)}
+          />
+        ) : null}
+
+        {showSize ? (
+          <FilterChoiceGroup
+            title="Size"
+            value={draft.size}
+            options={(filterOptions?.sizes ?? []).map((value) => ({ value, label: value }))}
+            onChange={(value) => set('size', value)}
+          />
+        ) : null}
+
+        {showColor ? (
+          <FilterChoiceGroup
+            title="Colour"
+            value={draft.color}
+            options={(filterOptions?.colors ?? []).map((value) => ({ value, label: value }))}
+            onChange={(value) => set('color', value)}
+          />
+        ) : null}
+
+        {(effectiveType === null || effectiveType === 'product' || effectiveType === 'food') && (filterOptions?.delivery.length ?? 0) > 0 ? (
+          <FilterChoiceGroup
+            title="Delivery"
+            value={draft.deliveryKey}
+            options={(filterOptions?.delivery ?? []).map((option) => ({
+              value: option.key,
+              label: option.label,
+            }))}
+            onChange={(value) => set('deliveryKey', value)}
+          />
+        ) : null}
+
+        {(filterOptions?.halalStatuses.length ?? 0) > 0 && effectiveType === 'food' ? (
+          <FilterChoiceGroup title="Halal status" value={draft.halalStatus} options={(filterOptions?.halalStatuses ?? []).map(optionLabel)} onChange={(value) => set('halalStatus', value)} />
+        ) : null}
+        {(filterOptions?.preparationTypes.length ?? 0) > 0 && effectiveType === 'food' ? (
+          <FilterChoiceGroup title="Preparation" value={draft.preparationType} options={(filterOptions?.preparationTypes ?? []).map(optionLabel)} onChange={(value) => set('preparationType', value)} />
+        ) : null}
+        {(filterOptions?.fragranceTypes.length ?? 0) > 0 && selectedCategory?.requires_perfume_details ? (
+          <FilterChoiceGroup title="Fragrance type" value={draft.fragranceType} options={(filterOptions?.fragranceTypes ?? []).map(optionLabel)} onChange={(value) => set('fragranceType', value)} />
+        ) : null}
+        {(filterOptions?.targetAudiences.length ?? 0) > 0 && selectedCategory?.requires_perfume_details ? (
+          <FilterChoiceGroup title="Target audience" value={draft.targetAudience} options={(filterOptions?.targetAudiences ?? []).map(optionLabel)} onChange={(value) => set('targetAudience', value)} />
+        ) : null}
+        {(filterOptions?.sealedValues.length ?? 0) > 0 && selectedCategory?.requires_perfume_details ? (
+          <FilterChoiceGroup title="Packaging" value={draft.sealed === null ? null : String(draft.sealed)} options={(filterOptions?.sealedValues ?? []).map((value) => ({ value: String(value), label: value ? 'Sealed' : 'Not sealed' }))} onChange={(value) => set('sealed', value === null ? null : value === 'true')} />
+        ) : null}
+        {(filterOptions?.contractTypes.length ?? 0) > 0 && effectiveType === 'job' ? (
+          <FilterChoiceGroup title="Contract type" value={draft.contractType} options={(filterOptions?.contractTypes ?? []).map(optionLabel)} onChange={(value) => set('contractType', value)} />
+        ) : null}
+        {(filterOptions?.workModes.length ?? 0) > 0 && effectiveType === 'job' ? (
+          <FilterChoiceGroup title="Work mode" value={draft.workMode} options={(filterOptions?.workModes ?? []).map(optionLabel)} onChange={(value) => set('workMode', value)} />
+        ) : null}
+        {(filterOptions?.sectors.length ?? 0) > 0 && effectiveType === 'job' ? (
+          <FilterChoiceGroup title="Sector" value={draft.sector} options={(filterOptions?.sectors ?? []).map((value) => ({ value, label: value }))} onChange={(value) => set('sector', value)} />
+        ) : null}
+        {(filterOptions?.pricingModes.length ?? 0) > 0 && effectiveType === 'service' ? (
+          <FilterChoiceGroup
+            title="Pricing mode"
+            value={draft.pricingMode}
+            options={(filterOptions?.pricingModes ?? []).map(optionLabel)}
+            onChange={(value) => {
+              if (value === 'quote') {
+                setMinText('');
+                setMaxText('');
+                setDraft((current) => ({ ...current, pricingMode: value, minCents: null, maxCents: null }));
+              } else {
+                set('pricingMode', value);
+              }
+            }}
+          />
+        ) : null}
+        {(filterOptions?.serviceDeliveryModes.length ?? 0) > 0 && effectiveType === 'service' ? (
+          <FilterChoiceGroup title="Delivery mode" value={draft.serviceDeliveryMode} options={(filterOptions?.serviceDeliveryModes ?? []).map(optionLabel)} onChange={(value) => set('serviceDeliveryMode', value)} />
+        ) : null}
       </ScrollView>
 
       <View
@@ -425,13 +656,15 @@ function FiltersSheet(phase: Phase) {
           paddingBottom: space.space16,
           borderTopWidth: 1,
           borderTopColor: C.border,
-          backgroundColor: C.background,
+          backgroundColor: C.surface,
         }}
       >
         {/* PostgREST returns the exact total alongside the first result page. */}
         <Button
           label={
-            preview.loading
+            priceError
+              ? 'Check price range'
+              : preview.loading
               ? 'Counting…'
               : preview.error
                 ? 'Show results'
@@ -440,6 +673,7 @@ function FiltersSheet(phase: Phase) {
                   : `Show ${count} result${count === 1 ? '' : 's'}`
           }
           onPress={apply}
+          disabled={Boolean(priceError)}
         />
       </View>
     </Sheet>
@@ -449,10 +683,12 @@ function FiltersSheet(phase: Phase) {
 function PriceInput({
   label,
   value,
+  invalid,
   onChange,
 }: {
   label: string;
   value: string;
+  invalid?: boolean;
   onChange: (v: string) => void;
 }) {
   return (
@@ -463,7 +699,7 @@ function PriceInput({
         borderRadius: radius.radiusMedium,
         backgroundColor: C.surface,
         borderWidth: 1,
-        borderColor: C.border,
+        borderColor: invalid ? C.error : C.border,
         justifyContent: 'center',
         paddingHorizontal: space.space16,
       }}
@@ -478,12 +714,47 @@ function PriceInput({
         <TextInput
           value={value}
           onChangeText={(v) => onChange(v.replace(/[^0-9.,]/g, ''))}
+          accessibilityLabel={`${label} price in euros`}
+          accessibilityHint={invalid ? 'Enter a valid amount with no more than two decimal places.' : undefined}
           placeholder="Any"
           placeholderTextColor={C.textSecondary}
           selectionColor={C.primary}
           keyboardType="decimal-pad"
           style={[typography.bodyMedium, { flex: 1, minWidth: 0, color: C.textPrimary, padding: 0 }]}
         />
+      </View>
+    </View>
+  );
+}
+
+function FilterChoiceGroup({
+  title,
+  value,
+  options,
+  anyLabel = 'Any',
+  onChange,
+}: {
+  title: string;
+  value: string | null;
+  options: { value: string; label: string }[];
+  anyLabel?: string;
+  onChange: (value: string | null) => void;
+}) {
+  return (
+    <View className="bg-nilya-surface">
+      <SectionLabel style={{ paddingTop: space.space24, paddingBottom: space.space12 }}>
+        {title}
+      </SectionLabel>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.space8 }}>
+        <Chip label={anyLabel} active={value === null} onPress={() => onChange(null)} />
+        {options.map((option) => (
+          <Chip
+            key={`${title}:${option.value}`}
+            label={option.label}
+            active={value === option.value}
+            onPress={() => onChange(option.value)}
+          />
+        ))}
       </View>
     </View>
   );

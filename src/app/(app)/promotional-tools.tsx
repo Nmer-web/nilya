@@ -59,7 +59,9 @@ function PromotionalToolsScreen({ userId }: { userId: string }) {
       await Share.share(
         listingShareContent(
           listing.title,
-          formatPrice(listing.price_cents, listing.currency)
+          listing.price_cents == null
+            ? listing.listing_type === 'job' ? 'Job opportunity' : 'Quote required'
+            : formatPrice(listing.price_cents, listing.currency)
         )
       );
     } catch {
@@ -216,14 +218,15 @@ function PromotionalListingRow({
   onShare: () => void;
   onRetry: () => void;
 }) {
-  const price = formatPrice(listing.price_cents, listing.currency);
+  const price = listing.price_cents == null
+    ? listing.listing_type === 'job' ? 'Job opportunity' : 'Quote required'
+    : formatPrice(listing.price_cents, listing.currency);
   const originalPrice = listing.original_price_cents === null
     ? null
     : formatPrice(listing.original_price_cents, listing.currency);
-  const priceDrop = formatPriceDropLabel(
-    listing.original_price_cents,
-    listing.price_cents
-  );
+  const priceDrop = listing.price_cents == null
+    ? null
+    : formatPriceDropLabel(listing.original_price_cents, listing.price_cents);
 
   return (
     <View className="px-5 py-4">

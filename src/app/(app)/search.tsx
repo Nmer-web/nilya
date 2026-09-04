@@ -1,12 +1,14 @@
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, TextInput, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Keyboard, ScrollView, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategoryArtwork, artworkFor } from '@/components/category-artwork';
+import { ActiveFilterChips, type ActiveFilterChipKey } from '@/components/active-filter-chips';
 import { Icon } from '@/components/icon';
 import { IconButton } from '@/components/icon-button';
 import { ListingFeedGrid } from '@/components/listing-feed-grid';
+import { SearchSuggestionsPanel } from '@/components/search-suggestions';
 import { FadeIn, Skeleton } from '@/components/skeleton';
 import { Button, InlineError, PressableScale, T, Tap } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
@@ -16,9 +18,19 @@ import { useGoBack } from '@/hooks/use-go-back';
 import { useListingFeed } from '@/hooks/use-listing-feed';
 import type { CategoryRow } from '@/lib/database.types';
 import { haptic } from '@/lib/haptics';
-import { categoryChildren } from '@/lib/categories';
-import { fetchCategoryTree } from '@/lib/queries';
-import { EMPTY_FILTERS, filtersActive, SORTS, useApp } from '@/store/app-store';
+import { categoryChildren, categoryIconName, categoryPath } from '@/lib/categories';
+import {
+  fetchCategoryTree,
+  type ProductSearchSuggestion,
+  type SellerSearchSuggestion,
+} from '@/lib/queries';
+import {
+  activeFilterCount as countActiveFilters,
+  EMPTY_FILTERS,
+  filtersActive,
+  SORTS,
+  useApp,
+} from '@/store/app-store';
 import {
   color as C,
   duration,
@@ -50,17 +62,14 @@ export default function Search() {
     setQuery,
     setCat,
     setFilters,
-    sort,
     filters,
-    openSheet,
   } = useApp();
-  const favorites = useFavorites();
-
   const [draft, setDraft] = useState(() => activeQuery);
-  const query = useDebounced(draft.trim(), 320);
-  const hasFilters = filtersActive(filters);
-  const showingResults = query.length > 0 || hasFilters;
-  const activeFilterCount = Object.values(filters).filter((value) => value !== null).length;
+  const [submittedQuery, setSubmittedQuery] = useState(() => activeQuery.trim());
+  const [resultMode, setResultMode] = useState(() => activeQuery.trim().length > 0);
+  const normalizedDraft = draft.trim();
+  const debouncedDraft = useDebounced(normalizedDraft, 320);
+  const showingResults = resultMode && normalizedDraft === submittedQuery && submittedQuery.length > 0;
   const gutter = screenGutter(width);
   const categoryGap = space.space12;
   const categoryWidth = Math.max(0, (width - gutter * 2 - categoryGap) / 2);
@@ -71,46 +80,24 @@ export default function Search() {
     () => categoryChildren(categories.data ?? [], null).filter((category) => category.in_explore),
     [categories.data]
   );
-  const feed = useListingFeed(
-    {
-      query,
-      category: filters.categorySlug,
-      minPriceCents: filters.minCents,
-      maxPriceCents: filters.maxCents,
-      countryCode: filters.countryCode,
-      brand: filters.brand,
-      color: filters.color,
-      sort,
+  const scopeLabel = useMemo(
+    () => {
+      const path = categoryPath(categories.data ?? [], filters.categorySlug);
+      return path.length > 0 ? path.map((category) => category.label).join(' › ') : null;
     },
-    `search:${query}:${filters.categorySlug}:${filters.minCents}:${filters.maxCents}:${filters.countryCode}:${filters.brand}:${filters.color}:${sort}`
-  );
-
-  useEffect(() => {
-    setQuery(query);
-  }, [query, setQuery]);
-
-  const sortLabel = SORTS.find((option) => option.key === sort)?.label ?? 'Newest';
-  const categoryLabel = useMemo(
-    () =>
-      filters.categorySlug
-        ? (categories.data ?? []).find((category) => category.slug === filters.categorySlug)?.label ?? filters.categorySlug
-        : null,
     [categories.data, filters.categorySlug]
   );
-  const resultTitle = query ? `Results for “${query}”` : categoryLabel ?? 'Search results';
-  const resultCount = feed.loading
-    ? 'Searching…'
-    : feed.error || feed.total === null
-      ? ''
-      : `${feed.total} ${feed.total === 1 ? 'item' : 'items'}`;
 
   const go = useCallback(
     (raw: string) => {
       const term = raw.trim();
       if (!term) return;
       haptic('selection-committed');
+      Keyboard.dismiss();
       submitSearch(term);
       setDraft(term);
+      setSubmittedQuery(term);
+      setResultMode(true);
     },
     [submitSearch]
   );
@@ -127,6 +114,55 @@ export default function Search() {
     [router, setCat, setFilters, setQuery]
   );
 
+  const openProduct = useCallback(
+    (product: ProductSearchSuggestion) => {
+      go(normalizedDraft);
+      router.push({ pathname: '/listing/[id]', params: { id: product.id } });
+    },
+    [go, normalizedDraft, router]
+  );
+
+  const applyBrand = useCallback(
+    (brand: string) => {
+      setFilters({ ...filters, brand });
+      go(brand);
+    },
+    [filters, go, setFilters]
+  );
+
+  const openSeller = useCallback(
+    (seller: SellerSearchSuggestion) => {
+      haptic('selection-committed');
+      Keyboard.dismiss();
+      router.push({ pathname: '/seller/[id]', params: { id: seller.id } });
+    },
+    [router]
+  );
+
+  const clearCategoryScope = useCallback(
+    () => {
+      haptic('selection-committed');
+      setCat('All');
+      setFilters({
+        ...filters,
+        categorySlug: null,
+        listingType: null,
+        size: null,
+        halalStatus: null,
+        preparationType: null,
+        fragranceType: null,
+        targetAudience: null,
+        sealed: null,
+        contractType: null,
+        workMode: null,
+        sector: null,
+        pricingMode: null,
+        serviceDeliveryMode: null,
+      });
+    },
+    [filters, setCat, setFilters]
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
       <SearchHeader
@@ -138,44 +174,39 @@ export default function Search() {
         onSubmit={() => go(draft)}
         onClear={() => {
           setDraft('');
+          setSubmittedQuery('');
+          setResultMode(false);
           setQuery('');
         }}
       />
 
       {showingResults ? (
+        <SearchResults
+          query={submittedQuery}
+          categories={categories.data ?? []}
+          gutter={gutter}
+          bottomInset={insets.bottom}
+        />
+      ) : normalizedDraft.length > 0 ? (
         <>
-          <ResultsToolbar
-            title={resultTitle}
-            count={resultCount}
-            sortLabel={sortLabel}
-            activeFilterCount={activeFilterCount}
+          {scopeLabel ? (
+            <CategoryScopeBanner label={scopeLabel} gutter={gutter} onClear={clearCategoryScope} />
+          ) : null}
+          <SearchSuggestionsPanel
+            query={normalizedDraft}
+            debouncedQuery={debouncedDraft}
+            categorySlug={filters.categorySlug}
+            scopeLabel={scopeLabel}
+            categories={categories.data ?? []}
+            recent={recent}
             gutter={gutter}
-            onSort={() => openSheet({ kind: 'sort' })}
-            onFilter={() => openSheet({ kind: 'filters' })}
-          />
-          <ListingFeedGrid
-            feed={feed}
-            savedIds={favorites.saved}
-            onToggleSave={favorites.toggle}
-            contentPaddingBottom={insets.bottom + space.space32}
-            onRefresh={() => {
-              feed.refresh();
-              favorites.refresh();
-            }}
-            empty={
-              filters.categorySlug && !query
-                ? {
-                    icon: 'bag',
-                    title: 'Nothing here yet',
-                    body: 'New products in this category will appear here.',
-                  }
-                : {
-                    icon: 'search',
-                    title: 'No results found',
-                    body: 'Try another search or adjust your filters.',
-                  }
-            }
-            error={{ title: "Couldn't load results", body: 'Check your connection and try again.' }}
+            bottomInset={insets.bottom}
+            onSubmit={go}
+            onProduct={openProduct}
+            onCategory={(category) => browse(category.slug)}
+            onBrand={applyBrand}
+            onSeller={openSeller}
+            onRecent={go}
           />
         </>
       ) : (
@@ -186,12 +217,15 @@ export default function Search() {
             keyboardDismissMode="on-drag"
             contentContainerStyle={{ paddingHorizontal: gutter, paddingBottom: insets.bottom + space.space40 }}
           >
+            {scopeLabel ? (
+              <CategoryScopeBanner label={scopeLabel} onClear={clearCategoryScope} />
+            ) : null}
             <View style={{ paddingTop: space.space20, paddingBottom: space.space32 }}>
               <T variant="screenTitle" accessibilityRole="header">
                 Find something new
               </T>
               <T variant="body" color={C.textSecondary} style={{ maxWidth: 330, marginTop: space.space8 }}>
-                Search new products from sellers on NILYA.
+                Search products, food, jobs and services on Nilya.
               </T>
             </View>
 
@@ -253,6 +287,188 @@ export default function Search() {
   );
 }
 
+function SearchResults({
+  query,
+  categories,
+  gutter,
+  bottomInset,
+}: {
+  query: string;
+  categories: readonly CategoryRow[];
+  gutter: number;
+  bottomInset: number;
+}) {
+  const {
+    filters,
+    sort,
+    setCat,
+    setFilters,
+    openSheet,
+  } = useApp();
+  const favorites = useFavorites();
+  const feed = useListingFeed(
+    {
+      query,
+      category: filters.categorySlug,
+      minPriceCents: filters.minCents,
+      maxPriceCents: filters.maxCents,
+      countryCode: filters.countryCode,
+      city: filters.city,
+      brand: filters.brand,
+      size: filters.size,
+      color: filters.color,
+      deliveryKey: filters.deliveryKey,
+      listingType: filters.listingType,
+      halalStatus: filters.halalStatus,
+      preparationType: filters.preparationType,
+      fragranceType: filters.fragranceType,
+      targetAudience: filters.targetAudience,
+      sealed: filters.sealed,
+      contractType: filters.contractType,
+      workMode: filters.workMode,
+      sector: filters.sector,
+      pricingMode: filters.pricingMode,
+      serviceDeliveryMode: filters.serviceDeliveryMode,
+      sort,
+    },
+    JSON.stringify(['search', query, filters, sort])
+  );
+  const hasFilters = filtersActive(filters);
+  const activeFilterCount = countActiveFilters(filters, true, filters.categorySlug === null);
+  const sortLabel = SORTS.find((option) => option.key === sort)?.label ?? 'Newest';
+  const categoryLabel = useMemo(() => {
+    const path = categoryPath(categories, filters.categorySlug);
+    return path.length > 0 ? path.map((category) => category.label).join(' › ') : null;
+  }, [categories, filters.categorySlug]);
+  const resultCount = feed.loading
+    ? 'Searching…'
+    : feed.error || feed.total === null
+      ? ''
+      : `${feed.total} ${feed.total === 1 ? 'listing' : 'listings'}`;
+
+  const removeFilter = useCallback(
+    (key: ActiveFilterChipKey) => {
+      if (key === 'price') {
+        setFilters({ ...filters, minCents: null, maxCents: null });
+      } else if (key === 'countryCode') {
+        setFilters({ ...filters, countryCode: null, city: null });
+      } else if (key === 'categorySlug') {
+        setFilters({
+          ...filters,
+          categorySlug: null,
+          listingType: null,
+          size: null,
+          halalStatus: null,
+          preparationType: null,
+          fragranceType: null,
+          targetAudience: null,
+          sealed: null,
+          contractType: null,
+          workMode: null,
+          sector: null,
+          pricingMode: null,
+          serviceDeliveryMode: null,
+        });
+        setCat('All');
+      } else {
+        setFilters({ ...filters, [key]: null });
+      }
+    },
+    [filters, setCat, setFilters]
+  );
+
+  return (
+    <>
+      <ResultsToolbar
+        title={`Search results for “${query}”`}
+        count={resultCount}
+        sortLabel={sortLabel}
+        activeFilterCount={activeFilterCount}
+        gutter={gutter}
+        onSort={() => openSheet({ kind: 'sort' })}
+        onFilter={() => openSheet({ kind: 'filters' })}
+      />
+      <ActiveFilterChips
+        filters={filters}
+        categoryLabel={categoryLabel}
+        includeListingType={filters.categorySlug === null}
+        onRemove={removeFilter}
+        style={{ marginHorizontal: gutter, marginTop: -space.space8, marginBottom: space.space12 }}
+      />
+      <ListingFeedGrid
+        feed={feed}
+        savedIds={favorites.saved}
+        onToggleSave={favorites.toggle}
+        contentPaddingBottom={bottomInset + space.space32}
+        onRefresh={() => {
+          feed.refresh();
+          favorites.refresh();
+        }}
+        empty={{
+          icon: hasFilters ? 'sliders' : 'search',
+          title: `No listings found for “${query}”`,
+          body: hasFilters
+            ? 'Clear filters, check the spelling or try fewer words.'
+            : 'Check the spelling or try fewer words.',
+          action: hasFilters ? (
+            <Button
+              label="Clear filters"
+              variant="secondary"
+              onPress={() => {
+                setCat('All');
+                setFilters(EMPTY_FILTERS);
+              }}
+              style={{ marginTop: space.space20 }}
+            />
+          ) : undefined,
+        }}
+        error={{ title: "Couldn't load results", body: 'Check your connection and try again.' }}
+      />
+    </>
+  );
+}
+
+function CategoryScopeBanner({
+  label,
+  gutter,
+  onClear,
+}: {
+  label: string;
+  gutter?: number;
+  onClear: () => void;
+}) {
+  return (
+    <View
+      style={{
+        minHeight: touch.minimum,
+        marginHorizontal: gutter,
+        borderRadius: radius.radiusMedium,
+        backgroundColor: C.primarySoft,
+        paddingLeft: space.space12,
+        paddingRight: space.space4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.space8,
+      }}
+    >
+      <Icon name="grid" role="metadata" color={C.primary} decorative />
+      <T variant="metadataMedium" numberOfLines={2} style={{ flex: 1 }}>
+        Searching in {label}
+      </T>
+      <Tap
+        onPress={onClear}
+        accessibilityRole="button"
+        accessibilityLabel={`Search all NILYA instead of ${label}`}
+        style={{ minHeight: touch.minimum, justifyContent: 'center', paddingHorizontal: space.space8 }}
+      >
+        <T variant="metadataMedium" color={C.primary}>
+          Search all NILYA
+        </T>
+      </Tap>
+    </View>
+  );
+}
+
 function SearchHeader({
   topInset,
   gutter,
@@ -270,6 +486,8 @@ function SearchHeader({
   onSubmit: () => void;
   onClear: () => void;
 }) {
+  const [focused, setFocused] = useState(false);
+
   return (
     <View
       style={{
@@ -286,10 +504,12 @@ function SearchHeader({
       <View
         style={{
           flex: 1,
-          height: touch.standard,
-          borderRadius: radius.radiusPill,
+          height: touch.large,
+          borderRadius: radius.radiusLarge,
           borderCurve: 'continuous',
-          backgroundColor: C.bgMuted,
+          borderWidth: focused ? 1.5 : 1,
+          borderColor: focused ? C.primary : C.border,
+          backgroundColor: C.surface,
           flexDirection: 'row',
           alignItems: 'center',
           gap: space.space12,
@@ -303,12 +523,14 @@ function SearchHeader({
           value={draft}
           onChangeText={onChange}
           onSubmitEditing={onSubmit}
-          placeholder="Search items, brands or sellers"
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="Search Nilya..."
           placeholderTextColor={C.inkFaint}
           returnKeyType="search"
           autoCorrect={false}
           autoCapitalize="none"
-          accessibilityLabel="Search items, brands or sellers"
+          accessibilityLabel="Search Nilya listings"
           selectionColor={C.primary}
           style={{ flex: 1, minWidth: 0, ...typography.body, color: C.textPrimary, padding: 0 }}
         />
@@ -317,12 +539,11 @@ function SearchHeader({
             onPress={onClear}
             accessibilityRole="button"
             accessibilityLabel="Clear search text"
-            hitSlop={6}
             style={{
-              width: 36,
-              height: 36,
+              width: touch.minimum,
+              height: touch.minimum,
               borderRadius: radius.radiusPill,
-              backgroundColor: C.border,
+              backgroundColor: C.bgMuted,
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -353,6 +574,7 @@ function ResultsToolbar({
   onFilter: () => void;
 }) {
   const filtersApplied = activeFilterCount > 0;
+  const sortApplied = sortLabel !== 'Newest';
 
   return (
     <View style={{ paddingHorizontal: gutter, paddingTop: space.space8, paddingBottom: space.space16 }}>
@@ -367,31 +589,6 @@ function ResultsToolbar({
 
       <View style={{ flexDirection: 'row', gap: space.space8, marginTop: space.space12 }}>
         <PressableScale
-          onPress={onSort}
-          accessibilityRole="button"
-          accessibilityLabel={`Sort results, ${sortLabel}`}
-          style={{
-            flex: 1,
-            height: touch.minimum,
-            borderRadius: radius.radiusPill,
-            borderCurve: 'continuous',
-            borderWidth: 1,
-            borderColor: C.border,
-            backgroundColor: C.surface,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: space.space8,
-            paddingHorizontal: space.space12,
-          }}
-        >
-          <T variant="button" numberOfLines={1}>
-            {sortLabel}
-          </T>
-          <Icon name="chevronDown" role="metadata" color={C.textPrimary} decorative />
-        </PressableScale>
-
-        <PressableScale
           onPress={onFilter}
           accessibilityRole="button"
           accessibilityLabel={filtersApplied ? `Filters, ${activeFilterCount} active` : 'Filters'}
@@ -401,7 +598,9 @@ function ResultsToolbar({
             height: touch.minimum,
             borderRadius: radius.radiusPill,
             borderCurve: 'continuous',
-            backgroundColor: filtersApplied ? C.textPrimary : C.bgMuted,
+            borderWidth: filtersApplied ? 0 : 1,
+            borderColor: C.border,
+            backgroundColor: filtersApplied ? C.primary : C.surface,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
@@ -410,9 +609,35 @@ function ResultsToolbar({
           }}
         >
           <Icon name="sliders" role="metadata" color={filtersApplied ? C.textInverse : C.textPrimary} decorative />
-          <T variant="button" color={filtersApplied ? C.textInverse : C.textPrimary}>
+          <T variant="button" color={filtersApplied ? C.textInverse : C.textPrimary} numberOfLines={1}>
             {filtersApplied ? `Filters · ${activeFilterCount}` : 'Filters'}
           </T>
+        </PressableScale>
+
+        <PressableScale
+          onPress={onSort}
+          accessibilityRole="button"
+          accessibilityLabel={`Sort results, ${sortLabel}`}
+          accessibilityState={{ selected: sortApplied }}
+          style={{
+            flex: 1,
+            height: touch.minimum,
+            borderRadius: radius.radiusPill,
+            borderCurve: 'continuous',
+            borderWidth: sortApplied ? 0 : 1,
+            borderColor: C.border,
+            backgroundColor: sortApplied ? C.primary : C.surface,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: space.space8,
+            paddingHorizontal: space.space12,
+          }}
+        >
+          <T variant="button" color={sortApplied ? C.textInverse : C.textPrimary} numberOfLines={1}>
+            Sort
+          </T>
+          <Icon name="chevronDown" role="metadata" color={sortApplied ? C.textInverse : C.textPrimary} decorative />
         </PressableScale>
       </View>
     </View>
@@ -579,7 +804,7 @@ function CategoryDiscoveryCard({
               justifyContent: 'center',
             }}
           >
-            <Icon name="bag" role="navigation" color={C.textSecondary} decorative />
+            <Icon name={categoryIconName(category.icon_key)} role="navigation" color={C.primary} decorative />
           </View>
         )}
       </View>

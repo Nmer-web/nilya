@@ -1,50 +1,51 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.0 → 1.2.0
-Bump rationale: MINOR — adopt the owner-approved Nilya brand basics and supplied
-logo suite as the canonical visual system while preserving semantic success/error
-roles, accessibility requirements, and every architecture boundary.
+Version change: 1.2.0 → 2.0.0
+Bump rationale: MAJOR — owner approval on 2026-09-04 expands Nilya from new
+physical goods only to a typed marketplace that also supports job and service
+posts. This permits records that the former Principle I expressly forbade.
 
-Principles changed: Principle VI now defines the approved five-color Nilya palette,
-typography, and logo constraints instead of the superseded Nile palette. The
-NEW-products-only, real-data, schema-authority, frozen-architecture, journey,
-quality, and evidence requirements retain their original meaning.
+Principles changed:
+  - Principle I now defines new purchasable goods and conditionless non-goods.
+  - Principle IV records the approved, narrowly scoped schema/RLS changes.
+  - Principle V requires persisted job application, quote, and booking journeys.
+  - Platform payment constraints now exclude job and service posts from checkout.
 
-Dependent artifacts reviewed:
-  ✅ AGENTS.md — brand-neutral pointer; no edit required
-  ✅ .specify/templates/plan-template.md — Constitution Check updated for Nilya brand basics
-  ✅ README.md — no visual-system guidance; no edit required
-  ✅ .claude/skills/speckit-specify/SKILL.md — no visual-system guidance; no edit required
-  n/a Historical feature specs and database migrations — preserved as historical evidence
+Dependent artifacts updated in the same change:
+  - AGENTS.md
+  - .specify/templates/plan-template.md
+  - .specify/templates/spec-template.md
+  - .specify/templates/tasks-template.md
 
-Known gap retained: Principle I remains enforced in application code. The proposed
-`listings_are_new` CHECK constraint is still unapplied pending approval under Principle IV.
+Unchanged boundaries: no fabricated marketplace activity, Supabase remains the
+source of truth, Auth/Realtime/Stripe contracts remain frozen, and completion
+still requires typecheck, lint, and honest runtime evidence.
 -->
 
 # NILYA Constitution
 
 ## Core Principles
 
-### I. New Products Only (NON-NEGOTIABLE)
+### I. New Goods and Explicit Non-Goods (NON-NEGOTIABLE)
 
-NILYA sells new goods. Every listing MUST be created, stored, queried, and presented as new.
+NILYA supports new purchasable goods plus job and service posts. Every listing MUST have one
+server-validated `listing_type`: `product`, `food`, `job`, or `service`.
 
-- Listing writes MUST set `condition` to `NEW_CONDITION` (`src/lib/database.types.ts`). The Sell
-  flow MUST NOT present a condition choice, because there is no choice to make.
-- Every listing read path MUST filter on that condition. A query that returns listings without it
-  is a defect regardless of what the data happens to contain today.
+- Purchasable `product` listings (including perfumes and incense) and `food` listings MUST set
+  `condition` to `NEW_CONDITION` (`src/lib/database.types.ts`). Their create and edit flows MUST
+  NOT present a condition choice.
+- `job` and `service` posts MUST store `condition` as null. They MUST NOT enter cart, offer,
+  shipping, order, payment, or checkout journeys and MUST NOT render controls for those journeys.
+- Every listing write and read path MUST preserve the typed invariant above. A query that can leak
+  a non-canonical row is a defect regardless of what the data happens to contain today.
 - The words *second-hand*, *pre-owned*, *pre-loved*, *used*, *worn*, and *vintage* MUST NOT appear
   in user-facing copy, and resale framing MUST NOT appear in UX writing, iconography, categories,
   or empty states.
 
-**Known gap**: the `listing_condition` enum still permits `very_good` and `good`, so this rule
-lives in application code, not in the database. A `check (condition = 'new')` constraint on
-`listings` is the correct fix and remains unapplied pending approval under Principle IV. Until it
-lands, every new read or write path MUST be checked against this principle by hand.
-
-**Rationale**: this is the product's identity, not a filter setting. A single unfiltered query
-turns NILYA into a resale app on whichever screen it leaks through.
+**Rationale**: Nilya's commerce identity remains new-goods-only, while jobs and services are
+deliberately different records. Treating a job as a product, or leaking resale inventory through
+an unfiltered query, breaks that identity and creates unsafe journeys.
 
 ### II. No Fabricated Data (NON-NEGOTIABLE)
 
@@ -99,6 +100,13 @@ idempotency ledger, and the `payment_intent_data.metadata.order_id` contract bet
   MUST NOT be able to act as another user.
 - The service-role key MUST NOT be used without explicit, task-scoped authorization.
 
+**Approved amendment scope (owner approval, 2026-09-04)**: add the four requested category trees,
+`listing_type`, normalized food/perfume/job/service detail tables, and non-payment application,
+quote-request, and booking records with ownership-aware RLS. Existing conversation eligibility may
+be extended only so active canonical job and service posts can contact their owner. This approval
+does not authorize Auth or Realtime redesign, service-role use, or any change to the Stripe edge
+functions, webhook contract, payment state machine, or live/test mode.
+
 **Rationale**: these components are load-bearing and cross-cutting, and their failure modes are
 silent — a loosened policy or a dropped webhook event does not raise an error, it just quietly
 lets the wrong thing happen.
@@ -111,6 +119,9 @@ Anything that looks interactive MUST be interactive, and MUST persist what it cl
   real Supabase account, and what it collects about the user is written to `profiles`.
 - Selling creates a real listing row and uploads real photo bytes to storage. A Sell flow that
   cannot produce a listing visible to another account is not finished.
+- Applying to a job, requesting a service quote, and booking a service MUST create ownership-scoped
+  Supabase records. External application methods may additionally open a validated URL, email, or
+  phone target, but the Nilya action itself still persists.
 - Dead controls are forbidden. A button that cannot do its job MUST NOT be rendered — including
   auth providers that are not actually configured.
 - A journey is complete when it works for a second, independent account, not only for its author.
@@ -171,7 +182,8 @@ mobile bundle are `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHAB
 secrets live only in edge function environments. `.env` MUST NOT be committed. Passwords, access
 and refresh tokens, and payment credentials MUST NOT be logged at any level.
 
-**Payments**: payment work follows the complete application flow — it is built and verified after
+**Payments**: only canonical `product` and `food` listings can enter checkout. Job and service
+posts never create orders or payment sessions. Payment work follows the complete application flow — it is built and verified after
 the rest of the journey works, not alongside it. Stripe stays in **test mode**; live mode MUST NOT
 be touched. The mobile app MUST NOT mark an order paid. Payment state changes only through the
 verified webhook, which is authoritative; the client's role ends at requesting a session.
@@ -220,4 +232,4 @@ they are not tradeable against delivery pressure.
 **Runtime guidance**: `AGENTS.md` and `CLAUDE.md` carry day-to-day working instructions and defer to
 this document on principle.
 
-**Version**: 1.2.0 | **Ratified**: 2026-08-16 | **Last Amended**: 2026-08-31
+**Version**: 2.0.0 | **Ratified**: 2026-08-16 | **Last Amended**: 2026-09-04
