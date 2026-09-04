@@ -39,6 +39,43 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Compatibility identifier: changing this would replay onboarding for existing installs.
 const KEY = 'sawa.onboarding.v1';
 
+/**
+ * ONBOARDING REPLAY — a testing switch, and the only thing in this file that
+ * is not permanent.
+ *
+ * The flow is a first-run experience: once a device finishes it the record
+ * says so for good, and the whole thing becomes unreachable without clearing
+ * app data between runs. That makes onboarding the one part of the app that
+ * cannot be watched while it is being built.
+ *
+ * While this is on, `readOnboarding` reports a fresh install at every launch.
+ * The record on disk is left exactly where it is, it is simply not read back,
+ * so turning the switch off restores the real one intact. Nothing else changes
+ * shape: the provider still holds the state, the steps still write through it,
+ * and the root navigator still decides between (app), (onboarding) and (auth)
+ * from the same `completed` boolean it always did. What replays is the real
+ * flow, not a bypass of it.
+ *
+ * Deliberately NOT gated on `__DEV__`. A web export, a preview build and a
+ * deployed build all run with `__DEV__` false, and those are exactly the
+ * builds this needs to work in while the flow is being reviewed.
+ *
+ * SET THIS TO FALSE BEFORE A RELEASE. With it on, a returning member is shown
+ * the first run again on every single launch.
+ */
+export const REPLAY_ONBOARDING: boolean = true;
+
+if (REPLAY_ONBOARDING) {
+  /* Said out loud once at startup, in the terminal and the browser console.
+     The switch is easy to forget, and its symptom — the first run appearing
+     again for someone who already finished it — reads as a bug rather than a
+     setting, in whichever build it is left on. */
+  console.log(
+    '[NILYA][ONBOARDING] replay is ON: the first run shows again on every launch. ' +
+      'Set REPLAY_ONBOARDING to false in src/lib/onboarding.ts before a release.'
+  );
+}
+
 export type LanguageCode = 'en' | 'fr' | 'ar';
 
 /**
@@ -66,6 +103,9 @@ export const EMPTY_ONBOARDING: OnboardingState = {
 };
 
 export async function readOnboarding(): Promise<OnboardingState> {
+  /* Development replay: report a fresh install without touching what is
+     stored, so turning the switch off restores the real record intact. */
+  if (REPLAY_ONBOARDING) return EMPTY_ONBOARDING;
   try {
     const raw = await AsyncStorage.getItem(KEY);
     if (!raw) return EMPTY_ONBOARDING;

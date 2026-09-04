@@ -53,37 +53,33 @@ import { color as C, duration, easing, font, radius, space, touch, type as typog
  *
  * DEPARTURES, each documented where it happens:
  *   - The brand tile is the canonical `NilyaIcon`, not a serif "N" glyph.
- *   - The ground is white rather than the design's #F7F6F3, because the
- *     product cutouts (tech-*) sit on white and the design hid that with
- *     `mix-blend-mode: multiply`, which React Native cannot do.
+ *   - The design's product cutouts (tech-*) sat on white boxes hidden with
+ *     `mix-blend-mode: multiply`, which React Native cannot do. The four
+ *     electronics images are therefore shipped as transparent PNGs with the
+ *     background removed, so they float on the ground like the design.
  *   - Elliptical corner radii (the organic "blob" shapes) are approximated
  *     with circular per-corner radii.
  *
- * IMAGERY. The photographs are the design project's own assets, decorative
- * only (Principle II is not in play). Two of them — `baskets.png` and
- * `vendor.png` — are multi-megabyte files the design tool refuses to serve
- * in full, so `vendor.webp` (the same vendor photograph from the September
- * export) stands in for both. To restore the design exactly, drop the two
- * files into `assets/images/onboarding/` and repoint the two `PHOTO`
- * entries below; nothing else changes.
+ * IMAGERY. These are decorative onboarding photographs, not marketplace
+ * listings (Principle II is not in play). `baskets.jpg` is the dedicated
+ * woven-craft hero for the supplied first-screen reference; the remaining
+ * local assets carry the supporting product and seller compositions.
  */
 
 type Photo = ImageProps['source'];
 
 const PHOTO = {
-  /* STAND-IN: the design's baskets.png could not be fetched (see header). */
-  baskets: require('../../../assets/images/onboarding/vendor.webp') as Photo,
+  baskets: require('../../../assets/images/onboarding/baskets.jpg') as Photo,
   coffee: require('../../../assets/images/onboarding/coffee.jpg') as Photo,
   jalabiya: require('../../../assets/images/onboarding/jalabiya.jpg') as Photo,
   portrait: require('../../../assets/images/onboarding/portrait.jpg') as Photo,
   shoes: require('../../../assets/images/onboarding/shoes.jpg') as Photo,
   sweater: require('../../../assets/images/onboarding/sweater.jpg') as Photo,
-  techA: require('../../../assets/images/onboarding/tech-a.webp') as Photo,
-  techB: require('../../../assets/images/onboarding/tech-b.jpg') as Photo,
-  techC: require('../../../assets/images/onboarding/tech-c.webp') as Photo,
-  techD: require('../../../assets/images/onboarding/tech-d.webp') as Photo,
+  techA: require('../../../assets/images/onboarding/tech-a.png') as Photo,
+  techB: require('../../../assets/images/onboarding/tech-b.png') as Photo,
+  techC: require('../../../assets/images/onboarding/tech-c.png') as Photo,
+  techD: require('../../../assets/images/onboarding/tech-d.png') as Photo,
   toub: require('../../../assets/images/onboarding/toub.webp') as Photo,
-  /* STAND-IN: the design's vendor.png could not be fetched (see header). */
   vendor: require('../../../assets/images/onboarding/vendor.webp') as Photo,
 } as const;
 
