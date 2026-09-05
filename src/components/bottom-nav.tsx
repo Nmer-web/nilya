@@ -11,6 +11,7 @@ import { color as C, scale, space, touch, type } from '@/theme/tokens';
 export const NAV_ROUTES = [
   '/',
   '/explore',
+  '/map',
   '/inbox',
   '/profile',
   '/favorites',
@@ -42,6 +43,7 @@ export function useNavClearance() {
 const TABS: { href: string; icon: IconName; label: string }[] = [
   { href: '/', icon: 'home', label: 'Home' },
   { href: '/explore', icon: 'grid', label: 'Browse' },
+  { href: '/map', icon: 'pin', label: 'Map' },
   { href: '/sell', icon: 'plusCircle', label: 'Sell' },
   { href: '/inbox', icon: 'inbox', label: 'Inbox' },
   { href: '/profile', icon: 'person', label: 'Profile' },

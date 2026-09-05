@@ -44,6 +44,13 @@ export type ListingDraftInput = {
   originalPriceCents?: number | null;
   city: string | null;
   countryCode: string;
+  /**
+   * Where the listing is offered from, as a pair or not at all.
+   * `listings_coordinates_valid` rejects half of one, and `listings_nearby`
+   * ignores rows without both.
+   */
+  latitude: number | null;
+  longitude: number | null;
   details:
     | { kind: 'product' }
     | { kind: 'food'; values: Omit<FoodDetailsRow, 'listing_id' | 'created_at' | 'updated_at'> }
@@ -188,6 +195,8 @@ export async function createDraftListing(
       currency: input.currency,
       city: input.city,
       country_code: input.countryCode,
+      latitude: input.latitude,
+      longitude: input.longitude,
       status: 'draft',
     })
     .select('id')
@@ -1035,6 +1044,14 @@ export async function updateProfile(input: {
    * it and fallen back to near-black for everyone, because it was always null.
    */
   avatarColor?: string | null;
+  /**
+   * The seller's base position. Written as a pair or not at all —
+   * `profiles_coordinates_valid` rejects half of one.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
+  /** Consent to appear on the map. False hides every listing from it. */
+  showLocation?: boolean;
 }): Promise<void> {
   const me = await requireUserId();
 
@@ -1055,6 +1072,17 @@ export async function updateProfile(input: {
   }
   if (input.avatarUrl !== undefined) patch.avatar_url = input.avatarUrl;
   if (input.avatarColor !== undefined) patch.avatar_color = input.avatarColor;
+  if (input.latitude !== undefined || input.longitude !== undefined) {
+    const latitude = input.latitude ?? null;
+    const longitude = input.longitude ?? null;
+    /* Caught here so the seller sees a sentence rather than a check violation. */
+    if ((latitude === null) !== (longitude === null)) {
+      throw new Error('A location needs both a latitude and a longitude');
+    }
+    patch.latitude = latitude;
+    patch.longitude = longitude;
+  }
+  if (input.showLocation !== undefined) patch.show_location = input.showLocation;
 
   if (Object.keys(patch).length === 0) return;
 

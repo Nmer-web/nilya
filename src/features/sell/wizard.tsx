@@ -33,7 +33,8 @@ export const STEP_ROUTES = {
   3: '/sell/category',
   4: '/sell/attributes',
   5: '/sell/pricing',
-  6: '/sell/review',
+  6: '/sell/location',
+  7: '/sell/review',
 } as const;
 
 /**

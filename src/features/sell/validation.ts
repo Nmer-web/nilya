@@ -4,8 +4,8 @@ import { ISO_3166_1_ALPHA_2 } from '@/lib/countries';
 import type { LocalListingPhoto } from '@/lib/listing-photos';
 import { parseEuroCents } from '@/lib/listing-publication';
 
-export const SELL_STEP_COUNT = 6;
-export type SellStep = 1 | 2 | 3 | 4 | 5 | 6;
+export const SELL_STEP_COUNT = 7;
+export type SellStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export const TITLE_MIN = 5;
 export const TITLE_MAX = 80;
@@ -30,7 +30,12 @@ function priceCents(value: string): number | null {
  * What stops each step from continuing.
  *
  * Pure: the same draft always yields the same errors, so the footer button and
- * the inline messages can never disagree. Step 6 is the whole listing.
+ * the inline messages can never disagree. Step 7 is the whole listing.
+ *
+ * Step 6, location, contributes nothing on purpose. A seller who declines the
+ * permission, or whose device cannot fix a position, must still be able to
+ * publish; the coordinates are an optional enrichment, not a requirement, and
+ * the map simply does not show a listing that has none.
  */
 export function validateStepFields(
   step: SellStep,
@@ -168,6 +173,10 @@ export function validateStepFields(
       checkPricing();
       break;
     case 6:
+      /* Location is optional in both directions: no coordinates is a valid
+         listing, and a declined permission must never strand the seller. */
+      break;
+    case 7:
       checkPhotos();
       checkDetails();
       checkCategory();

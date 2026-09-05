@@ -118,8 +118,12 @@ export default function ReviewStep() {
           categorySlug: draft.categorySlug,
           price: draft.price,
           originalPrice: draft.originalPrice,
-          city: profile.data?.city ?? '',
+          /* The location step's city wins; the profile is the fallback for a
+             seller who skipped it, which is how city was always filled. */
+          city: draft.city ?? profile.data?.city ?? '',
           countryCode: draft.countryCode,
+          latitude: draft.latitude,
+          longitude: draft.longitude,
           currency,
           listingType: draft.listingType,
           detailKind: draft.detailKind,
@@ -173,7 +177,7 @@ export default function ReviewStep() {
 
   return (
     <SellStepScreen
-      step={6}
+      step={7}
       title={`Review your ${noun}`}
       subtitle="This is what people will see on Nilya."
       errors={errors}
@@ -238,6 +242,20 @@ export default function ReviewStep() {
             </View>
           )}
           <Row label={draft.listingType === 'job' ? 'Job country' : draft.listingType === 'service' ? 'Provider country' : 'Ships from'} value={draft.countryCode ? countryName(draft.countryCode) : 'Not chosen'} />
+        </Section>
+
+        {/* Location carries no errors: a listing without one publishes
+            normally, it simply does not appear on the map. */}
+        <Section title="Location" onEdit={() => goTo(6)}>
+          <Row label="City" value={draft.city?.trim() || 'Not set'} />
+          <Row
+            label="On the map"
+            value={
+              draft.latitude !== null && draft.longitude !== null
+                ? 'Pinned'
+                : 'Not pinned'
+            }
+          />
         </Section>
       </StepFade>
     </SellStepScreen>

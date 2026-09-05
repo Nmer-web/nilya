@@ -48,6 +48,9 @@ export type PublishListingForm = {
   originalPrice?: string;
   city: string;
   countryCode: string;
+  /** From the location step. Both or neither; absent for a listing with no pin. */
+  latitude: number | null;
+  longitude: number | null;
   currency: string;
   listingType: ListingType;
   detailKind: ListingDetailKind;
@@ -296,6 +299,16 @@ export function normalizePublishForm(form: PublishListingForm): ListingDraftInpu
     throw new PublicationValidationError('The original price has to be higher than the price.');
   }
 
+  /* A pin is optional, but half of one is not storable: the column check
+     rejects it, so it is dropped here rather than failing the insert. */
+  const paired =
+    typeof form.latitude === 'number' &&
+    Number.isFinite(form.latitude) &&
+    Math.abs(form.latitude) <= 90 &&
+    typeof form.longitude === 'number' &&
+    Number.isFinite(form.longitude) &&
+    Math.abs(form.longitude) <= 180;
+
   return {
     title,
     categorySlug,
@@ -311,6 +324,8 @@ export function normalizePublishForm(form: PublishListingForm): ListingDraftInpu
     listingType: form.listingType,
     city: city || null,
     countryCode,
+    latitude: paired ? (form.latitude as number) : null,
+    longitude: paired ? (form.longitude as number) : null,
     details: normalizeSpecializedDetails(form, brand, currency),
   };
 }

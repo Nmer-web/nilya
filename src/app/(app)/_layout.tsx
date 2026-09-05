@@ -39,6 +39,7 @@ export default function AppLayout() {
       >
         <Stack.Screen name="index" options={{ animation: 'none' }} />
         <Stack.Screen name="explore" options={{ animation: 'none' }} />
+        <Stack.Screen name="map" options={{ animation: 'none' }} />
         <Stack.Screen name="sell" options={{ animation: 'none' }} />
         <Stack.Screen name="inbox" options={{ animation: 'none' }} />
         <Stack.Screen name="profile" options={{ animation: 'none' }} />

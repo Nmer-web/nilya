@@ -94,10 +94,40 @@ export type SellerIdentity = {
   avatar_color: string | null;
   city: string | null;
   country_code: string | null;
+  /** The seller's base position, null unless they set one. */
+  latitude: number | null;
+  longitude: number | null;
+  /** False hides this seller from the map and from distance figures. */
+  show_location: boolean;
   rating_avg: number | null;
   rating_count: number;
   created_at: string;
   holiday_mode: boolean;
+};
+
+/**
+ * One row of the `listings_nearby` RPC.
+ *
+ * A narrower shape than `ListingRow` on purpose: the function returns only
+ * what a map pin and a nearby card need, with coordinates already coarsened
+ * and the distance already measured by PostgreSQL.
+ */
+export type NearbyListingRow = {
+  id: string;
+  title: string;
+  price_cents: number | null;
+  currency: string;
+  listing_type: ListingType;
+  category_slug: string;
+  city: string | null;
+  country_code: string;
+  latitude: number;
+  longitude: number;
+  /** Kilometres from the point the caller searched around. */
+  distance_km: number;
+  seller_id: string;
+  /** Storage path of the cover photo, or null when the listing has none. */
+  cover_path: string | null;
 };
 
 export type ListingImageRow = {
@@ -196,6 +226,13 @@ export type ListingRow = {
   color: string | null;
   city: string | null;
   country_code: string;
+  /**
+   * Where the listing is offered from. Null unless the seller pinned it in the
+   * location step; stored as a pair, and `listings_nearby` rounds it before it
+   * reaches a buyer.
+   */
+  latitude: number | null;
+  longitude: number | null;
   tagline: string | null;
   published_at: string | null;
   seller: ProfileSummary | null;

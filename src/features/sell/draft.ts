@@ -98,6 +98,15 @@ export type ListingDraft = {
   price: string;
   originalPrice: string;
   countryCode: string | null;
+  /** The city the listing is offered from, resolved from the map or typed. */
+  city: string | null;
+  /*
+   * Coordinates for `listings.latitude` / `listings.longitude`. Both or
+   * neither, which is what `listings_coordinates_valid` enforces in the
+   * database — a half-set pair would be rejected at publish rather than here.
+   */
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export const EMPTY_DRAFT: ListingDraft = {
@@ -112,6 +121,9 @@ export const EMPTY_DRAFT: ListingDraft = {
   price: '',
   originalPrice: '',
   countryCode: null,
+  city: null,
+  latitude: null,
+  longitude: null,
 };
 
 export function isDraftEmpty(draft: ListingDraft): boolean {
@@ -127,6 +139,9 @@ export function isDraftEmpty(draft: ListingDraft): boolean {
     draft.price === '' &&
     draft.originalPrice === '' &&
     draft.countryCode === null &&
+    draft.city === null &&
+    draft.latitude === null &&
+    draft.longitude === null &&
     JSON.stringify(draft.specialized) === JSON.stringify(EMPTY_SPECIALIZED)
   );
 }
@@ -140,7 +155,9 @@ export function isDraftEmpty(draft: ListingDraft): boolean {
  * do not survive a relaunch — so a resumed draft asks for photos again.
  */
 const KEY = 'nilya:draft-listing';
-const VERSION = 2;
+/* 3 adds city and coordinates. An older record is dropped rather than
+   migrated: it predates the location step and has no coordinates to keep. */
+const VERSION = 3;
 
 type StoredDraft = { version: typeof VERSION; savedAt: string; draft: ListingDraft };
 
@@ -150,6 +167,13 @@ function text(value: unknown, max: number): string {
 
 function nullableText(value: unknown, max: number): string | null {
   return typeof value === 'string' && value.trim() ? value.slice(0, max) : null;
+}
+
+/** A stored coordinate is only kept if it is a real number in range. */
+function coordinate(value: unknown, limit: 90 | 180): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit
+    ? value
+    : null;
 }
 
 export async function readStoredDraft(): Promise<ListingDraft | null> {
@@ -165,6 +189,12 @@ export async function readStoredDraft(): Promise<ListingDraft | null> {
     const perfume = specialized.perfume ?? {};
     const job = specialized.job ?? {};
     const service = specialized.service ?? {};
+    /* Kept as a pair. One coordinate without the other cannot be published —
+       `listings_coordinates_valid` rejects it — so a half record is dropped
+       here rather than carried to the review step and failed there. */
+    const storedLat = coordinate(stored.latitude, 90);
+    const storedLng = coordinate(stored.longitude, 180);
+    const hasCoordinates = storedLat !== null && storedLng !== null;
     /* Read field by field so a record from an earlier build cannot smuggle
        shapes the current draft does not have. */
     const draft: ListingDraft = {
@@ -224,6 +254,9 @@ export async function readStoredDraft(): Promise<ListingDraft | null> {
       price: text(stored.price, 12),
       originalPrice: text(stored.originalPrice, 12),
       countryCode: nullableText(stored.countryCode, 2)?.toUpperCase() ?? null,
+      city: nullableText(stored.city, 120),
+      latitude: hasCoordinates ? storedLat : null,
+      longitude: hasCoordinates ? storedLng : null,
     };
     return isDraftEmpty(draft) ? null : draft;
   } catch {

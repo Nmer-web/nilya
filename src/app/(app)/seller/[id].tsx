@@ -8,6 +8,7 @@ import { ListingFeedGrid } from '@/components/listing-feed-grid';
 import { FloatingIconButton, ScreenHeader } from '@/components/screen-header';
 import { FadeIn, ProductGridSkeleton, Skeleton } from '@/components/skeleton';
 import { Avatar, Button, EmptyState, InlineError, ScreenError, T, Tap } from '@/components/ui';
+import { SellerLocationInline } from '@/features/location/seller-location';
 import { useAsync, type AsyncState } from '@/hooks/use-async';
 import { useFavorites } from '@/hooks/use-favorites';
 import { useGoBack } from '@/hooks/use-go-back';
@@ -240,6 +241,12 @@ function SellerStorefront({
 }) {
   const displayName = seller.display_name.trim();
   const location = formatProfileLocation(seller.city, seller.country_code);
+  /* A map only where the seller both set a position and left it shared. The
+     pin line below stands in for it otherwise, exactly as it always has. */
+  const sellerCoordinates =
+    seller.show_location !== false && seller.latitude !== null && seller.longitude !== null
+      ? { latitude: seller.latitude, longitude: seller.longitude }
+      : null;
   const joined = new Date(seller.created_at).getFullYear();
   const rating = formatProfileRating(seller.rating_avg, seller.rating_count);
 
@@ -289,7 +296,7 @@ function SellerStorefront({
           >
             {displayName}
           </Text>
-          {location ? (
+          {location && sellerCoordinates === null ? (
             <View style={{ marginTop: space.space8, flexDirection: 'row', alignItems: 'center', gap: space.space4 }}>
               <Icon name="pin" role="metadata" color={C.textSecondary} decorative />
               <T variant="metadata" color={C.textSecondary} style={{ flex: 1, minWidth: 0 }} numberOfLines={1} selectable>
@@ -299,6 +306,16 @@ function SellerStorefront({
           ) : null}
         </View>
       </View>
+
+      {sellerCoordinates ? (
+        <View style={{ marginTop: space.space16 }}>
+          <SellerLocationInline
+            coordinates={sellerCoordinates}
+            showLocation
+            label={location}
+          />
+        </View>
+      ) : null}
 
       <SellerStats
         rating={rating}

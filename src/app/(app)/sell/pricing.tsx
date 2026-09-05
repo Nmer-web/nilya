@@ -78,7 +78,7 @@ export default function PricingStep() {
       title={screenTitle}
       errors={errors}
       onAttempt={() => setAttempted(true)}
-      onContinue={() => router.push('/sell/review')}
+      onContinue={() => router.push('/sell/location')}
     >
       <StepFade>
         {isService ? (

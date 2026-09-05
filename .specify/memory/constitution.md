@@ -1,26 +1,27 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.2.0 → 2.0.0
-Bump rationale: MAJOR — owner approval on 2026-09-04 expands Nilya from new
-physical goods only to a typed marketplace that also supports job and service
-posts. This permits records that the former Principle I expressly forbade.
+Version change: 2.0.0 → 2.1.0
+Bump rationale: MINOR — owner approval on 2026-09-04 adds a second, narrowly
+scoped amendment to Principle IV: seller location columns, a coordinate index,
+and two read-only geo functions supporting map discovery. No principle is
+redefined and nothing previously forbidden by Principles I, II, III, V, VI or
+VII becomes permitted.
 
 Principles changed:
-  - Principle I now defines new purchasable goods and conditionless non-goods.
-  - Principle IV records the approved, narrowly scoped schema/RLS changes.
-  - Principle V requires persisted job application, quote, and booking journeys.
-  - Platform payment constraints now exclude job and service posts from checkout.
+  - Principle IV records a second approved amendment scope (seller location).
 
-Dependent artifacts updated in the same change:
-  - AGENTS.md
-  - .specify/templates/plan-template.md
-  - .specify/templates/spec-template.md
-  - .specify/templates/tasks-template.md
+Dependent artifacts checked in the same change:
+  - AGENTS.md — no edit needed; it defers to this document for the scope.
+  - .specify/templates/plan-template.md — no edit needed; its Constitution
+    Check gate already cites "the exact dated approval recorded by the
+    constitution" rather than enumerating one.
+  - .specify/templates/spec-template.md, tasks-template.md — unaffected.
 
 Unchanged boundaries: no fabricated marketplace activity, Supabase remains the
-source of truth, Auth/Realtime/Stripe contracts remain frozen, and completion
-still requires typecheck, lint, and honest runtime evidence.
+source of truth, Auth/Realtime/Stripe contracts remain frozen, RLS is not
+bypassed, and completion still requires typecheck, lint, and honest runtime
+evidence.
 -->
 
 # NILYA Constitution
@@ -106,6 +107,18 @@ quote-request, and booking records with ownership-aware RLS. Existing conversati
 be extended only so active canonical job and service posts can contact their owner. This approval
 does not authorize Auth or Realtime redesign, service-role use, or any change to the Stripe edge
 functions, webhook contract, payment state machine, or live/test mode.
+
+**Approved amendment scope (owner approval, 2026-09-04, seller location)**: add `latitude`,
+`longitude` to `public.listings`; add `latitude`, `longitude`, `show_location` to
+`public.profiles`; add paired range check constraints and a partial index on the listing
+coordinates; and add two read-only functions — `public.distance_km` and
+`public.listings_nearby`. `listings_nearby` MUST remain **security invoker** so
+`listings_read_active` continues to decide which rows exist, MUST exclude non-canonical rows,
+MUST exclude sellers whose `show_location` is false, and MUST round the coordinates it returns.
+No human-readable location column was added: `city` and `country_code` already exist on both
+tables and remain the only source for a place name. This approval does not authorize any
+security-definer helper, any change to existing RLS policies, PostGIS, background location, or
+any Auth, Realtime or Stripe change.
 
 **Rationale**: these components are load-bearing and cross-cutting, and their failure modes are
 silent — a loosened policy or a dropped webhook event does not raise an error, it just quietly
@@ -232,4 +245,4 @@ they are not tradeable against delivery pressure.
 **Runtime guidance**: `AGENTS.md` and `CLAUDE.md` carry day-to-day working instructions and defer to
 this document on principle.
 
-**Version**: 2.0.0 | **Ratified**: 2026-08-16 | **Last Amended**: 2026-09-04
+**Version**: 2.1.0 | **Ratified**: 2026-08-16 | **Last Amended**: 2026-09-04

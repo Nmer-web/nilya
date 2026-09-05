@@ -333,6 +333,15 @@ function EditListing({ listingId }: { listingId: string }) {
         price,
         originalPrice,
         city: row.city ?? '',
+        /*
+         * Carried through unchanged. Editing a listing goes out through
+         * `update_own_typed_listing`, a frozen security-definer helper that
+         * has no coordinate arguments, so the pin set at publish stays where
+         * it is; passing the row's own values keeps the normalizer honest
+         * rather than telling it the listing has no location.
+         */
+        latitude: row.latitude ?? null,
+        longitude: row.longitude ?? null,
         countryCode: row.country_code,
         currency: row.currency,
         listingType: row.listing_type,

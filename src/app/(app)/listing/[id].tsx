@@ -36,6 +36,8 @@ import {
   T,
   Tap,
 } from "@/components/ui";
+import { SellerLocationBlock } from "@/features/location/seller-location";
+import { useLocation } from "@/features/location/useLocation";
 import { useAsync } from "@/hooks/use-async";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useGoBack } from "@/hooks/use-go-back";
@@ -595,6 +597,8 @@ function ListingDetail({ listingId }: { listingId: string }) {
         {!!description && (
           <DescriptionSection key={description} description={description} />
         )}
+
+        <SellerLocationSection listing={row} />
 
         {row.listing_type === 'product' && !row.perfume_details ? (
           <ProductAttributes
@@ -1278,6 +1282,39 @@ function TypedListingDetails({ listing }: { listing: ListingDetailRow }) {
       {rows.map((row, index) => (
         <DetailRow key={`${row.label}:${index}`} label={row.label} value={row.value} last={index === rows.length - 1} />
       ))}
+    </DetailSection>
+  );
+}
+
+/**
+ * Where this listing is offered from.
+ *
+ * Rendered only when there is something true to say. The seller's own
+ * `show_location` decides whether a map may be drawn at all, and the distance
+ * appears only if the buyer granted their own position — otherwise there is no
+ * "from you" to measure from.
+ */
+function SellerLocationSection({ listing }: { listing: ListingDetailRow }) {
+  const viewer = useLocation();
+  const label = formatProfileLocation(listing.city, listing.country_code);
+  const showLocation = listing.seller?.show_location !== false;
+  const coordinates =
+    listing.latitude !== null && listing.longitude !== null
+      ? { latitude: listing.latitude, longitude: listing.longitude }
+      : null;
+
+  if (!label && !(showLocation && coordinates)) return null;
+
+  return (
+    <DetailSection title="Seller location">
+      <SellerLocationBlock
+        coordinates={coordinates}
+        city={listing.city}
+        countryCode={listing.country_code}
+        showLocation={showLocation}
+        viewerCoordinates={viewer.coords}
+        label={label}
+      />
     </DetailSection>
   );
 }

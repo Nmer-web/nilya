@@ -9,6 +9,7 @@ import type {
   ListingImageRow,
   ListingRow,
   ListingStatus,
+  NearbyListingRow,
   ProfileSummary,
   SellerBadgeRow,
 } from '@/lib/database.types';
@@ -77,7 +78,7 @@ async function logAuthDiagnostics(): Promise<void> {
 /** Listing columns shared by feed and detail reads. */
 const LISTING_BASE_SELECT = `
   id, title, brand, price_cents, original_price_cents, currency, condition, listing_type,
-  category_slug, size, color, city, country_code, tagline, published_at,
+  category_slug, size, color, city, country_code, latitude, longitude, tagline, published_at,
   category:categories ( slug, label, listing_type, requires_perfume_details ),
   images:listing_images ( storage_path, position ),
   food_details ( listing_id, price_unit, quantity, ingredients, allergens, expiry_date, halal_status, preparation_type, storage_requirements, delivery_requirements, created_at, updated_at ),
@@ -100,7 +101,7 @@ const LISTING_SELECT = `
  */
 const SIMILAR_LISTING_SELECT = `
   id, title, brand, price_cents, original_price_cents, currency, condition, listing_type,
-  category_slug, size, color, city, country_code, tagline, published_at,
+  category_slug, size, color, city, country_code, latitude, longitude, tagline, published_at,
   category:categories ( slug, label, listing_type, requires_perfume_details ),
   seller:profiles!listings_seller_id_fkey!inner (
     id, display_name, avatar_url, is_verified, rating_avg, rating_count, lifetime_sales, holiday_mode
@@ -118,6 +119,7 @@ const LISTING_DETAIL_SELECT = `
   description, status, seller_id,
   seller:profiles!listings_seller_id_fkey (
     id, display_name, avatar_url, avatar_color, city, country_code,
+    latitude, longitude, show_location,
     rating_avg, rating_count, created_at, holiday_mode
   )
 `;
@@ -1041,6 +1043,11 @@ export type Profile = {
   bio: string | null;
   city: string | null;
   country_code: string | null;
+  /** The seller's base position, null unless they set one in the sell flow. */
+  latitude: number | null;
+  longitude: number | null;
+  /** Consent to appear on the map, and to have a distance shown. */
+  show_location: boolean;
   is_verified: boolean;
   lifetime_sales: number;
   /** `numeric(2,1)`, null until the profile has been rated at all. */
@@ -1076,7 +1083,7 @@ export async function fetchProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
     .select(
-      'id, display_name, avatar_url, avatar_color, bio, city, country_code, is_verified, lifetime_sales, rating_avg, rating_count, created_at, holiday_mode, holiday_mode_started_at'
+      'id, display_name, avatar_url, avatar_color, bio, city, country_code, latitude, longitude, show_location, is_verified, lifetime_sales, rating_avg, rating_count, created_at, holiday_mode, holiday_mode_started_at'
     )
     .eq('id', id)
     .maybeSingle();
@@ -1621,6 +1628,33 @@ export async function setFavorite(listingId: string, on: boolean): Promise<void>
  * The bucket is public, so this is a plain URL rather than a signed one — no
  * round trip, and the URL can be handed straight to `<Image>`.
  */
+/**
+ * Canonical active listings within `radiusKm` of a point, nearest first.
+ *
+ * Every rule lives in `listings_nearby`: it runs as the caller, so
+ * `listings_read_active` still decides which rows exist at all; it drops
+ * sellers who turned their location off; and it rounds each coordinate to
+ * about a kilometre before returning it. Nothing here re-filters, because a
+ * second copy of those rules is a second thing to get wrong.
+ *
+ * An empty array is an ordinary answer — nobody nearby has pinned a listing —
+ * and the screens treat it as one.
+ */
+export async function fetchNearbyListings(input: {
+  latitude: number;
+  longitude: number;
+  radiusKm: number;
+}): Promise<NearbyListingRow[]> {
+  const { data, error } = await supabase.rpc('listings_nearby', {
+    lat: input.latitude,
+    lng: input.longitude,
+    radius_km: input.radiusKm,
+  });
+
+  if (error) throw error;
+  return (data ?? []) as NearbyListingRow[];
+}
+
 export function imageUrl(storagePath: string): string {
   return supabase.storage.from('listing-images').getPublicUrl(storagePath).data.publicUrl;
 }

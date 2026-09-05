@@ -54,6 +54,18 @@
         {
           "photosPermission": "NILYA needs access to your photos so you can add pictures of the products you sell."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Nilya needs your location to show you nearby listings and help buyers find your products."
+        }
+      ],
+      [
+        "react-native-maps",
+        {
+          "androidGoogleMapsApiKey": "REPLACE_WITH_GOOGLE_MAPS_ANDROID_API_KEY"
+        }
       ]
     ],
     "experiments": {

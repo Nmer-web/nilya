@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
+import { formatDistanceBadge } from '@/features/location/geo';
 import { PressableScale } from '@/components/ui';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { NEW_CONDITION, type ListingRow } from '@/lib/database.types';
@@ -234,6 +235,7 @@ export const ListingCard = React.memo(function ListingCard({
   showDiscountBadge = true,
   framed = true,
   imageAspectRatio = imageToken.listing.aspectRatio,
+  distanceKm = null,
 }: {
   listing: ListingRow;
   width: number;
@@ -245,6 +247,13 @@ export const ListingCard = React.memo(function ListingCard({
   showDiscountBadge?: boolean;
   framed?: boolean;
   imageAspectRatio?: number;
+  /**
+   * How far this listing is from the buyer, in kilometres, when that was
+   * actually measured — the map screens pass what `listings_nearby` returned.
+   * Null everywhere else, and then nothing is shown: an unmeasured distance is
+   * not a distance (Principle II).
+   */
+  distanceKm?: number | null;
 }) {
   const router = useRouter();
   const price = listingPriceText(listing);
@@ -257,6 +266,7 @@ export const ListingCard = React.memo(function ListingCard({
     : listing.perfume_details?.brand?.trim() || listing.brand?.trim() || null;
   const brand = candidateBrand?.toLocaleLowerCase() === title.toLocaleLowerCase() ? null : candidateBrand;
   const place = [listing.city, listing.country_code].filter(Boolean).join(', ');
+  const distanceBadge = formatDistanceBadge(distanceKm);
   const size = SIZED_CATEGORY_SLUGS.has(listing.category_slug) ? listing.size?.trim() : null;
   const color = listing.color?.trim();
   const typedAttributes = listing.listing_type === 'job' && listing.job_details
@@ -403,13 +413,18 @@ export const ListingCard = React.memo(function ListingCard({
           {place ? (
             <View
               accessible
-              accessibilityLabel={`${place}${verifiedSeller ? ', verified seller' : ''}`}
+              accessibilityLabel={`${place}${distanceBadge ? `, ${distanceBadge} away` : ''}${verifiedSeller ? ', verified seller' : ''}`}
               className={`flex-row items-center gap-1 ${showAttributeRow ? 'mt-1' : 'mt-1.5'}`}
             >
               <Icon name="pin" role="metadata" color={framed ? C.primary : C.textSecondary} decorative />
               <Text className="shrink text-[13px] text-nilya-secondary" numberOfLines={1}>
                 {place}
               </Text>
+              {distanceBadge ? (
+                <Text className="text-[13px] text-nilya-secondary" numberOfLines={1}>
+                  {`· ${distanceBadge}`}
+                </Text>
+              ) : null}
               {verifiedSeller ? <Icon name="badgeCheck" role="metadata" color={C.textSecondary} decorative /> : null}
             </View>
           ) : null}
@@ -437,11 +452,14 @@ export const ListingGrid = React.memo(function ListingGrid({
   refreshControl,
   contentPaddingTop = 0,
   contentPaddingBottom = 0,
+  distances,
 }: {
   listings: ListingRow[];
   savedIds: Set<string>;
   onToggleSave: (id: string) => void;
   columns?: number;
+  /** Measured distances by listing id, for the map's list view. */
+  distances?: Map<string, number>;
   listHeader?: React.ReactElement | null;
   listEmpty?: React.ReactElement | null;
   refreshControl?: React.ReactElement<RefreshControlProps>;
@@ -461,6 +479,7 @@ export const ListingGrid = React.memo(function ListingGrid({
             width={width}
             saved={savedIds.has(item.id)}
             onToggleSave={onToggleSave}
+            distanceKm={distances?.get(item.id) ?? null}
           />
         </View>
       )}

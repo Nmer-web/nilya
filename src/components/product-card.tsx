@@ -7,6 +7,7 @@ import { ImageSlot } from '@/components/image-slot';
 import { ListingImage, formatPrice, listingPriceText, listingTypeBadge, useFavoriteFeedback } from '@/components/listing-card';
 import { PressableScale } from '@/components/ui';
 import type { ListingRow } from '@/lib/database.types';
+import { formatProfileLocation } from '@/lib/profile-presentation';
 import { coverUrl } from '@/lib/queries';
 import {
   color as C,
@@ -99,6 +100,11 @@ export const ProductCard = React.memo(function ProductCard({
       ? formatPrice(listing.original_price_cents, listing.currency)
       : null;
   const badge = productBadge(listing);
+  /* The place a listing is offered from, as the catalogue card has always
+     shown it. `show_location` governs the map and the coordinates behind it,
+     not this label — the city predates the map feature and removing it here
+     would take away something buyers already rely on. */
+  const place = formatProfileLocation(listing.city, listing.country_code);
   const imageHeight = width / (3 / 4);
   const feedback = useFavoriteFeedback(() => onToggleSave(listing.id));
 
@@ -109,7 +115,7 @@ export const ProductCard = React.memo(function ProductCard({
         scale={scaleToken.cardPressed}
         motionRole="cardPress"
         accessibilityRole="button"
-        accessibilityLabel={[title, price, originalPrice ? `was ${originalPrice}` : null, badge]
+        accessibilityLabel={[title, price, originalPrice ? `was ${originalPrice}` : null, badge, place]
           .filter(Boolean)
           .join(', ')}
       >
@@ -159,6 +165,14 @@ export const ProductCard = React.memo(function ProductCard({
               </Text>
             ) : null}
           </View>
+          {place ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.space4 }}>
+              <Icon name="pin" role="metadata" color={C.textSecondary} decorative />
+              <Text style={{ ...type.caption, color: C.inkFaint, flex: 1 }} numberOfLines={1}>
+                {place}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </PressableScale>
 
